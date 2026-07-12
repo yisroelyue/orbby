@@ -1,0 +1,24 @@
+{
+  "apps": [
+    {
+      "id": "image_handler",
+      "name": "图像处理器",
+      "launchType": "plugin",
+      "subAppId": "image_handler",
+      "executable": null,
+      "icon": "assets/svg/图像处理.svg",
+      "description": "图片格式转换与处理",
+      "type": "system"
+    },
+    {
+      "id": "screen_record",
+      "name": "屏幕录制",
+      "launchType": "plugin",
+      "subAppId": "screen_record",
+      "executable": null,
+      "icon": "assets/png/录制.png",
+      "description": "录制全屏视频",
+      "type": "system"
+    }
+  ]
+}
