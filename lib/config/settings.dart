@@ -62,6 +62,8 @@ class AppSettings {
     this.petStyle = 'colorful',
     this.menuHotkey = 'Alt+96',
     this.panelAppIds = const [],
+    this.userName = '',
+    this.userAvatarPath = '',
     Map<String, PlatformApiConfig>? apiConfigs,
   }) : apiConfigs = apiConfigs ?? {
           'deepseek': PlatformApiConfig(
@@ -93,6 +95,8 @@ class AppSettings {
   String petStyle;
   String menuHotkey;
   List<String> panelAppIds;
+  String userName;
+  String userAvatarPath;
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -172,6 +176,8 @@ class AppSettings {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      userName: json['userName'] as String? ?? '',
+      userAvatarPath: json['userAvatarPath'] as String? ?? '',
       apiConfigs: configs,
     );
   }
@@ -196,6 +202,8 @@ class AppSettings {
         'petStyle': petStyle,
         'menuHotkey': menuHotkey,
         'panelAppIds': panelAppIds,
+        'userName': userName,
+        'userAvatarPath': userAvatarPath,
       };
 }
 
@@ -223,5 +231,15 @@ class SettingsService {
     await file.writeAsString(
       const JsonEncoder.withIndent('  ').convert(settings.toJson()),
     );
+  }
+
+  /// 头像存储路径（~/.orbby/user/user_avatar.png）
+  static Future<String> avatarFilePath() async {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dir = Directory('$home/.orbby/user');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return '${dir.path}/user_avatar.png';
   }
 }

@@ -50,6 +50,8 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _appsHidden = false;
   Color _menuBgColor = const Color(0x77A1A1A1);
   bool _isDark = true;
+  String _userName = '';
+  String _userAvatarPath = '';
 
   Color get _iconColor => _isDark ? Colors.white : const Color(0xFF555555);
   Color get _textColor => _isDark ? Colors.white : const Color(0xFF333333);
@@ -90,6 +92,8 @@ class _MenuScreenState extends State<MenuScreen> {
       _favoritesHidden = !s.showFavoritesPanel;
       _appsHidden = !s.showAppSquarePanel;
       _isDark = s.appTheme == 'dark';
+      _userName = s.userName;
+      _userAvatarPath = s.userAvatarPath;
       _menuBgColor = _isDark
           ? const Color(0x77A1A1A1)
           : const Color(0x88E8E8E8);
@@ -167,19 +171,44 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 
   Widget _buildTopRow() {
+    final hasUserInfo = _userName.isNotEmpty ||
+        (_userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync());
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Image.asset(PetConfig.logoSprite, width: 25, height: 25),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Orbby',
-              style: TextStyle(color: _textColor, fontSize: 18),
+          if (hasUserInfo) ...[
+            const SizedBox(width: 4),
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.white24,
+              backgroundImage: _userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync()
+                  ? FileImage(File(_userAvatarPath))
+                  : null,
+              child: _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
+                  ? Icon(Icons.person, size: 22, color: _iconColor.withValues(alpha: 0.6))
+                  : null,
             ),
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _userName,
+                style: TextStyle(color: _textColor, fontSize: 19, fontWeight: FontWeight.w800),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ] else ...[
+            const SizedBox(width: 4),
+            Image.asset(PetConfig.logoSprite, width: 32, height: 32),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Orbby Assistant',
+                style: TextStyle(color: _textColor, fontSize: 19, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
           InteractiveIcon(
             size: 32,
             onTap: _toggleTheme,

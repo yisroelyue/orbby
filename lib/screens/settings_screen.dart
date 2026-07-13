@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -30,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _balanceUrlController;
   late final TextEditingController _chatUrlController;
   late final TextEditingController _modelController;
+  late final TextEditingController _userNameController;
   String _platform = 'deepseek';
   Map<String, PlatformApiConfig> _apiConfigs = {};
   bool _enableBalance = true;
@@ -49,6 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _claudeHookInstalled = false;
   bool _installingClaudeHooks = false;
   bool _loading = true;
+  String _userName = '';
+  String _userAvatarPath = '';
 
   static const _languages = {'zh': '中文', 'en': 'English'};
 
@@ -65,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _balanceUrlController = TextEditingController();
     _chatUrlController = TextEditingController();
     _modelController = TextEditingController();
+    _userNameController = TextEditingController();
     _loadSettings();
   }
 
@@ -99,6 +106,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showAppSquarePanel = s.showAppSquarePanel;
       _showVibePanel = s.showVibePanel;
       _petStyle = s.petStyle;
+      _userName = s.userName;
+      _userAvatarPath = s.userAvatarPath;
+      _userNameController.text = s.userName;
       _claudeHookInstalled = claudeHookInstalled;
       _loading = false;
     });
@@ -110,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _balanceUrlController.dispose();
     _chatUrlController.dispose();
     _modelController.dispose();
+    _userNameController.dispose();
     _detailScrollController.dispose();
     super.dispose();
   }
@@ -296,6 +307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<Widget> _buildDisplaySettings() {
     return [
+      _buildUserInfoCard(),
       _buildCard(
         children: [
           _DropdownRow(
@@ -575,6 +587,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildUserInfoCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('用户信息'),
+        _buildThinDivider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: _pickAvatar,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: Colors.black.withValues(alpha: 0.06),
+                      backgroundImage: _userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync()
+                          ? FileImage(File(_userAvatarPath))
+                          : null,
+                      child: _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
+                          ? const Icon(Icons.person, size: 32, color: Color(0xFFBBBBBB))
+                          : null,
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 3)],
+                        ),
+                        child: const Icon(Icons.camera_alt, size: 14, color: Color(0xFF666666)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('头像', style: TextStyle(color: Color(0xFF999999), fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '点击更换头像',
+                      style: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              if (_userAvatarPath.isNotEmpty || _userName.isNotEmpty)
+                TextButton(
+                  onPressed: _clearUserInfo,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF999999),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                  child: const Text('清除', style: TextStyle(fontSize: 12)),
+                ),
+            ],
+          ),
+        ),
+        _buildThinDivider(),
+        _DropdownRow(
+          label: '用户名',
+          child: TextField(
+            controller: _userNameController,
+            style: const TextStyle(color: Color(0xFF333333), fontSize: 14),
+            decoration: InputDecoration(
+              hintText: '未设置',
+              hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.25)),
+              filled: true,
+              fillColor: Colors.black.withValues(alpha: 0.03),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickAvatar() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final sourcePath = result.files.first.path;
+    if (sourcePath == null) return;
+    final destPath = await SettingsService.avatarFilePath();
+    await File(sourcePath).copy(destPath);
+    if (!mounted) return;
+    setState(() => _userAvatarPath = destPath);
+  }
+
+  void _clearUserInfo() {
+    setState(() {
+      _userName = '';
+      _userAvatarPath = '';
+      _userNameController.clear();
+    });
+  }
+
   Widget _buildLanguageDropdown() {
     return _DropdownRow(
       label: '语言',
@@ -832,6 +954,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showAppSquarePanel: _showAppSquarePanel,
       showVibePanel: _showVibePanel,
       petStyle: _petStyle,
+      userName: _userNameController.text.trim(),
+      userAvatarPath: _userAvatarPath,
     );
     SettingsService.save(settings);
     SettingsScreen.settingsChannel.invokeMethod('settings_saved');

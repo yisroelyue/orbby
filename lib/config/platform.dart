@@ -44,7 +44,7 @@ class PlatformConfig {
       'openai'   => 'https://api.openai.com/v1/chat/completions',
       'anthropic'=> 'https://api.anthropic.com/v1/messages',
       'doubao'   => 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-      'mimo'     => 'https://api.mimo.ai/v1/chat/completions',
+      'mimo'     => 'https://api.xiaomimimo.com/v1/chat/completions',
       'qwen'     => 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
       'kimi'     => 'https://api.moonshot.cn/v1/chat/completions',
       'zhipu'    => 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
