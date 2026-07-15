@@ -45,7 +45,7 @@ class _PetScreenState extends State<PetScreen> {
   static const _subAppDefaultHeight = 600.0;
   static const _todoItemPopupWidth = 500.0;
   static const _todoItemPopupHeight = 300.0;
-  static const _agentChatPopupWidth = 700.0;
+  static const _agentChatPopupWidth = 1200.0;
   static const _agentChatPopupHeight = 1000.0;
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events',
@@ -70,6 +70,7 @@ class _PetScreenState extends State<PetScreen> {
   final _agentHistory = <Map<String, String>>[];
   bool _menuVisible = false;
   bool _agentPopupVisible = false;
+  bool _agentPopupFocused = false;
 
   String _petStyle = 'colorful';
 
@@ -210,6 +211,10 @@ class _PetScreenState extends State<PetScreen> {
         if (text.isEmpty) return;
         await _handlePopupSendMessage(text, mode);
         return;
+      case 'popup_focus_changed':
+        final args = call.arguments as Map;
+        _agentPopupFocused = args['focused'] as bool? ?? false;
+        return;
       case 'popup_close':
         _hideAgentChatPopup();
         return;
@@ -230,33 +235,84 @@ class _PetScreenState extends State<PetScreen> {
       } catch (_) {}
     }
 
-    // 调用 AI API
+    final history = _agentHistory.isNotEmpty
+        ? _agentHistory.sublist(0, _agentHistory.length - 1)
+        : <Map<String, String>>[];
+
+    final fullReply = StringBuffer();
+    final buffer = StringBuffer();
+    Timer? flushTimer;
+
     try {
-      final reply = await AgentService.chat(
+      final stream = AgentService.chatStream(
         text,
         mode: mode,
-        history: _agentHistory.isNotEmpty
-            ? _agentHistory.sublist(0, _agentHistory.length - 1)
-            : [],
+        history: history,
       );
-      _agentHistory.add({'role': 'assistant', 'content': reply});
+
+      // 创建流式占位消息
       if (_agentChatPopupWindow != null) {
         try {
           await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': reply,
+            'text': '',
             'isUser': false,
+            'streaming': true,
           });
         } catch (_) {}
+      }
+
+      // 每 80ms 批量发送积累的 token
+      flushTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
+        final chunk = buffer.toString();
+        if (chunk.isNotEmpty) {
+          buffer.clear();
+          if (_agentChatPopupWindow != null) {
+            _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
+              'text': chunk,
+            }).catchError((_) {});
+          }
+        }
+      });
+
+      await for (final token in stream) {
+        fullReply.write(token);
+        buffer.write(token);
       }
     } on AgentException catch (e) {
       if (_agentChatPopupWindow != null) {
         try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': e.message,
-            'isUser': false,
+          await _agentChatPopupWindow!.invokeMethod('stream_error', {
+            'error': e.message,
           });
         } catch (_) {}
       }
+      return;
+    } finally {
+      flushTimer?.cancel();
+      // 等待最后一次 timer 回调完成
+      await Future.delayed(const Duration(milliseconds: 120));
+      // 清空残留
+      final remaining = buffer.toString();
+      if (remaining.isNotEmpty && _agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
+            'text': remaining,
+          });
+        } catch (_) {}
+      }
+    }
+
+    // 写入历史
+    final reply = fullReply.toString();
+    if (reply.isNotEmpty) {
+      _agentHistory.add({'role': 'assistant', 'content': reply});
+    }
+
+    // 通知流结束
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('stream_end');
+      } catch (_) {}
     }
   }
 
@@ -277,29 +333,73 @@ class _PetScreenState extends State<PetScreen> {
       } catch (_) {}
     }
 
+    final fullReply = StringBuffer();
+    final buffer = StringBuffer();
+    Timer? flushTimer;
+
     try {
-      final reply = await AgentService.chat(
+      final stream = AgentService.chatStream(
         userText,
         history: _agentHistory.sublist(0, userIndex),
       );
-      _agentHistory.add({'role': 'assistant', 'content': reply});
+
       if (_agentChatPopupWindow != null) {
         try {
           await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': reply,
+            'text': '',
             'isUser': false,
+            'streaming': true,
           });
         } catch (_) {}
+      }
+
+      flushTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
+        final chunk = buffer.toString();
+        if (chunk.isNotEmpty) {
+          buffer.clear();
+          if (_agentChatPopupWindow != null) {
+            _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
+              'text': chunk,
+            }).catchError((_) {});
+          }
+        }
+      });
+
+      await for (final token in stream) {
+        fullReply.write(token);
+        buffer.write(token);
       }
     } on AgentException catch (e) {
       if (_agentChatPopupWindow != null) {
         try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': e.message,
-            'isUser': false,
+          await _agentChatPopupWindow!.invokeMethod('stream_error', {
+            'error': e.message,
           });
         } catch (_) {}
       }
+      return;
+    } finally {
+      flushTimer?.cancel();
+      await Future.delayed(const Duration(milliseconds: 120));
+      final remaining = buffer.toString();
+      if (remaining.isNotEmpty && _agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
+            'text': remaining,
+          });
+        } catch (_) {}
+      }
+    }
+
+    final reply = fullReply.toString();
+    if (reply.isNotEmpty) {
+      _agentHistory.add({'role': 'assistant', 'content': reply});
+    }
+
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('stream_end');
+      } catch (_) {}
     }
   }
 
@@ -364,10 +464,20 @@ class _PetScreenState extends State<PetScreen> {
   // ─── Agent 弹窗显隐 ────────────────────────────────────────────────────────
 
   Future<void> _toggleAgentChatPopup() async {
-    if (_agentPopupVisible) {
-      _hideAgentChatPopup();
-    } else {
+    if (!_agentPopupVisible) {
+      // 隐藏 → 显示
       _showAgentChatPopup();
+    } else if (!_agentPopupFocused) {
+      // 显示但未置顶 → 置顶
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('focus_window');
+        } catch (_) {}
+      }
+      _agentPopupFocused = true;
+    } else {
+      // 显示且置顶 → 隐藏
+      _hideAgentChatPopup();
     }
   }
 
@@ -416,6 +526,7 @@ class _PetScreenState extends State<PetScreen> {
 
   Future<void> _hideAgentChatPopup() async {
     _agentPopupVisible = false;
+    _agentPopupFocused = false;
     if (_agentChatPopupWindow != null) {
       try {
         await _agentChatPopupWindow!.hide();

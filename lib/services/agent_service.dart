@@ -9,7 +9,7 @@ import '../config/settings.dart';
 class AgentService {
   AgentService._();
 
-  /// 发送消息到 AI，返回回复文本
+  /// 发送消息到 AI，返回回复文本（非流式，一次性返回）
   static Future<String> chat(
     String userText, {
     String mode = 'accept',
@@ -52,6 +52,52 @@ class AgentService {
     return _callCompatible(
       chatUrl, model, settings.apiKey, messages,
     );
+  }
+
+  /// 发送消息到 AI，返回流式 token（边生成边返回）
+  static Stream<String> chatStream(
+    String userText, {
+    String mode = 'accept',
+    List<Map<String, String>> history = const [],
+  }) async* {
+    final trimmed = userText.trim();
+    if (trimmed.isEmpty) {
+      throw AgentException('消息为空');
+    }
+
+    final settings = await SettingsService.load();
+    if (settings.apiKey.isEmpty) {
+      throw AgentException('请先在设置中配置 API Key');
+    }
+
+    final chatUrl = settings.chatUrl.isEmpty
+        ? PlatformConfig.defaultChatUrl(settings.platform)
+        : settings.chatUrl.trim();
+
+    final model = settings.model.isEmpty
+        ? PlatformConfig.defaultChatModel(settings.platform)
+        : settings.model;
+
+    debugPrint('━━━ Agent 流式请求 ━━━');
+    debugPrint('平台: ${settings.platform}  模型: $model  模式: $mode');
+
+    final systemPrompt = _systemPrompt(mode);
+
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': systemPrompt},
+      ...history,
+      {'role': 'user', 'content': trimmed},
+    ];
+
+    if (PlatformConfig.isAnthropicPlatform(settings.platform)) {
+      yield* _callAnthropicStream(
+        chatUrl, model, settings.apiKey, systemPrompt, messages,
+      );
+    } else {
+      yield* _callCompatibleStream(
+        chatUrl, model, settings.apiKey, messages,
+      );
+    }
   }
 
   static String _systemPrompt(String mode) {
@@ -128,6 +174,75 @@ class AgentService {
     }
   }
 
+  /// OpenAI 兼容 API（流式）
+  static Stream<String> _callCompatibleStream(
+    String url,
+    String model,
+    String apiKey,
+    List<Map<String, String>> messages,
+  ) async* {
+    final uri = Uri.parse(url);
+    final body = jsonEncode({
+      'model': model,
+      'messages': messages,
+      'stream': true,
+    });
+
+    debugPrint('━━━ 流式请求体 ━━━');
+    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
+
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $apiKey');
+      final bytes = utf8.encode(body);
+      request.headers.set('Content-Length', bytes.length.toString());
+      request.add(bytes);
+
+      final response = await request.close().timeout(
+            const Duration(seconds: 120),
+            onTimeout: () => throw AgentException('请求超时'),
+          );
+
+      if (response.statusCode != 200) {
+        final raw = await response.transform(utf8.decoder).join();
+        debugPrint('━━━ 流式响应 [${response.statusCode}] ━━━');
+        debugPrint(raw);
+        throw AgentException('请求失败: HTTP ${response.statusCode}');
+      }
+
+      final lines = response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+      await for (final line in lines) {
+        if (!line.startsWith('data: ')) continue;
+        final data = line.substring(6).trim();
+        if (data == '[DONE]') break;
+        try {
+          final json = jsonDecode(data) as Map<String, dynamic>;
+          final choices = json['choices'] as List<dynamic>?;
+          if (choices != null && choices.isNotEmpty) {
+            final delta = choices.first['delta'] as Map<String, dynamic>?;
+            final content = delta?['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              yield content;
+            }
+          }
+        } catch (_) {
+          // 跳过解析失败的行
+        }
+      }
+    } catch (e) {
+      if (e is AgentException) rethrow;
+      debugPrint('Agent 流式异常: $e');
+      throw AgentException('请求失败: $e');
+    } finally {
+      client.close();
+    }
+  }
+
   /// Anthropic API
   static Future<String> _callAnthropic(
     String url,
@@ -192,6 +307,83 @@ class AgentService {
     } catch (e) {
       if (e is AgentException) rethrow;
       debugPrint('Anthropic Agent 异常: $e');
+      throw AgentException('请求失败: $e');
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Anthropic API（流式）
+  static Stream<String> _callAnthropicStream(
+    String url,
+    String model,
+    String apiKey,
+    String systemPrompt,
+    List<Map<String, String>> messages,
+  ) async* {
+    final uri = Uri.parse(url);
+    final userMessages = messages
+        .where((m) => m['role'] != 'system')
+        .map((m) => {'role': m['role'], 'content': m['content']})
+        .toList();
+
+    final body = jsonEncode({
+      'model': model,
+      'max_tokens': 4096,
+      'system': systemPrompt,
+      'messages': userMessages,
+      'stream': true,
+    });
+
+    debugPrint('━━━ 流式请求体 ━━━');
+    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
+
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('x-api-key', apiKey);
+      request.headers.set('anthropic-version', '2023-06-01');
+      final bytes = utf8.encode(body);
+      request.headers.set('Content-Length', bytes.length.toString());
+      request.add(bytes);
+
+      final response = await request.close().timeout(
+            const Duration(seconds: 120),
+            onTimeout: () => throw AgentException('请求超时'),
+          );
+
+      if (response.statusCode != 200) {
+        final raw = await response.transform(utf8.decoder).join();
+        debugPrint('━━━ 流式响应 [${response.statusCode}] ━━━');
+        debugPrint(raw);
+        throw AgentException('请求失败: HTTP ${response.statusCode}');
+      }
+
+      final lines = response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+      await for (final line in lines) {
+        if (!line.startsWith('data: ')) continue;
+        final data = line.substring(6).trim();
+        try {
+          final json = jsonDecode(data) as Map<String, dynamic>;
+          final type = json['type'] as String?;
+          if (type == 'content_block_delta') {
+            final delta = json['delta'] as Map<String, dynamic>?;
+            final text = delta?['text'] as String?;
+            if (text != null && text.isNotEmpty) {
+              yield text;
+            }
+          }
+        } catch (_) {
+          // 跳过解析失败的行
+        }
+      }
+    } catch (e) {
+      if (e is AgentException) rethrow;
+      debugPrint('Anthropic 流式异常: $e');
       throw AgentException('请求失败: $e');
     } finally {
       client.close();

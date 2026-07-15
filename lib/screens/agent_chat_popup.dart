@@ -25,7 +25,7 @@ class AgentChatPopup extends StatefulWidget {
 }
 
 class _AgentChatPopupState extends State<AgentChatPopup>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WindowListener {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _messages = <_ChatMessage>[];
@@ -36,19 +36,31 @@ class _AgentChatPopupState extends State<AgentChatPopup>
   String? _hoveredAction;
   bool _isSending = false;
   bool _isHoveredClear = false;
-  bool _isHoveredTheme = false;
+  bool _isMaximized = false;
 
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
     _init();
   }
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _scrollController.dispose();
     _inputController.dispose();
     super.dispose();
+  }
+
+  @override
+  void onWindowFocus() {
+    AgentChatPopup.popupChannel.invokeMethod('popup_focus_changed', {'focused': true});
+  }
+
+  @override
+  void onWindowBlur() {
+    AgentChatPopup.popupChannel.invokeMethod('popup_focus_changed', {'focused': false});
   }
 
   Future<void> _init() async {
@@ -81,16 +93,59 @@ class _AgentChatPopupState extends State<AgentChatPopup>
             setState(() => _messages.removeLast());
           }
           return;
+        case 'focus_window':
+          await windowManager.show();
+          await windowManager.focus();
+          return;
         case 'add_message':
           final args = call.arguments as Map;
           final text = args['text'] as String? ?? '';
           final isUser = args['isUser'] as bool? ?? true;
-          if (text.isNotEmpty) {
+          final streaming = args['streaming'] as bool? ?? false;
+          if (text.isNotEmpty || streaming) {
             setState(() {
-              _messages.add(_ChatMessage(text: text, isUser: isUser));
-              _isSending = isUser;
+              _messages.add(_ChatMessage(
+                text: text,
+                isUser: isUser,
+                streaming: streaming,
+              ));
+              if (streaming) {
+                // 流式消息替代 loading 指示器
+                _isSending = false;
+              } else {
+                _isSending = isUser;
+              }
             });
             _scrollToBottom();
+          }
+          return;
+        case 'append_stream_chunk':
+          final args = call.arguments as Map;
+          final chunk = args['text'] as String? ?? '';
+          if (chunk.isNotEmpty && _messages.isNotEmpty) {
+            setState(() {
+              _messages.last.text += chunk;
+            });
+            _scrollToBottom();
+          }
+          return;
+        case 'stream_end':
+          if (_messages.isNotEmpty) {
+            setState(() {
+              _messages.last.streaming = false;
+            });
+          }
+          return;
+        case 'stream_error':
+          final args = call.arguments as Map;
+          final error = args['error'] as String? ?? '请求失败';
+          // 移除空的流式消息，显示错误
+          if (_messages.isNotEmpty && _messages.last.streaming) {
+            setState(() {
+              _messages.removeLast();
+              _messages.add(_ChatMessage(text: error, isUser: false));
+              _isSending = false;
+            });
           }
           return;
         default:
@@ -188,13 +243,14 @@ class _AgentChatPopupState extends State<AgentChatPopup>
             child: Column(
               children: [
                 _buildHeader(),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Expanded(child: _buildChatList()),
+                const SizedBox(height: 4),
+                _buildContextLabel(),
+                const SizedBox(height: 4),
                 _buildInputArea(),
                 const SizedBox(height: 6),
-                _buildModeBar(),
-                _buildThemeToggleRow(),
-                _buildStatusBar(),
+                _buildBottomBar(),
               ],
             ),
           ),
@@ -206,6 +262,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
   // ─── Header ─────────────────────────────────────────────────────────────
 
   Widget _buildHeader() {
+    final isDark = _themeName == 'dark';
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: (_) => windowManager.startDragging(),
@@ -222,24 +279,77 @@ class _AgentChatPopupState extends State<AgentChatPopup>
             ),
           ),
           const Spacer(),
-          // 关闭按钮
-          GestureDetector(
+          // 主题切换
+          _buildHeaderButton(
+            tooltip: isDark ? '明亮模式' : '暗黑模式',
+            icon: isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+            onTap: () async {
+              final newTheme = isDark ? 'light' : 'dark';
+              setState(() {
+                _themeName = newTheme;
+                _theme = AgentChatColors.of(newTheme);
+              });
+              final s = await SettingsService.load();
+              s.agentChatPopupTheme = newTheme;
+              await SettingsService.save(s);
+            },
+          ),
+          const SizedBox(width: 4),
+          // 最小化
+          _buildHeaderButton(
+            tooltip: '最小化',
+            icon: Icons.minimize_rounded,
+            onTap: () => windowManager.minimize(),
+          ),
+          const SizedBox(width: 4),
+          // 最大化/还原
+          _buildHeaderButton(
+            tooltip: _isMaximized ? '还原' : '最大化',
+            icon: _isMaximized
+                ? Icons.filter_none_rounded
+                : Icons.crop_square_rounded,
+            onTap: () async {
+              if (_isMaximized) {
+                await windowManager.unmaximize();
+              } else {
+                await windowManager.maximize();
+              }
+              setState(() => _isMaximized = !_isMaximized);
+            },
+          ),
+          const SizedBox(width: 4),
+          // 关闭
+          _buildHeaderButton(
+            tooltip: '关闭',
+            icon: Icons.close_rounded,
             onTap: _closePopup,
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(
-                Icons.close_rounded,
-                size: 18,
-                color: _theme.statusText,
-              ),
-            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 18, color: _theme.statusText),
+          ),
+        ),
       ),
     );
   }
@@ -254,7 +364,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         minLines: 1,
         maxLines: 4,
         enabled: !_isSending,
-        style: TextStyle(color: _theme.inputText, fontSize: 13),
+        style: TextStyle(color: _theme.inputText, fontSize: 15),
         decoration: InputDecoration(
           hintText: _isSending ? '' : '输入消息...',
           hintStyle: TextStyle(color: _theme.inputHint),
@@ -284,93 +394,16 @@ class _AgentChatPopupState extends State<AgentChatPopup>
     );
   }
 
-  Widget _buildModeBar() {
-    return Row(
-      children: [
-        _buildModeChip('accept'),
-        const SizedBox(width: 6),
-        _buildModeChip('plan'),
-        const SizedBox(width: 6),
-        _buildModeChip('auto'),
-      ],
-    );
-  }
-
-  Widget _buildModeChip(String label) {
-    final isActive = _mode == label;
-    return GestureDetector(
-      onTap: () => setState(() => _mode = label),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: isActive ? _theme.chipActiveBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? _theme.chipActiveText : _theme.chipInactiveText,
-            fontSize: 11,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── 主题切换行 ──────────────────────────────────────────────────────────
-
-  Widget _buildThemeToggleRow() {
-    final isDark = _themeName == 'dark';
+  Widget _buildBottomBar() {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Row(
         children: [
-          MouseRegion(
-            onEnter: (_) => setState(() => _isHoveredTheme = true),
-            onExit: (_) => setState(() => _isHoveredTheme = false),
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () async {
-                final newTheme = isDark ? 'light' : 'dark';
-                setState(() {
-                  _themeName = newTheme;
-                  _theme = AgentChatColors.of(newTheme);
-                });
-                final s = await SettingsService.load();
-                s.agentChatPopupTheme = newTheme;
-                await SettingsService.save(s);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _isHoveredTheme
-                      ? _chipHoverBg
-                      : _theme.chipActiveBg,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isDark
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      size: 13,
-                      color: _theme.statusText,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isDark ? '明亮' : '暗黑',
-                      style: TextStyle(
-                          color: _theme.statusText, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          _buildModeChip('accept'),
+          const SizedBox(width: 6),
+          _buildModeChip('plan'),
+          const SizedBox(width: 6),
+          _buildModeChip('auto'),
           const Spacer(),
           MouseRegion(
             onEnter: (_) => setState(() => _isHoveredClear = true),
@@ -397,7 +430,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                     color: _isHoveredClear
                         ? _theme.chipActiveText
                         : _theme.chipInactiveText,
-                    fontSize: 11,
+                    fontSize: 13,fontWeight: FontWeight.w600
                   ),
                 ),
               ),
@@ -408,23 +441,44 @@ class _AgentChatPopupState extends State<AgentChatPopup>
     );
   }
 
+  Widget _buildModeChip(String label) {
+    final isActive = _mode == label;
+    return GestureDetector(
+      onTap: () => setState(() => _mode = label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isActive ? _theme.chipActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? _theme.chipActiveText : _theme.chipInactiveText,
+            fontSize: 13,fontWeight: FontWeight.w700
+          ),
+        ),
+      ),
+    );
+  }
+
   Color get _chipHoverBg {
     return _theme.chipActiveBg.withValues(
       alpha: _themeName == 'dark' ? 0.45 : 0.20,
     );
   }
 
-  // ─── 状态栏 ──────────────────────────────────────────────────────────────
+  // ─── Context 标签（消息列表上方） ─────────────────────────────────────────
 
-  Widget _buildStatusBar() {
+  Widget _buildContextLabel() {
     final chars = _messages.fold<int>(0, (sum, m) => sum + m.text.length);
     final sizeStr = chars >= 1024
         ? '${(chars / 1024).toStringAsFixed(chars >= 10240 ? 0 : 1)}k'
         : '${chars}b';
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 6),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10,vertical: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
         child: Text(
           'context: $sizeStr',
           style: TextStyle(color: _theme.statusText, fontSize: 11),
@@ -433,7 +487,12 @@ class _AgentChatPopupState extends State<AgentChatPopup>
     );
   }
 
+
   // ─── 消息列表 ────────────────────────────────────────────────────────────
+
+  bool get _hasActiveStream {
+    return _messages.isNotEmpty && _messages.last.streaming;
+  }
 
   Widget _buildChatList() {
     if (_messages.isEmpty && !_isSending) {
@@ -444,6 +503,8 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         ),
       );
     }
+    // 有流式消息时不显示额外 loading
+    final showTyping = _isSending && !_hasActiveStream;
     return Theme(
       data: ThemeData(
         brightness:
@@ -455,9 +516,9 @@ class _AgentChatPopupState extends State<AgentChatPopup>
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _messages.length + (_isSending ? 1 : 0),
+        itemCount: _messages.length + (showTyping ? 1 : 0),
         itemBuilder: (_, index) {
-          if (_isSending && index == _messages.length) {
+          if (showTyping && index == _messages.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
               child: TypingIndicator(),
@@ -501,10 +562,10 @@ class _AgentChatPopupState extends State<AgentChatPopup>
           margin: const EdgeInsets.only(top: 3),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: MarkdownBody(
-            data: msg.text,
+            data: msg.streaming ? '${msg.text}▌' : msg.text,
             selectable: true,
             styleSheet: MarkdownStyleSheet(
-              p: TextStyle(color: _theme.bubbleText, fontSize: 13),
+              p: TextStyle(color: _theme.bubbleText, fontSize: 16,fontWeight: FontWeight.w400),
               h1: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 18,
@@ -519,19 +580,19 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                   fontWeight: FontWeight.bold),
               h4: TextStyle(
                   color: _theme.bubbleText,
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600),
               h5: TextStyle(
                   color: _theme.bubbleText,
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600),
               h6: TextStyle(
                   color: _theme.bubbleText,
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600),
               code: TextStyle(
                 color: _theme.bubbleText,
-                fontSize: 13,
+                fontSize: 15,
                 fontFamily: 'monospace',
               ),
               codeblockDecoration: BoxDecoration(
@@ -539,22 +600,40 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                 borderRadius: BorderRadius.circular(6),
               ),
               a: TextStyle(color: _theme.bubbleText),
+              blockquoteDecoration: BoxDecoration(
+                color: _theme.bubbleText.withValues(alpha: 0.05),
+                border: Border(
+                  left: BorderSide(
+                    color: _theme.dividerColor,
+                    width: 3,
+                  ),
+                ),
+              ),
+              blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4, right: 8),
+              horizontalRuleDecoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: _theme.dividerColor,
+                    width: 1,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.only(left: 12, right: 12, top: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildActionButton('assets/svg/复制.svg', '复制', () {
                 Clipboard.setData(ClipboardData(text: msg.text));
               }),
-              const SizedBox(width: 8),
+              const SizedBox(width: 14),
               _buildActionButton('assets/svg/重新.svg', '重新生成', () {
                 AgentChatPopup.popupChannel.invokeMethod('agent_regenerate');
               }),
-              const SizedBox(width: 8),
+              const SizedBox(width: 14),
               _buildActionButton('assets/svg/more.svg', '更多', () {
                 // TODO: 更多操作
               }),
@@ -610,8 +689,9 @@ class _AgentChatPopupState extends State<AgentChatPopup>
 }
 
 class _ChatMessage {
-  _ChatMessage({required this.text, required this.isUser});
+  _ChatMessage({required this.text, required this.isUser, this.streaming = false});
 
-  final String text;
+  String text;
   final bool isUser;
+  bool streaming;
 }

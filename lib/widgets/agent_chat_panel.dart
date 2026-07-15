@@ -24,6 +24,7 @@ class AgentChatColors {
     emptyText: Color(0xFF999999),
     statusText: Color(0xFF000000),
     scaffoldBg: Color(0xFFFFFFFF),
+    dividerColor: Color(0xFFE0E0E0),
   );
 
   static const dark = AgentChatPalette(
@@ -41,6 +42,7 @@ class AgentChatColors {
     emptyText: Color(0x4DFFFFFF),
     statusText: Color(0xFFFFFFFF),
     scaffoldBg: Color(0xFF1E1E1E),
+    dividerColor: Color(0xFF3A3A3A),
   );
 
   static AgentChatPalette of(String theme) => theme == 'dark' ? dark : light;
@@ -62,6 +64,7 @@ class AgentChatPalette {
     required this.emptyText,
     required this.statusText,
     required this.scaffoldBg,
+    required this.dividerColor,
   });
 
   final Color bg;
@@ -78,6 +81,7 @@ class AgentChatPalette {
   final Color emptyText;
   final Color statusText;
   final Color scaffoldBg;
+  final Color dividerColor;
 }
 
 class AgentChatPanel extends StatefulWidget {
