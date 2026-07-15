@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_retriever/screen_retriever.dart' show screenRetriever;
 import 'package:window_manager/window_manager.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
@@ -29,10 +29,7 @@ class PetScreen extends StatefulWidget {
   State<PetScreen> createState() => _PetScreenState();
 }
 
-enum _SnapEdge { top, bottom, left, right }
-
 class _PetScreenState extends State<PetScreen> {
-  static const _menuGap = 2.0;
   static const _menuWidth = 400.0;
   static const _settingsWidth = 900.0;
   static const _settingsHeight = 640.0;
@@ -48,7 +45,8 @@ class _PetScreenState extends State<PetScreen> {
   static const _subAppDefaultHeight = 600.0;
   static const _todoItemPopupWidth = 500.0;
   static const _todoItemPopupHeight = 300.0;
-  static const _agentChatPopupWidth = 420.0;
+  static const _agentChatPopupWidth = 700.0;
+  static const _agentChatPopupHeight = 1000.0;
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events',
     mode: ChannelMode.unidirectional,
@@ -70,16 +68,8 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _todoItemPopupWindow;
   WindowController? _agentChatPopupWindow;
   final _agentHistory = <Map<String, String>>[];
-  Timer? _hideTimer;
-  Timer? _agentChatPopupHideTimer;
-  bool _isHoveringPet = false;
-  bool _isHoveringMenu = false;
-  bool _isHoveringAgentPopup = false;
-  bool _menuLocked = false;
   bool _menuVisible = false;
-
-  // 吸附状态
-  _SnapEdge _snapEdge = _SnapEdge.right;
+  bool _agentPopupVisible = false;
 
   String _petStyle = 'colorful';
 
@@ -107,8 +97,6 @@ class _PetScreenState extends State<PetScreen> {
 
   @override
   void dispose() {
-    _hideTimer?.cancel();
-    _agentChatPopupHideTimer?.cancel();
     _menuChannel.setMethodCallHandler(null);
     _settingsChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
@@ -116,33 +104,17 @@ class _PetScreenState extends State<PetScreen> {
     super.dispose();
   }
 
+  // ─── 菜单事件（来自 MenuScreen） ───────────────────────────────────────────
+
   Future<void> _handleMenuEvent(MethodCall call) async {
     switch (call.method) {
-      case 'menu_enter':
-        _isHoveringPet = false;
-        _isHoveringMenu = true;
-        _hideTimer?.cancel();
-        return;
-      case 'menu_exit':
-        _isHoveringMenu = false;
-        _scheduleMenuHide();
-        return;
       case 'test_action':
-        // Placeholder for test button
         return;
       case 'open_settings':
         _showSettings();
         return;
       case 'exit':
         await windowManager.destroy();
-        return;
-      case 'lock_menu':
-        _menuLocked = true;
-        _hideTimer?.cancel();
-        return;
-      case 'unlock_menu':
-        _menuLocked = false;
-        _scheduleMenuHide();
         return;
       case 'open_todo_item_popup':
         final args = call.arguments;
@@ -178,102 +150,27 @@ class _PetScreenState extends State<PetScreen> {
       case 'open_app_center':
         _showAppCenter();
         return;
-      case 'agent_send_message':
-        final args = call.arguments as Map;
-        final text = args['text'] as String? ?? '';
-        final mode = args['mode'] as String? ?? 'accept';
-        if (text.isEmpty) return;
-
-        // 设置面板为加载状态
-        if (_menuWindow != null) {
-          try {
-            await _menuWindow!.invokeMethod('set_chat_loading', {'loading': true});
-          } catch (_) {}
-        }
-
-        // 显示用户消息
-        _agentHistory.add({'role': 'user', 'content': text});
-        if (_agentChatPopupWindow != null) {
-          try {
-            await _agentChatPopupWindow!.invokeMethod('add_message', {
-              'text': text,
-              'isUser': true,
-            });
-          } catch (_) {}
-        }
-
-        // 调用 AI API
-        try {
-          final reply = await AgentService.chat(
-            text,
-            mode: mode,
-            history: _agentHistory.isNotEmpty
-                ? _agentHistory.sublist(0, _agentHistory.length - 1)
-                : [],
-          );
-          _agentHistory.add({'role': 'assistant', 'content': reply});
-          if (_agentChatPopupWindow != null) {
-            try {
-              await _agentChatPopupWindow!.invokeMethod('add_message', {
-                'text': reply,
-                'isUser': false,
-              });
-            } catch (_) {}
-          }
-        } on AgentException catch (e) {
-          if (_agentChatPopupWindow != null) {
-            try {
-              await _agentChatPopupWindow!.invokeMethod('add_message', {
-                'text': e.message,
-                'isUser': false,
-              });
-            } catch (_) {}
-          }
-        }
-        // 清除面板加载状态
-        if (_menuWindow != null) {
-          try {
-            await _menuWindow!.invokeMethod('set_chat_loading', {'loading': false});
-          } catch (_) {}
-        }
-        return;
-      case 'agent_clear_context':
-        _agentHistory.clear();
-        if (_agentChatPopupWindow != null) {
-          try {
-            await _agentChatPopupWindow!.invokeMethod('clear_messages');
-          } catch (_) {}
-        }
-        return;
-      case 'agent_chat_enter':
-        _agentChatPopupHideTimer?.cancel();
-        _showAgentChatPopup();
-        return;
-      case 'agent_chat_exit':
-        _scheduleAgentChatPopupHide();
-        return;
-      case 'close_menu':
-        _hideMenuNow();
-        _hideAgentChatPopup();
-        return;
       case 'launch_sub_app':
         final args = call.arguments as Map;
         _showSubAppWindow(args['subAppId'] as String);
+        return;
+      case 'close_menu':
+        _hideMenu();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
     }
   }
 
+  // ─── 设置事件 ──────────────────────────────────────────────────────────────
+
   Future<void> _handleSettingsEvent(MethodCall call) async {
     switch (call.method) {
       case 'settings_saved':
-        // 重新加载 petStyle 设置
         final settings = await SettingsService.load();
         if (mounted) {
           setState(() => _petStyle = settings.petStyle);
         }
-        // 设置保存后刷新菜单面板
         if (_menuWindow != null) {
           try {
             await Future.wait([
@@ -291,15 +188,142 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
+  // ─── Agent 弹窗事件 ────────────────────────────────────────────────────────
+
+  Future<void> _handleAgentChatPopupEvent(MethodCall call) async {
+    switch (call.method) {
+      case 'agent_regenerate':
+        await _regenerateAgentReply();
+        return;
+      case 'popup_clear_context':
+        _agentHistory.clear();
+        if (_agentChatPopupWindow != null) {
+          try {
+            await _agentChatPopupWindow!.invokeMethod('clear_messages');
+          } catch (_) {}
+        }
+        return;
+      case 'popup_send_message':
+        final args = call.arguments as Map;
+        final text = args['text'] as String? ?? '';
+        final mode = args['mode'] as String? ?? 'accept';
+        if (text.isEmpty) return;
+        await _handlePopupSendMessage(text, mode);
+        return;
+      case 'popup_close':
+        _hideAgentChatPopup();
+        return;
+      default:
+        throw MissingPluginException('Not implemented: ${call.method}');
+    }
+  }
+
+  Future<void> _handlePopupSendMessage(String text, String mode) async {
+    // 显示用户消息
+    _agentHistory.add({'role': 'user', 'content': text});
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('add_message', {
+          'text': text,
+          'isUser': true,
+        });
+      } catch (_) {}
+    }
+
+    // 调用 AI API
+    try {
+      final reply = await AgentService.chat(
+        text,
+        mode: mode,
+        history: _agentHistory.isNotEmpty
+            ? _agentHistory.sublist(0, _agentHistory.length - 1)
+            : [],
+      );
+      _agentHistory.add({'role': 'assistant', 'content': reply});
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('add_message', {
+            'text': reply,
+            'isUser': false,
+          });
+        } catch (_) {}
+      }
+    } on AgentException catch (e) {
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('add_message', {
+            'text': e.message,
+            'isUser': false,
+          });
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> _regenerateAgentReply() async {
+    if (_agentHistory.isNotEmpty &&
+        _agentHistory.last['role'] == 'assistant') {
+      _agentHistory.removeLast();
+    }
+    final userIndex = _agentHistory.lastIndexWhere(
+      (m) => m['role'] == 'user',
+    );
+    if (userIndex == -1) return;
+    final userText = _agentHistory[userIndex]['content'] ?? '';
+
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('remove_last_message');
+      } catch (_) {}
+    }
+
+    try {
+      final reply = await AgentService.chat(
+        userText,
+        history: _agentHistory.sublist(0, userIndex),
+      );
+      _agentHistory.add({'role': 'assistant', 'content': reply});
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('add_message', {
+            'text': reply,
+            'isUser': false,
+          });
+        } catch (_) {}
+      }
+    } on AgentException catch (e) {
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('add_message', {
+            'text': e.message,
+            'isUser': false,
+          });
+        } catch (_) {}
+      }
+    }
+  }
+
+  // ─── 菜单显隐 ──────────────────────────────────────────────────────────────
+
+  Future<void> _toggleMenu() async {
+    if (_menuVisible) {
+      _hideMenu();
+    } else {
+      _showMenu();
+    }
+  }
+
   Future<void> _showMenu() async {
-    _isHoveringPet = true;
-    _menuLocked = false;
     _menuVisible = true;
-    _hideTimer?.cancel();
 
-    final menuBounds = await _calculateMenuBounds();
+    final screenBounds = await _getScreenBounds();
+    final menuBounds = Rect.fromLTWH(
+      screenBounds.right - _menuWidth,
+      screenBounds.top,
+      _menuWidth,
+      screenBounds.height,
+    );
 
-    // 尝试复用已有 menu 窗口；channel 失效则重建
     if (_menuWindow != null) {
       try {
         await _menuWindow!.invokeMethod('place', {
@@ -327,22 +351,88 @@ class _PetScreenState extends State<PetScreen> {
         ),
       );
       _menuWindow = createdWindow;
-      if (!_isHoveringPet && !_isHoveringMenu) {
-        await Future<void>.delayed(const Duration(milliseconds: 80));
-        await createdWindow.hide();
+    }
+  }
+
+  Future<void> _hideMenu() async {
+    _menuVisible = false;
+    try {
+      await _menuWindow?.hide();
+    } catch (_) {}
+  }
+
+  // ─── Agent 弹窗显隐 ────────────────────────────────────────────────────────
+
+  Future<void> _toggleAgentChatPopup() async {
+    if (_agentPopupVisible) {
+      _hideAgentChatPopup();
+    } else {
+      _showAgentChatPopup();
+    }
+  }
+
+  Future<void> _showAgentChatPopup() async {
+    _agentPopupVisible = true;
+
+    final display = await screenRetriever.getPrimaryDisplay();
+    final screenSize = display.visibleSize ?? display.size;
+    final left = (screenSize.width - _agentChatPopupWidth) / 2;
+    final top = (screenSize.height - _agentChatPopupHeight) / 2;
+
+    final settings = await SettingsService.load();
+    final popupTheme = settings.agentChatPopupTheme;
+
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('set_data', {
+          'left': left,
+          'top': top,
+          'width': _agentChatPopupWidth,
+          'height': _agentChatPopupHeight,
+          'theme': popupTheme,
+        });
+        return;
+      } catch (_) {
+        _agentChatPopupWindow = null;
       }
     }
 
+    final createdWindow = await WindowController.create(
+      WindowConfiguration(
+        hiddenAtLaunch: true,
+        arguments: jsonEncode({
+          'type': 'agent_chat_popup',
+          'hidden': true,
+          'left': left,
+          'top': top,
+          'width': _agentChatPopupWidth,
+          'height': _agentChatPopupHeight,
+          'theme': popupTheme,
+        }),
+      ),
+    );
+    _agentChatPopupWindow = createdWindow;
   }
 
+  Future<void> _hideAgentChatPopup() async {
+    _agentPopupVisible = false;
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.hide();
+      } catch (_) {
+        _agentChatPopupWindow = null;
+      }
+    }
+  }
+
+  // ─── 各子窗口 ──────────────────────────────────────────────────────────────
+
   Future<void> _showSettings() async {
-    // 每次都重建，保证最新尺寸
     try {
       await _settingsWindow?.hide();
     } catch (_) {}
     _settingsWindow = null;
 
-    // 计算居中位置
     final display = await screenRetriever.getPrimaryDisplay();
     final screenSize = display.visibleSize ?? display.size;
     final left = (screenSize.width - _settingsWidth) / 2;
@@ -370,7 +460,7 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   Future<void> _precreateWindows() async {
-    // 预创建菜单窗口，避免首次悬停卡顿
+    // 预创建菜单窗口（右侧固定位置）
     final screenBounds = await _getScreenBounds();
     try {
       _menuWindow = await WindowController.create(
@@ -388,7 +478,7 @@ class _PetScreenState extends State<PetScreen> {
       );
     } catch (_) {}
 
-    // 预创建笔记编辑弹窗，避免首次点击卡顿
+    // 预创建笔记编辑弹窗
     try {
       _todoItemPopupWindow = await WindowController.create(
         WindowConfiguration(
@@ -408,18 +498,22 @@ class _PetScreenState extends State<PetScreen> {
       );
     } catch (_) {}
 
-    // 预创建 agent 消息弹窗
+    // 预创建 agent 消息弹窗（居中）
     try {
+      final display = await screenRetriever.getPrimaryDisplay();
+      final screenSize = display.visibleSize ?? display.size;
+      final left = (screenSize.width - _agentChatPopupWidth) / 2;
+      final top = (screenSize.height - _agentChatPopupHeight) / 2;
       _agentChatPopupWindow = await WindowController.create(
         WindowConfiguration(
           hiddenAtLaunch: true,
           arguments: jsonEncode({
             'type': 'agent_chat_popup',
             'hidden': true,
-            'left': 0,
-            'top': 0,
+            'left': left,
+            'top': top,
             'width': _agentChatPopupWidth,
-            'height': 600,
+            'height': _agentChatPopupHeight,
           }),
         ),
       );
@@ -471,6 +565,8 @@ class _PetScreenState extends State<PetScreen> {
     _vibeWindow = null;
   }
 
+  // ─── 文件拖放 ──────────────────────────────────────────────────────────────
+
   Future<void> _handleDropEvent(MethodCall call) async {
     switch (call.method) {
       case 'filesDropped':
@@ -492,30 +588,25 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
+  // ─── 快捷键 ────────────────────────────────────────────────────────────────
+
   Future<void> _handleHotkeyEvent(MethodCall call) async {
     switch (call.method) {
       case 'toggle_menu':
-        await _toggleMenu();
+        _toggleMenu();
         return;
       case 'open_settings':
         _showSettings();
+        return;
+      case 'toggle_agent':
+        _toggleAgentChatPopup();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
     }
   }
 
-  Future<void> _toggleMenu() async {
-    if (_menuVisible) {
-      _menuLocked = false;
-      _hideMenuNow();
-      _hideAgentChatPopup();
-    } else {
-      await _showMenu();
-      _menuLocked = true;
-      _showAgentChatPopup();
-    }
-  }
+  // ─── Todo / 收藏 / 应用中心事件 ────────────────────────────────────────────
 
   Future<void> _handleTodoEditEvent(MethodCall call) async {
     switch (call.method) {
@@ -539,8 +630,6 @@ class _PetScreenState extends State<PetScreen> {
             await _menuWindow!.invokeMethod('refresh_todos');
           } catch (_) {}
         }
-        _menuLocked = false;
-        _scheduleMenuHide();
         return;
       case 'todo_item_marked':
         if (_menuWindow != null) {
@@ -550,75 +639,9 @@ class _PetScreenState extends State<PetScreen> {
         }
         return;
       case 'todo_item_dismissed':
-        _menuLocked = false;
-        _scheduleMenuHide();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
-    }
-  }
-
-  Future<void> _handleAgentChatPopupEvent(MethodCall call) async {
-    switch (call.method) {
-      case 'agent_chat_popup_enter':
-        _isHoveringAgentPopup = true;
-        return;
-      case 'agent_chat_popup_exit':
-        _isHoveringAgentPopup = false;
-        _scheduleAgentChatPopupHide();
-        return;
-      case 'agent_regenerate':
-        await _regenerateAgentReply();
-        return;
-      default:
-        throw MissingPluginException('Not implemented: ${call.method}');
-    }
-  }
-
-  Future<void> _regenerateAgentReply() async {
-    // 移除最后一条 assistant 消息
-    if (_agentHistory.isNotEmpty &&
-        _agentHistory.last['role'] == 'assistant') {
-      _agentHistory.removeLast();
-    }
-    // 找到最后一条 user 消息
-    final userIndex = _agentHistory.lastIndexWhere(
-      (m) => m['role'] == 'user',
-    );
-    if (userIndex == -1) return;
-    final userText = _agentHistory[userIndex]['content'] ?? '';
-
-    // 移除弹窗中的最后一条消息
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('remove_last_message');
-      } catch (_) {}
-    }
-
-    // 重新调用 AI
-    try {
-      final reply = await AgentService.chat(
-        userText,
-        history: _agentHistory.sublist(0, userIndex),
-      );
-      _agentHistory.add({'role': 'assistant', 'content': reply});
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': reply,
-            'isUser': false,
-          });
-        } catch (_) {}
-      }
-    } on AgentException catch (e) {
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': e.message,
-            'isUser': false,
-          });
-        } catch (_) {}
-      }
     }
   }
 
@@ -653,6 +676,8 @@ class _PetScreenState extends State<PetScreen> {
         throw MissingPluginException('Not implemented: ${call.method}');
     }
   }
+
+  // ─── 子窗口创建 ────────────────────────────────────────────────────────────
 
   Future<void> _showFavoritesEditor(Map<String, dynamic> args) async {
     try {
@@ -737,13 +762,11 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   Future<void> _showTodoItemPopup(Map<String, dynamic> item) async {
-    // Position to the left of the menu
-    final menuBounds = await _calculateMenuBounds();
-    final popupLeft = menuBounds.left - _todoItemPopupWidth - 8;
-    final popupTop = menuBounds.top +
-        (menuBounds.height - _todoItemPopupHeight) / 2 - 60;
+    final display = await screenRetriever.getPrimaryDisplay();
+    final screenSize = display.visibleSize ?? display.size;
+    final popupLeft = (screenSize.width - _todoItemPopupWidth) / 2;
+    final popupTop = (screenSize.height - _todoItemPopupHeight) / 2;
 
-    // Reuse existing window
     if (_todoItemPopupWindow != null) {
       try {
         await _todoItemPopupWindow!.invokeMethod('set_data', {
@@ -755,7 +778,6 @@ class _PetScreenState extends State<PetScreen> {
           'width': _todoItemPopupWidth,
           'height': _todoItemPopupHeight,
         });
-        _menuLocked = true;
         return;
       } catch (_) {
         _todoItemPopupWindow = null;
@@ -778,69 +800,6 @@ class _PetScreenState extends State<PetScreen> {
       ),
     );
     _todoItemPopupWindow = createdWindow;
-    _menuLocked = true;
-  }
-
-  Future<void> _showAgentChatPopup() async {
-    final menuBounds = await _calculateMenuBounds();
-    final popupLeft = menuBounds.left - _agentChatPopupWidth;
-    final popupHeight = menuBounds.height;
-    final popupTop = menuBounds.bottom - popupHeight;
-
-    final settings = await SettingsService.load();
-    final popupTheme = settings.agentChatPopupTheme;
-
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('set_data', {
-          'left': popupLeft,
-          'top': popupTop,
-          'width': _agentChatPopupWidth,
-          'height': popupHeight,
-          'theme': popupTheme,
-        });
-        return;
-      } catch (_) {
-        _agentChatPopupWindow = null;
-      }
-    }
-
-    final createdWindow = await WindowController.create(
-      WindowConfiguration(
-        hiddenAtLaunch: true,
-        arguments: jsonEncode({
-          'type': 'agent_chat_popup',
-          'hidden': true,
-          'left': popupLeft,
-          'top': popupTop,
-          'width': _agentChatPopupWidth,
-          'height': popupHeight,
-          'theme': popupTheme,
-        }),
-      ),
-    );
-    _agentChatPopupWindow = createdWindow;
-  }
-
-  void _scheduleAgentChatPopupHide() {
-    _agentChatPopupHideTimer?.cancel();
-    _agentChatPopupHideTimer = Timer(const Duration(milliseconds: 200), () {
-      if (_isHoveringAgentPopup || _menuLocked) {
-        return;
-      }
-      _hideAgentChatPopup();
-    });
-  }
-
-  Future<void> _hideAgentChatPopup() async {
-    _agentChatPopupHideTimer?.cancel();
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.hide();
-      } catch (_) {
-        _agentChatPopupWindow = null;
-      }
-    }
   }
 
   Future<void> _showTodoEditor(Map<String, dynamic> item) async {
@@ -869,121 +828,7 @@ class _PetScreenState extends State<PetScreen> {
     _todoEditWindow = createdWindow;
   }
 
-  void _scheduleMenuHide() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(milliseconds: 300), () async {
-      if (_isHoveringPet || _isHoveringMenu || _menuLocked) {
-        return;
-      }
-      _menuVisible = false;
-      await _menuWindow?.hide();
-    });
-  }
-
-  void _hideMenuNow() {
-    _hideTimer?.cancel();
-    _isHoveringPet = false;
-    _isHoveringMenu = false;
-    _menuLocked = false;
-    _menuVisible = false;
-    unawaited(_menuWindow?.hide() ?? Future<void>.value());
-  }
-
-  Future<void> _snapToNearestEdge() async {
-    final bounds = await windowManager.getBounds();
-    final screenBounds = await _getScreenBounds();
-
-    final distances = <_SnapEdge, double>{
-      _SnapEdge.left: (bounds.left - screenBounds.left).abs(),
-      _SnapEdge.right: (screenBounds.right - bounds.right).abs(),
-      _SnapEdge.top: (bounds.top - screenBounds.top).abs(),
-      _SnapEdge.bottom: (screenBounds.bottom - bounds.bottom).abs(),
-    };
-
-    final nearest =
-        distances.entries.reduce((a, b) => a.value < b.value ? a : b);
-
-    double x, y;
-    const inset = 4.0;
-    switch (nearest.key) {
-      case _SnapEdge.left:
-        x = screenBounds.left + inset;
-        y = bounds.top;
-      case _SnapEdge.right:
-        x = screenBounds.right - bounds.width - inset;
-        y = bounds.top;
-      case _SnapEdge.top:
-        x = bounds.left;
-        y = screenBounds.top + inset;
-      case _SnapEdge.bottom:
-        x = bounds.left;
-        y = screenBounds.bottom - bounds.height - inset;
-    }
-
-    await windowManager.setPosition(Offset(x, y));
-
-    if (nearest.key != _snapEdge) {
-      setState(() => _snapEdge = nearest.key);
-    }
-  }
-
-  Future<Rect> _calculateMenuBounds() async {
-    final petBounds = await windowManager.getBounds();
-    final screenBounds = await _getScreenBounds();
-
-    double left, top, height;
-
-    switch (_snapEdge) {
-      case _SnapEdge.top:
-        // 悬浮球在上 → 菜单在下方
-        left = petBounds.center.dx - _menuWidth / 2;
-        top = petBounds.bottom + _menuGap;
-        // 下方可用高度 = 工作区高度 - 悬浮球高度 - 间隙，不遮挡悬浮球
-        height = screenBounds.bottom - top;
-        // 下方空间不够则改到上方
-        if (height < 150) {
-          height = petBounds.top - _menuGap - screenBounds.top;
-          top = screenBounds.top;
-        }
-      case _SnapEdge.bottom:
-        // 悬浮球在下 → 菜单在上方
-        left = petBounds.center.dx - _menuWidth / 2;
-        height = petBounds.top - _menuGap - screenBounds.top;
-        top = petBounds.top - _menuGap - height;
-        // 上方空间不够则改到下方
-        if (height < 150) {
-          top = petBounds.bottom + _menuGap;
-          height = screenBounds.bottom - top;
-        }
-      case _SnapEdge.left:
-        // 悬浮球在左 → 菜单在右侧
-        left = petBounds.right + _menuGap;
-        top = screenBounds.top;
-        height = screenBounds.height;
-        // 右侧空间不够则改到左侧
-        if (left + _menuWidth > screenBounds.right) {
-          left = petBounds.left - _menuGap - _menuWidth;
-        }
-      case _SnapEdge.right:
-        // 悬浮球在右 → 菜单在左侧
-        left = petBounds.left - _menuGap - _menuWidth;
-        top = screenBounds.top;
-        height = screenBounds.height;
-        // 左侧空间不够则改到右侧
-        if (left < screenBounds.left) {
-          left = petBounds.right + _menuGap;
-        }
-    }
-
-    // 限制不超出屏幕边界
-    left = left.clamp(screenBounds.left, screenBounds.right - _menuWidth);
-    top = top.clamp(screenBounds.top, screenBounds.bottom);
-    if (top + height > screenBounds.bottom) {
-      height = screenBounds.bottom - top;
-    }
-
-    return Rect.fromLTWH(left, top, _menuWidth, height);
-  }
+  // ─── 工具 ──────────────────────────────────────────────────────────────────
 
   Future<Rect> _getScreenBounds() async {
     final display = await screenRetriever.getPrimaryDisplay();
@@ -992,71 +837,157 @@ class _PetScreenState extends State<PetScreen> {
     return position & size;
   }
 
+  // ─── 构建 ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return _PetBody(
       petStyle: _petStyle,
-      snapEdge: _snapEdge,
-      onEnter: () => _showMenu(),
-      onExit: () {
-        _isHoveringPet = false;
-        _scheduleMenuHide();
-      },
+      onToggleMenu: _toggleMenu,
+      onToggleAgent: _toggleAgentChatPopup,
+      onToggleSettings: _showSettings,
       onDragStart: () async {
-        _hideMenuNow();
         await windowManager.startDragging();
-        _snapToNearestEdge();
       },
     );
   }
 }
 
-class _PetBody extends StatelessWidget {
+class _PetBody extends StatefulWidget {
   const _PetBody({
     required this.petStyle,
-    required this.snapEdge,
-    required this.onEnter,
-    required this.onExit,
+    required this.onToggleMenu,
+    required this.onToggleAgent,
+    required this.onToggleSettings,
     required this.onDragStart,
   });
 
   final String petStyle;
-  final _SnapEdge snapEdge;
-  final VoidCallback onEnter;
-  final VoidCallback onExit;
+  final VoidCallback onToggleMenu;
+  final VoidCallback onToggleAgent;
+  final VoidCallback onToggleSettings;
   final VoidCallback onDragStart;
 
-  double get _rotation {
-    switch (snapEdge) {
-      case _SnapEdge.top:
-        return 0;
-      case _SnapEdge.bottom:
-        return pi;
-      case _SnapEdge.left:
-        return -pi / 2;
-      case _SnapEdge.right:
-        return pi / 2;
-    }
-  }
+  @override
+  State<_PetBody> createState() => _PetBodyState();
+}
+
+class _PetBodyState extends State<_PetBody> {
+  bool _dragging = false;
+  bool _ballHovered = false;
+  bool _terminalHovered = false;
+  bool _settingsHovered = false;
+  Offset _pointerDownPos = Offset.zero;
+  static const _dragThreshold = 4.0;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: PetConfig.windowWidth,
-      height: PetConfig.windowHeight,
-      child: Transform.rotate(
-        angle: _rotation,
-        child: MouseRegion(
-          onEnter: (_) => onEnter(),
-          onExit: (_) => onExit(),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanStart: (_) => onDragStart(),
-            child: petStyle == 'colorful'
-                ? const PetBallColorful()
-                : const PetBallRound(),
-          ),
+    // 用 Listener（原始指针事件）检测拖拽，避免与外层 GestureDetector
+    // 的手势竞技场冲突。Listener 不参与手势竞技场，不会抢占内层 onTap。
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        _dragging = false;
+        _pointerDownPos = event.localPosition;
+        windowManager.focus();
+      },
+      onPointerMove: (event) {
+        if (!_dragging &&
+            (event.localPosition - _pointerDownPos).distance > _dragThreshold) {
+          _dragging = true;
+          widget.onDragStart();
+        }
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(PetConfig.windowRadius),
+        child: Container(
+          color: const Color(0x41393939),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 悬浮球
+            GestureDetector(
+              onTap: widget.onToggleMenu,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => setState(() => _ballHovered = true),
+                onExit: (_) => setState(() => _ballHovered = false),
+                child: AnimatedScale(
+                  scale: _ballHovered ? 1.15 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: SizedBox(
+                    width: PetConfig.ballSize,
+                    height: PetConfig.ballSize,
+                    child: widget.petStyle == 'colorful'
+                        ? const PetBallColorful()
+                        : const PetBallRound(),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const SizedBox(width: 6),
+            // 终端按钮
+            GestureDetector(
+              onTap: widget.onToggleAgent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => setState(() => _terminalHovered = true),
+                onExit: (_) => setState(() => _terminalHovered = false),
+                child: AnimatedScale(
+                  scale: _terminalHovered ? 1.2 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Center(
+                      child: SvgPicture.asset(
+                        'assets/svg/cli.svg',
+                        width: 23,
+                        height: 23,
+                        colorFilter: const ColorFilter.mode(
+                          Color(0xFFFFFFFF),
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // 设置按钮
+            GestureDetector(
+              onTap: widget.onToggleSettings,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => setState(() => _settingsHovered = true),
+                onExit: (_) => setState(() => _settingsHovered = false),
+                child: AnimatedScale(
+                  scale: _settingsHovered ? 1.2 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: SizedBox(
+                    width: 40,
+                    height: 30,
+                    child: Center(
+                      child: SvgPicture.asset(
+                        'assets/svg/设置.svg',
+                        width: 20,
+                        height: 20,
+                        colorFilter: const ColorFilter.mode(
+                          Color(0xFFFFFFFF),
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
+      ),
       ),
     );
   }

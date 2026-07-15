@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <dwmapi.h>
 #include <flutter/encodable_value.h>
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
@@ -22,6 +23,7 @@ constexpr char kHotkeyChannelName[] = "orbby_hotkey";
 
 constexpr int kHotkeyIdToggleMenu = 1;
 constexpr int kHotkeyIdOpenSettings = 2;
+constexpr int kHotkeyIdToggleAgent = 3;
 
 using WindowShapeChannel = flutter::MethodChannel<flutter::EncodableValue>;
 using DropChannel = flutter::MethodChannel<flutter::EncodableValue>;
@@ -165,6 +167,11 @@ bool FlutterWindow::OnCreate() {
   // mixin.one/desktop_multi_window channel to never be registered.
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // Windows 11 native rounded corners (DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2)
+  int corner_preference = 2;
+  DwmSetWindowAttribute(GetHandle(), 33,
+                        &corner_preference, sizeof(corner_preference));
+
   RegisterPlugins(flutter_controller_->engine());
   RegisterWindowShapeChannel(flutter_controller_->engine()->messenger(),
                              GetHandle());
@@ -182,10 +189,12 @@ bool FlutterWindow::OnCreate() {
   // Enable native file drag-and-drop on this window.
   DragAcceptFiles(GetHandle(), TRUE);
 
-  // Register global hotkey: Alt + ~ (backtick key above Tab)
-  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_ALT, VK_OEM_3);
+  // Register global hotkey: Ctrl + ~ (backtick key above Tab)
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + Ctrl + ~
   RegisterHotKey(GetHandle(), kHotkeyIdOpenSettings, MOD_ALT | MOD_CONTROL, VK_OEM_3);
+  // Register global hotkey: Alt + ~
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleAgent, MOD_ALT, VK_OEM_3);
 
   // Create hotkey channel to notify Flutter of hotkey presses.
   g_hotkey_channel = std::make_unique<HotkeyChannel>(
@@ -232,6 +241,7 @@ bool FlutterWindow::OnCreate() {
 void FlutterWindow::OnDestroy() {
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleMenu);
   UnregisterHotKey(GetHandle(), kHotkeyIdOpenSettings);
+  UnregisterHotKey(GetHandle(), kHotkeyIdToggleAgent);
   g_hotkey_channel = nullptr;
 
   if (flutter_controller_) {
@@ -264,6 +274,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         } else if (wparam == kHotkeyIdOpenSettings) {
           g_hotkey_channel->InvokeMethod(
               "open_settings", std::make_unique<flutter::EncodableValue>());
+        } else if (wparam == kHotkeyIdToggleAgent) {
+          g_hotkey_channel->InvokeMethod(
+              "toggle_agent", std::make_unique<flutter::EncodableValue>());
         }
       }
       return 0;

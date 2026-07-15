@@ -24,14 +24,19 @@ class AgentChatPopup extends StatefulWidget {
   State<AgentChatPopup> createState() => _AgentChatPopupState();
 }
 
-class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStateMixin {
+class _AgentChatPopupState extends State<AgentChatPopup>
+    with TickerProviderStateMixin {
   final _scrollController = ScrollController();
+  final _inputController = TextEditingController();
   final _messages = <_ChatMessage>[];
   AgentChatPalette _theme = AgentChatColors.light;
   String _themeName = 'light';
+  String _mode = 'accept';
   String? _selectedAction;
   String? _hoveredAction;
-  bool _isLoading = false;
+  bool _isSending = false;
+  bool _isHoveredClear = false;
+  bool _isHoveredTheme = false;
 
   @override
   void initState() {
@@ -42,6 +47,7 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
   @override
   void dispose() {
     _scrollController.dispose();
+    _inputController.dispose();
     super.dispose();
   }
 
@@ -56,11 +62,16 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
           final l = (args['left'] as num?)?.toDouble() ?? 0;
           final t = (args['top'] as num?)?.toDouble() ?? 0;
           final theme = args['theme'] as String? ?? 'light';
-          await windowManager.setMinimumSize(Size(w, h));
-          await windowManager.setMaximumSize(Size(w, h));
+          await windowManager.setMinimumSize(const Size(400, 500));
+          await windowManager.setMaximumSize(const Size(3840, 2160));
           await windowManager.setBounds(Rect.fromLTWH(l, t, w, h));
           await windowManager.show();
-          if (mounted) setState(() { _theme = AgentChatColors.of(theme); _themeName = theme; });
+          if (mounted) {
+            setState(() {
+              _theme = AgentChatColors.of(theme);
+              _themeName = theme;
+            });
+          }
           return;
         case 'clear_messages':
           setState(() => _messages.clear());
@@ -73,11 +84,11 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
         case 'add_message':
           final args = call.arguments as Map;
           final text = args['text'] as String? ?? '';
-          final isUser = args['isUser'] as bool? ?? false;
+          final isUser = args['isUser'] as bool? ?? true;
           if (text.isNotEmpty) {
             setState(() {
               _messages.add(_ChatMessage(text: text, isUser: isUser));
-              _isLoading = isUser;
+              _isSending = isUser;
             });
             _scrollToBottom();
           }
@@ -93,13 +104,18 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     final l = (args['left'] as num?)?.toDouble() ?? 0;
     final t = (args['top'] as num?)?.toDouble() ?? 0;
     final theme = args['theme'] as String? ?? 'light';
-    await windowManager.setMinimumSize(Size(w, h));
-    await windowManager.setMaximumSize(Size(w, h));
+    await windowManager.setMinimumSize(const Size(400, 500));
+    await windowManager.setMaximumSize(const Size(3840, 2160));
     await windowManager.setBounds(Rect.fromLTWH(l, t, w, h));
     if (args['hidden'] != true) {
       await windowManager.show();
     }
-    if (mounted) setState(() { _theme = AgentChatColors.of(theme); _themeName = theme; });
+    if (mounted) {
+      setState(() {
+        _theme = AgentChatColors.of(theme);
+        _themeName = theme;
+      });
+    }
   }
 
   void _scrollToBottom() {
@@ -124,23 +140,49 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     }
   }
 
+  // ─── 发送消息 ────────────────────────────────────────────────────────────
+
+  void _sendMessage() {
+    final text = _inputController.text.trim();
+    if (text.isEmpty || _isSending) return;
+
+    setState(() => _isSending = true);
+    AgentChatPopup.popupChannel.invokeMethod('popup_send_message', {
+      'text': text,
+      'mode': _mode,
+    });
+    _inputController.clear();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.enter &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _sendMessage();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _closePopup() {
+    AgentChatPopup.popupChannel.invokeMethod('popup_close');
+  }
+
+  // ─── 构建 ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final isDark = _themeName == 'dark';
-    return MouseRegion(
-      onEnter: (_) =>
-          AgentChatPopup.popupChannel.invokeMethod('agent_chat_popup_enter'),
-      onExit: (_) =>
-          AgentChatPopup.popupChannel.invokeMethod('agent_chat_popup_exit'),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: isDark ? Brightness.dark : Brightness.light,
-          fontFamily: 'NotoSansSC',
-        ),
-        home: Scaffold(
-          backgroundColor: _theme.scaffoldBg,
-          body: Container(
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: isDark ? Brightness.dark : Brightness.light,
+        fontFamily: 'NotoSansSC',
+      ),
+      home: Scaffold(
+        backgroundColor: _theme.scaffoldBg,
+        body: DragToResizeArea(
+          child: Container(
             padding: const EdgeInsets.all(12),
             color: _theme.scaffoldBg,
             child: Column(
@@ -148,6 +190,9 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
                 _buildHeader(),
                 const SizedBox(height: 8),
                 Expanded(child: _buildChatList()),
+                _buildInputArea(),
+                const SizedBox(height: 6),
+                _buildModeBar(),
                 _buildThemeToggleRow(),
                 _buildStatusBar(),
               ],
@@ -158,60 +203,39 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     );
   }
 
-  Widget _buildHeader() {
-    return Row(
-      children: [
-        Image.asset(PetConfig.logoSprite, width: 22, height: 22),
-        const SizedBox(width: 8),
-        Text(
-          'Orbby Agent',
-          style: TextStyle(
-            color: _theme.headerText,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
+  // ─── Header ─────────────────────────────────────────────────────────────
 
-  Widget _buildThemeToggleRow() {
-    final isDark = _themeName == 'dark';
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
+  Widget _buildHeader() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (_) => windowManager.startDragging(),
       child: Row(
         children: [
+          Image.asset(PetConfig.logoSprite, width: 22, height: 22),
+          const SizedBox(width: 8),
+          Text(
+            'Orbby Agent',
+            style: TextStyle(
+              color: _theme.headerText,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          // 关闭按钮
           GestureDetector(
-            onTap: () async {
-              final newTheme = isDark ? 'light' : 'dark';
-              setState(() {
-                _themeName = newTheme;
-                _theme = AgentChatColors.of(newTheme);
-              });
-              final s = await SettingsService.load();
-              s.agentChatPopupTheme = newTheme;
-              await SettingsService.save(s);
-            },
+            onTap: _closePopup,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
-                color: _theme.chipActiveBg,
+                color: Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                    size: 13,
-                    color: _theme.statusText,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    isDark ? '明亮' : '暗黑',
-                    style: TextStyle(color: _theme.statusText, fontSize: 11),
-                  ),
-                ],
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: _theme.statusText,
               ),
             ),
           ),
@@ -219,6 +243,178 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
       ),
     );
   }
+
+  // ─── 输入区（从 AgentChatPanel 迁移） ────────────────────────────────────
+
+  Widget _buildInputArea() {
+    return Focus(
+      onKeyEvent: _handleKeyEvent,
+      child: TextField(
+        controller: _inputController,
+        minLines: 1,
+        maxLines: 4,
+        enabled: !_isSending,
+        style: TextStyle(color: _theme.inputText, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: _isSending ? '' : '输入消息...',
+          hintStyle: TextStyle(color: _theme.inputHint),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
+          filled: true,
+          fillColor: _theme.inputBg,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          suffixIcon: _isSending
+              ? const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: TypingIndicator(),
+                )
+              : IconButton(
+                  icon: Icon(Icons.send_rounded,
+                      size: 18, color: _theme.chipActiveText),
+                  onPressed: _sendMessage,
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeBar() {
+    return Row(
+      children: [
+        _buildModeChip('accept'),
+        const SizedBox(width: 6),
+        _buildModeChip('plan'),
+        const SizedBox(width: 6),
+        _buildModeChip('auto'),
+      ],
+    );
+  }
+
+  Widget _buildModeChip(String label) {
+    final isActive = _mode == label;
+    return GestureDetector(
+      onTap: () => setState(() => _mode = label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isActive ? _theme.chipActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? _theme.chipActiveText : _theme.chipInactiveText,
+            fontSize: 11,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── 主题切换行 ──────────────────────────────────────────────────────────
+
+  Widget _buildThemeToggleRow() {
+    final isDark = _themeName == 'dark';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          MouseRegion(
+            onEnter: (_) => setState(() => _isHoveredTheme = true),
+            onExit: (_) => setState(() => _isHoveredTheme = false),
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () async {
+                final newTheme = isDark ? 'light' : 'dark';
+                setState(() {
+                  _themeName = newTheme;
+                  _theme = AgentChatColors.of(newTheme);
+                });
+                final s = await SettingsService.load();
+                s.agentChatPopupTheme = newTheme;
+                await SettingsService.save(s);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _isHoveredTheme
+                      ? _chipHoverBg
+                      : _theme.chipActiveBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      size: 13,
+                      color: _theme.statusText,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isDark ? '明亮' : '暗黑',
+                      style: TextStyle(
+                          color: _theme.statusText, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Spacer(),
+          MouseRegion(
+            onEnter: (_) => setState(() => _isHoveredClear = true),
+            onExit: (_) => setState(() => _isHoveredClear = false),
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () {
+                AgentChatPopup.popupChannel
+                    .invokeMethod('popup_clear_context');
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _isHoveredClear
+                      ? _chipHoverBg
+                      : _theme.chipActiveBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'clear',
+                  style: TextStyle(
+                    color: _isHoveredClear
+                        ? _theme.chipActiveText
+                        : _theme.chipInactiveText,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color get _chipHoverBg {
+    return _theme.chipActiveBg.withValues(
+      alpha: _themeName == 'dark' ? 0.45 : 0.20,
+    );
+  }
+
+  // ─── 状态栏 ──────────────────────────────────────────────────────────────
 
   Widget _buildStatusBar() {
     final chars = _messages.fold<int>(0, (sum, m) => sum + m.text.length);
@@ -237,8 +433,10 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     );
   }
 
+  // ─── 消息列表 ────────────────────────────────────────────────────────────
+
   Widget _buildChatList() {
-    if (_messages.isEmpty && !_isLoading) {
+    if (_messages.isEmpty && !_isSending) {
       return Center(
         child: Text(
           '暂无消息',
@@ -248,7 +446,8 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     }
     return Theme(
       data: ThemeData(
-        brightness: _themeName == 'dark' ? Brightness.dark : Brightness.light,
+        brightness:
+            _themeName == 'dark' ? Brightness.dark : Brightness.light,
         scrollbarTheme: const ScrollbarThemeData(
           thickness: WidgetStatePropertyAll(0),
         ),
@@ -256,9 +455,9 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _messages.length + (_isLoading ? 1 : 0),
+        itemCount: _messages.length + (_isSending ? 1 : 0),
         itemBuilder: (_, index) {
-          if (_isLoading && index == _messages.length) {
+          if (_isSending && index == _messages.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
               child: TypingIndicator(),
@@ -306,12 +505,30 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
             selectable: true,
             styleSheet: MarkdownStyleSheet(
               p: TextStyle(color: _theme.bubbleText, fontSize: 13),
-              h1: TextStyle(color: _theme.bubbleText, fontSize: 18, fontWeight: FontWeight.bold),
-              h2: TextStyle(color: _theme.bubbleText, fontSize: 16, fontWeight: FontWeight.bold),
-              h3: TextStyle(color: _theme.bubbleText, fontSize: 15, fontWeight: FontWeight.bold),
-              h4: TextStyle(color: _theme.bubbleText, fontSize: 14, fontWeight: FontWeight.w600),
-              h5: TextStyle(color: _theme.bubbleText, fontSize: 13, fontWeight: FontWeight.w600),
-              h6: TextStyle(color: _theme.bubbleText, fontSize: 13, fontWeight: FontWeight.w600),
+              h1: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold),
+              h2: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
+              h3: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold),
+              h4: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600),
+              h5: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600),
+              h6: TextStyle(
+                  color: _theme.bubbleText,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600),
               code: TextStyle(
                 color: _theme.bubbleText,
                 fontSize: 13,
@@ -335,8 +552,7 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
               }),
               const SizedBox(width: 8),
               _buildActionButton('assets/svg/重新.svg', '重新生成', () {
-                AgentChatPopup.popupChannel
-                    .invokeMethod('agent_regenerate');
+                AgentChatPopup.popupChannel.invokeMethod('agent_regenerate');
               }),
               const SizedBox(width: 8),
               _buildActionButton('assets/svg/more.svg', '更多', () {
@@ -349,7 +565,8 @@ class _AgentChatPopupState extends State<AgentChatPopup> with TickerProviderStat
     );
   }
 
-  Widget _buildActionButton(String svgAsset, String label, VoidCallback onTap) {
+  Widget _buildActionButton(
+      String svgAsset, String label, VoidCallback onTap) {
     final isHovered = _hoveredAction == label;
     final isSelected = _selectedAction == label;
     return MouseRegion(

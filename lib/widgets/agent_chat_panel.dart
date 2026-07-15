@@ -13,7 +13,7 @@ class AgentChatColors {
     bg: Color(0xFFFFFFFF),
     inputBg: Color(0x0D000000),
     inputText: Color(0xFF333333),
-    inputHint: Color(0x4D000000),
+    inputHint: Color(0xFF000000),
     chipActiveBg: Color(0x14000000),
     chipActiveText: Color(0xFF333333),
     chipInactiveText: Color(0xFF999999),
@@ -211,24 +211,6 @@ class _AgentChatPanelState extends State<AgentChatPanel> {
         _buildModeChip('plan'),
         const SizedBox(width: 6),
         _buildModeChip('auto'),
-        const Spacer(),
-        GestureDetector(
-          onTap: () {
-            _controller.clear();
-            MenuScreen.menuChannel.invokeMethod('agent_clear_context');
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'clear',
-              style: TextStyle(color: _theme.chipInactiveText, fontSize: 11),
-            ),
-          ),
-        ),
       ],
     );
   }

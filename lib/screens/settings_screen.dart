@@ -335,7 +335,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           _buildSectionTitle('快捷键'),
           _buildThinDivider(),
-          _buildHotkeyRow('打开助手', 'Alt+`'),
+          _buildHotkeyRow('打开助手', 'Ctrl+`'),
+          _buildThinDivider(),
+          _buildHotkeyRow('打开Agent', 'Alt+`'),
           _buildThinDivider(),
           _buildHotkeyRow('打开设置', 'Alt+Ctrl+`'),
         ],

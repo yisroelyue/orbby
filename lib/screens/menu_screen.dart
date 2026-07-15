@@ -6,7 +6,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
-import '../widgets/agent_chat_panel.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/balance_panel.dart';
 import '../widgets/favorites_panel.dart';
@@ -42,7 +41,6 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   bool _photoWallHidden = false;
-  bool _agentChatHidden = false;
   bool _balanceHidden = false;
   bool _translateHidden = false;
   bool _todoHidden = false;
@@ -85,7 +83,6 @@ class _MenuScreenState extends State<MenuScreen> {
     if (!mounted) return;
     setState(() {
       _photoWallHidden = !s.showPhotoWallPanel;
-      _agentChatHidden = !s.showAgentChatPanel;
       _balanceHidden = !s.showBalancePanel;
       _translateHidden = !s.showTranslatePanel;
       _todoHidden = !s.showTodoPanel;
@@ -132,37 +129,27 @@ class _MenuScreenState extends State<MenuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => MenuScreen.menuChannel.invokeMethod('menu_enter'),
-      onExit: (_) => MenuScreen.menuChannel.invokeMethod('menu_exit'),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(fontFamily: 'NotoSansSC'),
-        home: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: FrostedPanel(
-            color: _menuBgColor,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
-              child: Column(
-                children: [
-                  // 顶行
-                  _buildTopRow(),
-                  // 面板区域
-                  Expanded(child: _buildPanelList()),
-                  // Agent 对话区
-                  if (!_agentChatHidden)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: AgentChatPanel(),
-                    ),
-                  // 底部功能按钮
-                  _buildBottomRow(),
-                ],
-              ),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(fontFamily: 'NotoSansSC'),
+      home: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: FrostedPanel(
+          color: _menuBgColor,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 12,
+            ),
+            child: Column(
+              children: [
+                // 顶行
+                _buildTopRow(),
+                // 面板区域
+                Expanded(child: _buildPanelList()),
+                // 底部功能按钮
+                _buildBottomRow(),
+              ],
             ),
           ),
         ),

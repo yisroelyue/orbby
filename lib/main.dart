@@ -23,13 +23,11 @@ import 'screens/sub_app_window_screen.dart';
 import 'screens/todo_edit_screen.dart';
 import 'screens/todo_item_popup.dart';
 import 'screens/agent_chat_popup.dart';
-import 'widgets/agent_chat_panel.dart';
 import 'services/log_service.dart';
 
 import 'screens/vibe_task_screen.dart';
 
 const _menuCornerRadius = 0.0;
-const _settingsCornerRadius = 0.0;
 const _windowShapeChannel = MethodChannel('orbby_window_shape');
 
 Future<void> main(List<String> args) async {
@@ -111,6 +109,7 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  await Window.initialize();
   await _configurePetWindow();
   await _ensureSettingsFile();
   runApp(const OrbbyApp());
@@ -235,27 +234,28 @@ Future<void> _configurePetWindow() async {
     () async {
       const size = Size(PetConfig.windowWidth, PetConfig.windowHeight);
 
-      // Windows runner 已用 WS_POPUP 创建原生无边框窗口，这里只同步插件状态。
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
 
-      // 锁死窗口尺寸为精确正方形。
+      // 锁死窗口尺寸。
       await windowManager.setMinimumSize(size);
       await windowManager.setMaximumSize(size);
       await windowManager.setSize(size);
 
-      // 初始位置：屏幕右侧，任务栏上方
+      // 初始位置：屏幕顶部居中
       final display = await screenRetriever.getPrimaryDisplay();
       final screenSize = display.visibleSize ?? display.size;
-      final inset = 4.0;
-      final x = screenSize.width - PetConfig.windowWidth - inset;
-      final y = screenSize.height - PetConfig.windowHeight - 4;
+      final x = (screenSize.width - PetConfig.windowWidth) / 2;
+      const y = 0.0;
       await windowManager.setPosition(Offset(x, y));
+
+      // 透明背景，圆角由 Flutter 层 ClipRRect 抗锯齿渲染
+      await windowManager.setBackgroundColor(Colors.transparent);
 
       await windowManager.show();
       await windowManager.focus();
+      await _applyPetAcrylic();
       await windowManager.setAlwaysOnTop(true);
-      await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setPreventClose(true);
       await windowManager.setTitle('Orbby');
@@ -285,10 +285,6 @@ Future<void> _configureMenuWindow(
         return;
       case 'refresh_panel_apps':
         MenuScreen.triggerRefresh();
-        return;
-      case 'set_chat_loading':
-        final loading = (call.arguments as Map)['loading'] as bool? ?? false;
-        AgentChatPanel.chatLoadingNotifier.value = loading;
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -347,7 +343,6 @@ Future<void> _configureSettingsWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby Settings');
       await windowManager.show();
-      await _applySettingsWindowEffects();
     },
   );
 }
@@ -406,7 +401,6 @@ Future<void> _configureTodoEditWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby Todo Edit');
       await windowManager.show();
-      await _applySettingsWindowEffects();
     },
   );
 }
@@ -451,20 +445,20 @@ Future<void> _configureAgentChatPopupWindow(
     WindowOptions(
       size: bounds.size,
       backgroundColor: Colors.transparent,
-      skipTaskbar: true,
+      skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
     ),
     () async {
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setMinimumSize(const Size(400, 500));
+      await windowManager.setMaximumSize(const Size(3840, 2160));
       await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setAlwaysOnTop(false);
       await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(true);
+      await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Agent 消息');
     },
   );
@@ -495,7 +489,6 @@ Future<void> _configureFavoritesEditWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby Favorites');
       await windowManager.show();
-      await _applySettingsWindowEffects();
     },
   );
 }
@@ -525,7 +518,6 @@ Future<void> _configureAppCenterWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby App Center');
       await windowManager.show();
-      await _applySettingsWindowEffects();
     },
   );
 }
@@ -554,10 +546,6 @@ Future<void> _configureSubAppWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby Sub App');
       await windowManager.show();
-      final noAcrylic = {'screen_record', 'image_handler'};
-      if (!noAcrylic.contains(arguments['subAppId'])) {
-        await _applyAcrylic();
-      }
     },
   );
 }
@@ -592,27 +580,22 @@ Future<void> _configureAboutWindow(
   );
 }
 
-Future<void> _applySettingsWindowEffects() async {
-  await Window.setEffect(
-    effect: WindowEffect.acrylic,
-    color: const Color(0xDDF2F2F2),
-  );
-  if (Platform.isWindows) {
-    await _windowShapeChannel.invokeMethod('setRoundedRegion', {
-      'radius': _settingsCornerRadius,
-    });
-  }
-}
-
-Future<void> _applyAcrylic() async {
+Future<void> _applyPetAcrylic() async {
   await Window.setEffect(
     effect: WindowEffect.acrylic,
     color: const Color(0x38BFBFBF),
   );
 }
 
+Future<void> _applyMenuAcrylic() async {
+  await Window.setEffect(
+    effect: WindowEffect.acrylic,
+    color: const Color(0x1BBFBFBF),
+  );
+}
+
 Future<void> _applyMenuWindowEffects() async {
-  await _applyAcrylic();
+  await _applyMenuAcrylic();
   if (Platform.isWindows) {
     await _windowShapeChannel.invokeMethod('setRoundedRegion', {
       'radius': _menuCornerRadius,
@@ -625,8 +608,8 @@ Future<void> _placeMenuWindow(Rect bounds) async {
   await windowManager.setMaximumSize(bounds.size);
   await windowManager.setBounds(bounds);
   await windowManager.setAlwaysOnTop(true);
-  // Apply effects BEFORE show to avoid flash of unstyled window.
-  await _applyMenuWindowEffects();
+  // 特效已在 _configureMenuWindow 中应用，hide/show 不会清除，
+  // 无需重复设置，避免 setEffect + show 时序竞争导致毛玻璃不生效。
   await windowManager.show(inactive: true);
 }
 

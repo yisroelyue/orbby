@@ -40,6 +40,8 @@ class _ColorfulDotsState extends State<_ColorfulDots>
   static double get _circleRadius => PetConfig.ballSize / 2 - _dotRadius;
 
   late final AnimationController _controller;
+  double _rotationTotal = 0;
+  double _lastValue = 0;
 
   @override
   void initState() {
@@ -48,6 +50,14 @@ class _ColorfulDotsState extends State<_ColorfulDots>
       vsync: this,
       duration: const Duration(milliseconds: 5600),
     )..repeat();
+    _controller.addListener(() {
+      final v = _controller.value;
+      if (v < _lastValue) {
+        // 完成一个完整周期，累计旋转角度
+        _rotationTotal += 1.0;
+      }
+      _lastValue = v;
+    });
   }
 
   @override
@@ -61,39 +71,45 @@ class _ColorfulDotsState extends State<_ColorfulDots>
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, _) {
+        // 整体缓慢旋转：累计递增，不重置
+        final rotationAngle = (_rotationTotal + _controller.value) * 2 * pi * 0.25;
+
         return Center(
           child: SizedBox(
             width: _circleRadius * 2 + _dotRadius * 2,
             height: _circleRadius * 2 + _dotRadius * 2,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: List.generate(_dotCount, (i) {
-                final angle = (i / _dotCount) * 2 * pi - pi / 2;
-                final delay = i / _dotCount;
-                final phase = (_controller.value + delay) % 1.0;
-                final scale = 0.35 + 0.65 * sin(phase * pi);
+            child: Transform.rotate(
+              angle: rotationAngle,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: List.generate(_dotCount, (i) {
+                  final angle = (i / _dotCount) * 2 * pi - pi / 2;
+                  final delay = i / _dotCount;
+                  final phase = (_controller.value + delay) % 1.0;
+                  final scale = 0.35 + 0.65 * sin(phase * pi);
 
-                final cx = _circleRadius + _dotRadius;
-                final cy = _circleRadius + _dotRadius;
-                final dx = cx + _circleRadius * cos(angle);
-                final dy = cy + _circleRadius * sin(angle);
+                  final cx = _circleRadius + _dotRadius;
+                  final cy = _circleRadius + _dotRadius;
+                  final dx = cx + _circleRadius * cos(angle);
+                  final dy = cy + _circleRadius * sin(angle);
 
-                return Positioned(
-                  left: dx - _dotRadius,
-                  top: dy - _dotRadius,
-                  child: Transform.scale(
-                    scale: scale,
-                    child: Container(
-                      width: _dotRadius * 2,
-                      height: _dotRadius * 2,
-                      decoration: BoxDecoration(
-                        color: _dotColors[i],
-                        shape: BoxShape.circle,
+                  return Positioned(
+                    left: dx - _dotRadius,
+                    top: dy - _dotRadius,
+                    child: Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        width: _dotRadius * 2,
+                        height: _dotRadius * 2,
+                        decoration: BoxDecoration(
+                          color: _dotColors[i],
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                }),
+              ),
             ),
           ),
         );

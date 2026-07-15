@@ -23,7 +23,6 @@ class _TranslatePanelState extends State<TranslatePanel> with PanelThemeMixin {
   bool _isError = false;
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
-  bool _inputFocused = false;
   bool _headerHovered = false;
   String _resultText = '';
   Timer? _clearTimer;
@@ -33,14 +32,12 @@ class _TranslatePanelState extends State<TranslatePanel> with PanelThemeMixin {
     super.initState();
     _fetch();
     MenuScreen.refreshNotifier.addListener(_onRefresh);
-    _inputFocus.addListener(_onInputFocusChanged);
   }
 
   @override
   void dispose() {
     _clearTimer?.cancel();
     MenuScreen.refreshNotifier.removeListener(_onRefresh);
-    _inputFocus.removeListener(_onInputFocusChanged);
     _inputController.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -48,17 +45,6 @@ class _TranslatePanelState extends State<TranslatePanel> with PanelThemeMixin {
 
   void _onRefresh() {
     _fetch();
-  }
-
-  void _onInputFocusChanged() {
-    final focused = _inputFocus.hasFocus;
-    if (focused && !_inputFocused) {
-      _inputFocused = true;
-      MenuScreen.menuChannel.invokeMethod('lock_menu');
-    } else if (!focused && _inputFocused) {
-      _inputFocused = false;
-      MenuScreen.menuChannel.invokeMethod('unlock_menu');
-    }
   }
 
   void _startClearTimer() {
