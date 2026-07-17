@@ -873,10 +873,11 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   Future<void> _showTodoItemPopup(Map<String, dynamic> item) async {
-    final display = await screenRetriever.getPrimaryDisplay();
-    final screenSize = display.visibleSize ?? display.size;
-    final popupLeft = (screenSize.width - _todoItemPopupWidth) / 2;
-    final popupTop = (screenSize.height - _todoItemPopupHeight) / 2;
+    final screenBounds = await _getScreenBounds();
+    // 弹窗定位在 menu（屏幕右边缘，宽 _menuWidth）左侧，留 8px 间距
+    final popupLeft = (screenBounds.right - _menuWidth - _todoItemPopupWidth - 8)
+        .clamp(0.0, screenBounds.right - _todoItemPopupWidth);
+    final popupTop = (screenBounds.height - _todoItemPopupHeight) / 2;
 
     if (_todoItemPopupWindow != null) {
       try {

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../services/todo_service.dart';
@@ -120,6 +121,27 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
     TodoItemPopup.popupChannel.invokeMethod('todo_item_dismissed');
   }
 
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+      if (HardwareKeyboard.instance.isControlPressed) {
+        _insertNewline();
+      } else {
+        _save();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _insertNewline() {
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final start = selection.start;
+    final end = selection.end;
+    _controller.text = text.substring(0, start) + '\n' + text.substring(end);
+    _controller.selection = TextSelection.collapsed(offset: start + 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -175,22 +197,25 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
               ),
               const SizedBox(height: 10),
               Expanded(
-                child: TextField(
-                  controller: _controller,
-                  autofocus: true,
-                  maxLines: null,
-                  expands: true,
-                  keyboardType: TextInputType.multiline,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.06),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                child: Focus(
+                  onKeyEvent: _handleKeyEvent,
+                  child: TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    maxLines: null,
+                    expands: true,
+                    keyboardType: TextInputType.multiline,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.06),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(10),
                     ),
-                    contentPadding: const EdgeInsets.all(10),
                   ),
                 ),
               ),

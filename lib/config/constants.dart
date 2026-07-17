@@ -6,7 +6,7 @@ class PetConfig {
   static const double ballSize = 25.0;
 
   /// 悬浮球窗口尺寸（长方形：球 + 终端按钮）
-  static const double windowWidth = 180.0;
+  static const double windowWidth = 150.0;
   static const double windowHeight = 40.0;
   static const double windowRadius = 8;
   /// 悬浮球图标资源路径
