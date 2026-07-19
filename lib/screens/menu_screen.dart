@@ -46,10 +46,11 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _todoHidden = false;
   bool _favoritesHidden = false;
   bool _appsHidden = false;
-  Color _menuBgColor = const Color(0x77A1A1A1);
+  Color _menuBgColor = const Color(0xFFA1A1A1);
   bool _isDark = true;
   String _userName = '';
   String _userAvatarPath = '';
+  String _menuBgImage = '';
 
   Color get _iconColor => _isDark ? Colors.white : const Color(0xFF555555);
   Color get _textColor => _isDark ? Colors.white : const Color(0xFF333333);
@@ -91,9 +92,10 @@ class _MenuScreenState extends State<MenuScreen> {
       _isDark = s.appTheme == 'dark';
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
+      _menuBgImage = s.menuBgImage;
       _menuBgColor = _isDark
-          ? const Color(0x77A1A1A1)
-          : const Color(0x88E8E8E8);
+          ? const Color(0xFF454545)
+          : const Color(0xFFDCE3E3);
     });
   }
 
@@ -136,21 +138,47 @@ class _MenuScreenState extends State<MenuScreen> {
         backgroundColor: Colors.transparent,
         body: FrostedPanel(
           color: _menuBgColor,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 12,
-            ),
-            child: Column(
-              children: [
-                // 顶行
-                _buildTopRow(),
-                // 面板区域
-                Expanded(child: _buildPanelList()),
-                // 底部功能按钮
-                _buildBottomRow(),
-              ],
-            ),
+          child: Stack(
+            children: [
+              // 底层：顶部 1/8 图片背景
+              if (_menuBgImage.isNotEmpty)
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final topHeight = constraints.maxHeight / 8;
+                        return SizedBox(
+                          height: topHeight,
+                          width: double.infinity,
+                          child: Image.asset(
+                            _menuBgImage,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.center,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              // 上层：原有内容
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: Column(
+                  children: [
+                    // 顶行
+                    _buildTopRow(),
+                    // 面板区域
+                    Expanded(child: _buildPanelList()),
+                    // 底部功能按钮
+                    _buildBottomRow(),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -160,6 +188,8 @@ class _MenuScreenState extends State<MenuScreen> {
   Widget _buildTopRow() {
     final hasUserInfo = _userName.isNotEmpty ||
         (_userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync());
+    const topTextColor = Colors.white;
+    const topIconColor = Colors.white;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -174,14 +204,14 @@ class _MenuScreenState extends State<MenuScreen> {
                   ? FileImage(File(_userAvatarPath))
                   : null,
               child: _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
-                  ? Icon(Icons.person, size: 22, color: _iconColor.withValues(alpha: 0.6))
+                  ? const Icon(Icons.person, size: 22, color: Colors.white70)
                   : null,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 _userName,
-                style: TextStyle(color: _textColor, fontSize: 19, fontWeight: FontWeight.w800),
+                style: const TextStyle(color: topTextColor, fontSize: 19, fontWeight: FontWeight.w800),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -192,7 +222,7 @@ class _MenuScreenState extends State<MenuScreen> {
             Expanded(
               child: Text(
                 'Orbby Assistant',
-                style: TextStyle(color: _textColor, fontSize: 19, fontWeight: FontWeight.w800),
+                style: const TextStyle(color: topTextColor, fontSize: 19, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -201,7 +231,7 @@ class _MenuScreenState extends State<MenuScreen> {
             onTap: _toggleTheme,
             child: Icon(
               _isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-              color: _iconColor,
+              color: topIconColor,
               size: 20,
             ),
           ),
@@ -212,8 +242,8 @@ class _MenuScreenState extends State<MenuScreen> {
               'assets/svg/设置.svg',
               width: 20,
               height: 20,
-              colorFilter: ColorFilter.mode(
-                _iconColor,
+              colorFilter: const ColorFilter.mode(
+                topIconColor,
                 BlendMode.srcIn,
               ),
             ),
@@ -222,9 +252,9 @@ class _MenuScreenState extends State<MenuScreen> {
           InteractiveIcon(
             size: 32,
             onTap: () => MenuScreen.menuChannel.invokeMethod('close_menu'),
-            child: Icon(
+            child: const Icon(
               Icons.close_rounded,
-              color: _iconColor,
+              color: topIconColor,
               size: 20,
             ),
           ),

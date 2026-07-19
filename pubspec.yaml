@@ -81,6 +81,8 @@ flutter:
   assets:
     - assets/png/
     - assets/png/photo/
+    - assets/png/menuBg/
+    - assets/png/agentHint/
     - assets/png/plugins/
     - assets/svg/
     - assets/scripts/

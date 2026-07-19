@@ -27,7 +27,6 @@ import 'services/log_service.dart';
 
 import 'screens/vibe_task_screen.dart';
 
-const _menuCornerRadius = 0.0;
 const _windowShapeChannel = MethodChannel('orbby_window_shape');
 
 Future<void> main(List<String> args) async {
@@ -242,11 +241,11 @@ Future<void> _configurePetWindow() async {
       await windowManager.setMaximumSize(size);
       await windowManager.setSize(size);
 
-      // 初始位置：屏幕顶部居中
+      // 初始位置：屏幕顶部居中，隐藏在屏幕上方
       final display = await screenRetriever.getPrimaryDisplay();
       final screenSize = display.visibleSize ?? display.size;
       final x = (screenSize.width - PetConfig.windowWidth) / 2;
-      const y = 0.0;
+      final y = -PetConfig.windowHeight;
       await windowManager.setPosition(Offset(x, y));
 
       // 透明背景，圆角由 Flutter 层 ClipRRect 抗锯齿渲染
@@ -254,7 +253,7 @@ Future<void> _configurePetWindow() async {
 
       await windowManager.show();
       await windowManager.focus();
-      await _applyPetAcrylic();
+      // await _applyPetAcrylic();
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setPreventClose(true);
@@ -595,11 +594,9 @@ Future<void> _applyMenuAcrylic() async {
 }
 
 Future<void> _applyMenuWindowEffects() async {
-  await _applyMenuAcrylic();
+  // await _applyMenuAcrylic();
   if (Platform.isWindows) {
-    await _windowShapeChannel.invokeMethod('setRoundedRegion', {
-      'radius': _menuCornerRadius,
-    });
+    await _windowShapeChannel.invokeMethod('clearRoundedRegion');
   }
 }
 

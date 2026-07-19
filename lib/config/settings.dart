@@ -57,6 +57,7 @@ class AppSettings {
     this.showVibePanel = true,
     this.showPhotoWallPanel = true,
     this.showAgentChatPanel = true,
+    this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
     this.agentChatPopupTheme = 'light',
     this.petStyle = 'colorful',
@@ -64,6 +65,7 @@ class AppSettings {
     this.panelAppIds = const [],
     this.userName = '',
     this.userAvatarPath = '',
+    this.menuBgImage = 'assets/png/menuBg/1.jpg',
     Map<String, PlatformApiConfig>? apiConfigs,
   }) : apiConfigs = apiConfigs ?? {
           'deepseek': PlatformApiConfig(
@@ -90,6 +92,7 @@ class AppSettings {
   bool showVibePanel;
   bool showPhotoWallPanel;
   bool showAgentChatPanel;
+  double menuAutoHideDelay;
   String appTheme;
   String agentChatPopupTheme;
   String petStyle;
@@ -97,6 +100,7 @@ class AppSettings {
   List<String> panelAppIds;
   String userName;
   String userAvatarPath;
+  String menuBgImage;
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -168,6 +172,7 @@ class AppSettings {
       showVibePanel: json['showVibePanel'] as bool? ?? true,
       showPhotoWallPanel: json['showPhotoWallPanel'] as bool? ?? true,
       showAgentChatPanel: json['showAgentChatPanel'] as bool? ?? true,
+      menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
       agentChatPopupTheme: json['agentChatPopupTheme'] as String? ?? 'light',
       petStyle: json['petStyle'] as String? ?? 'colorful',
@@ -178,6 +183,7 @@ class AppSettings {
           [],
       userName: json['userName'] as String? ?? '',
       userAvatarPath: json['userAvatarPath'] as String? ?? '',
+      menuBgImage: json['menuBgImage'] as String? ?? 'assets/png/menuBg/1.jpg',
       apiConfigs: configs,
     );
   }
@@ -197,6 +203,7 @@ class AppSettings {
         'showVibePanel': showVibePanel,
         'showPhotoWallPanel': showPhotoWallPanel,
         'showAgentChatPanel': showAgentChatPanel,
+        'menuAutoHideDelay': menuAutoHideDelay,
         'appTheme': appTheme,
         'agentChatPopupTheme': agentChatPopupTheme,
         'petStyle': petStyle,
@@ -204,6 +211,7 @@ class AppSettings {
         'panelAppIds': panelAppIds,
         'userName': userName,
         'userAvatarPath': userAvatarPath,
+        'menuBgImage': menuBgImage,
       };
 }
 

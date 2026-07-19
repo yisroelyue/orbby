@@ -162,10 +162,10 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
       statusText = '...';
     } else if (_connected) {
       statusColor = Colors.greenAccent;
-      statusText = '在线';
+      statusText = '可用';
     } else {
       statusColor = Colors.orangeAccent;
-      statusText = '离线';
+      statusText = '不可用';
     }
 
     return MouseRegion(

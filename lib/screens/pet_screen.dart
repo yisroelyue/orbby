@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/constants.dart';
+import '../config/platform.dart';
 import '../config/settings.dart';
 import '../core/sub_app_registry.dart';
 import '../screens/app_center_screen.dart';
@@ -18,6 +19,7 @@ import '../screens/todo_edit_screen.dart';
 import '../screens/todo_item_popup.dart';
 import '../screens/agent_chat_popup.dart';
 import '../services/agent_service.dart';
+import '../services/chat_storage_service.dart';
 import '../services/favorites_service.dart';
 import '../widgets/pet_ball_round.dart';
 import '../widgets/pet_ball_colorful.dart';
@@ -58,6 +60,10 @@ class _PetScreenState extends State<PetScreen> {
   static const _dropChannel = MethodChannel('orbby_file_drop');
   static const _hotkeyChannel = MethodChannel('orbby_hotkey');
 
+  // 抽屉触发区域（屏幕顶部中央）
+  static const _triggerZoneWidth = 200.0;
+  static const _triggerZoneHeight = 2.0;
+
   WindowController? _menuWindow;
   WindowController? _settingsWindow;
   WindowController? _vibeWindow;
@@ -67,10 +73,19 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _subAppWindow;
   WindowController? _todoItemPopupWindow;
   WindowController? _agentChatPopupWindow;
-  final _agentHistory = <Map<String, String>>[];
+  final _agentConversations = <String, List<Map<String, String>>>{};
+  String? _activeConversationId;
   bool _menuVisible = false;
   bool _agentPopupVisible = false;
   bool _agentPopupFocused = false;
+
+  // 抽屉状态
+  bool _drawerShown = false;
+  bool _drawerAnimating = false;
+  Timer? _mouseMonitorTimer;
+  Timer? _hideTimer;
+  double _autoHideDelay = 3.0;
+  double _screenWidth = 0;
 
   String _petStyle = 'colorful';
 
@@ -89,15 +104,21 @@ class _PetScreenState extends State<PetScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final settings = await SettingsService.load();
       if (mounted) {
-        setState(() => _petStyle = settings.petStyle);
+        setState(() {
+          _petStyle = settings.petStyle;
+          _autoHideDelay = settings.menuAutoHideDelay;
+        });
       }
       _initVibeWindow();
       _precreateWindows();
+      _startMouseMonitor();
     });
   }
 
   @override
   void dispose() {
+    _mouseMonitorTimer?.cancel();
+    _hideTimer?.cancel();
     _menuChannel.setMethodCallHandler(null);
     _settingsChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
@@ -156,7 +177,10 @@ class _PetScreenState extends State<PetScreen> {
         _showSubAppWindow(args['subAppId'] as String);
         return;
       case 'close_menu':
-        _hideMenu();
+        _menuVisible = false;
+        try {
+          await _menuWindow?.hide();
+        } catch (_) {}
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
@@ -170,7 +194,10 @@ class _PetScreenState extends State<PetScreen> {
       case 'settings_saved':
         final settings = await SettingsService.load();
         if (mounted) {
-          setState(() => _petStyle = settings.petStyle);
+          setState(() {
+            _petStyle = settings.petStyle;
+            _autoHideDelay = settings.menuAutoHideDelay;
+          });
         }
         if (_menuWindow != null) {
           try {
@@ -197,7 +224,9 @@ class _PetScreenState extends State<PetScreen> {
         await _regenerateAgentReply();
         return;
       case 'popup_clear_context':
-        _agentHistory.clear();
+        if (_activeConversationId != null) {
+          _agentConversations[_activeConversationId!]?.clear();
+        }
         if (_agentChatPopupWindow != null) {
           try {
             await _agentChatPopupWindow!.invokeMethod('clear_messages');
@@ -211,6 +240,26 @@ class _PetScreenState extends State<PetScreen> {
         if (text.isEmpty) return;
         await _handlePopupSendMessage(text, mode);
         return;
+      case 'popup_new_conversation':
+        await _createNewConversation();
+        return;
+      case 'popup_switch_conversation':
+        final args = call.arguments as Map;
+        final id = args['id'] as String? ?? '';
+        if (id.isNotEmpty) {
+          await _switchConversation(id);
+        }
+        return;
+      case 'popup_delete_conversation':
+        final args = call.arguments as Map;
+        final id = args['id'] as String? ?? '';
+        if (id.isNotEmpty) {
+          await _deleteConversation(id);
+        }
+        return;
+      case 'popup_clear_all_conversations':
+        await _clearAllConversations();
+        return;
       case 'popup_focus_changed':
         final args = call.arguments as Map;
         _agentPopupFocused = args['focused'] as bool? ?? false;
@@ -223,9 +272,98 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
+  // ─── 对话管理 ────────────────────────────────────────────────────────────
+
+  Future<void> _createNewConversation() async {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    _activeConversationId = id;
+    _agentConversations[id] = [];
+
+    // 通知 popup 新对话已创建
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('conversation_created', {
+          'id': id,
+          'title': '新对话',
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _switchConversation(String id) async {
+    _activeConversationId = id;
+    final messages = _agentConversations[id] ?? [];
+
+    // 从磁盘加载（如果内存中没有）
+    if (messages.isEmpty) {
+      final conv = await ChatStorageService.load(id);
+      if (conv != null) {
+        _agentConversations[id] = conv.messages;
+        // 通知 popup 加载对话消息
+        if (_agentChatPopupWindow != null) {
+          try {
+            await _agentChatPopupWindow!.invokeMethod('conversation_loaded', {
+              'messages': conv.messages,
+            });
+          } catch (_) {}
+        }
+        return;
+      }
+    }
+
+    // 通知 popup 加载对话消息
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('conversation_loaded', {
+          'messages': messages,
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _deleteConversation(String id) async {
+    _agentConversations.remove(id);
+    if (_activeConversationId == id) {
+      _activeConversationId = null;
+    }
+    await ChatStorageService.delete(id);
+
+    // 通知 popup 对话已删除
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('conversation_deleted', {
+          'id': id,
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _clearAllConversations() async {
+    _agentConversations.clear();
+    _activeConversationId = null;
+    await ChatStorageService.deleteAll();
+
+    // 通知 popup 所有对话已清除
+    if (_agentChatPopupWindow != null) {
+      try {
+        await _agentChatPopupWindow!.invokeMethod('all_conversations_cleared');
+      } catch (_) {}
+    }
+  }
+
   Future<void> _handlePopupSendMessage(String text, String mode) async {
+    // 如果没有活跃对话，自动创建一个
+    if (_activeConversationId == null) {
+      await _createNewConversation();
+    }
+
+    final convId = _activeConversationId!;
+    final messages = _agentConversations[convId] ?? [];
+
     // 显示用户消息
-    _agentHistory.add({'role': 'user', 'content': text});
+    messages.add({'role': 'user', 'content': text});
+    _agentConversations[convId] = messages;
+
     if (_agentChatPopupWindow != null) {
       try {
         await _agentChatPopupWindow!.invokeMethod('add_message', {
@@ -235,8 +373,8 @@ class _PetScreenState extends State<PetScreen> {
       } catch (_) {}
     }
 
-    final history = _agentHistory.isNotEmpty
-        ? _agentHistory.sublist(0, _agentHistory.length - 1)
+    final history = messages.isNotEmpty
+        ? messages.sublist(0, messages.length - 1)
         : <Map<String, String>>[];
 
     final fullReply = StringBuffer();
@@ -305,7 +443,28 @@ class _PetScreenState extends State<PetScreen> {
     // 写入历史
     final reply = fullReply.toString();
     if (reply.isNotEmpty) {
-      _agentHistory.add({'role': 'assistant', 'content': reply});
+      messages.add({'role': 'assistant', 'content': reply});
+      _agentConversations[convId] = messages;
+
+      // 持久化到磁盘
+      final conv = ChatConversation(
+        id: convId,
+        title: text.length > 20 ? '${text.substring(0, 20)}...' : text,
+        model: '',
+        mode: mode,
+        messages: messages,
+      );
+      await ChatStorageService.save(conv);
+
+      // 更新对话标题
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('update_conversation_title', {
+            'id': convId,
+            'title': conv.title,
+          });
+        } catch (_) {}
+      }
     }
 
     // 通知流结束
@@ -317,15 +476,19 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   Future<void> _regenerateAgentReply() async {
-    if (_agentHistory.isNotEmpty &&
-        _agentHistory.last['role'] == 'assistant') {
-      _agentHistory.removeLast();
+    if (_activeConversationId == null) return;
+
+    final convId = _activeConversationId!;
+    final messages = _agentConversations[convId] ?? [];
+
+    if (messages.isNotEmpty && messages.last['role'] == 'assistant') {
+      messages.removeLast();
     }
-    final userIndex = _agentHistory.lastIndexWhere(
+    final userIndex = messages.lastIndexWhere(
       (m) => m['role'] == 'user',
     );
     if (userIndex == -1) return;
-    final userText = _agentHistory[userIndex]['content'] ?? '';
+    final userText = messages[userIndex]['content'] ?? '';
 
     if (_agentChatPopupWindow != null) {
       try {
@@ -340,7 +503,7 @@ class _PetScreenState extends State<PetScreen> {
     try {
       final stream = AgentService.chatStream(
         userText,
-        history: _agentHistory.sublist(0, userIndex),
+        history: messages.sublist(0, userIndex),
       );
 
       if (_agentChatPopupWindow != null) {
@@ -393,7 +556,18 @@ class _PetScreenState extends State<PetScreen> {
 
     final reply = fullReply.toString();
     if (reply.isNotEmpty) {
-      _agentHistory.add({'role': 'assistant', 'content': reply});
+      messages.add({'role': 'assistant', 'content': reply});
+      _agentConversations[convId] = messages;
+
+      // 持久化到磁盘
+      final conv = ChatConversation(
+        id: convId,
+        title: userText.length > 20 ? '${userText.substring(0, 20)}...' : userText,
+        model: '',
+        mode: 'accept',
+        messages: messages,
+      );
+      await ChatStorageService.save(conv);
     }
 
     if (_agentChatPopupWindow != null) {
@@ -403,17 +577,130 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
-  // ─── 菜单显隐 ──────────────────────────────────────────────────────────────
+  // ─── 抽屉显隐 ──────────────────────────────────────────────────────────────
 
-  Future<void> _toggleMenu() async {
-    if (_menuVisible) {
-      _hideMenu();
+  /// 鼠标位置监控：检测是否进入触发区域
+  void _startMouseMonitor() {
+    _mouseMonitorTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _checkMousePosition(),
+    );
+  }
+
+  Future<void> _checkMousePosition() async {
+    if (_drawerAnimating) return;
+    try {
+      final cursor = await screenRetriever.getCursorScreenPoint();
+      final display = await screenRetriever.getPrimaryDisplay();
+      final screenSize = display.visibleSize ?? display.size;
+      _screenWidth = screenSize.width;
+
+      // 触发区域：屏幕顶部中央
+      final triggerLeft = (screenSize.width - _triggerZoneWidth) / 2;
+      final triggerRect = Rect.fromLTWH(
+        triggerLeft, 0, _triggerZoneWidth, _triggerZoneHeight,
+      );
+      final inTrigger = triggerRect.contains(cursor);
+
+      // 当前宠物窗口区域
+      final petLeft = (screenSize.width - PetConfig.windowWidth) / 2;
+      final petRect = _drawerShown
+          ? Rect.fromLTWH(petLeft, 10, PetConfig.windowWidth, PetConfig.windowHeight)
+          : Rect.fromLTWH(petLeft, -PetConfig.windowHeight, PetConfig.windowWidth, PetConfig.windowHeight);
+      final inPet = petRect.contains(cursor);
+
+      if (inTrigger && !_drawerShown) {
+        _showDrawer();
+      } else if (inPet && _drawerShown) {
+        _resetHideTimer();
+      } else if (!inTrigger && !inPet && _drawerShown && _hideTimer == null) {
+        _startHideTimer();
+      }
+    } catch (_) {}
+  }
+
+  void _resetHideTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = null;
+  }
+
+  void _startHideTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(Duration(milliseconds: (_autoHideDelay * 1000).round()), () {
+      _hideTimer = null;
+      _hideDrawer();
+    });
+  }
+
+  Future<void> _toggleDrawer() async {
+    if (_drawerShown) {
+      _hideDrawer();
     } else {
-      _showMenu();
+      _showDrawer();
     }
   }
 
-  Future<void> _showMenu() async {
+  Future<void> _showDrawer() async {
+    if (_drawerShown || _drawerAnimating) return;
+    _drawerAnimating = true;
+    _resetHideTimer();
+
+    final display = await screenRetriever.getPrimaryDisplay();
+    final screenSize = display.visibleSize ?? display.size;
+    _screenWidth = screenSize.width;
+    final centerX = (screenSize.width - PetConfig.windowWidth) / 2;
+
+    const startY = -PetConfig.windowHeight;
+    const endY = 10.0;
+    const totalFrames = 15;
+
+    for (var frame = 0; frame <= totalFrames; frame++) {
+      final progress = frame / totalFrames;
+      // ease-out quad
+      final eased = 1 - (1 - progress) * (1 - progress);
+      final currentY = startY + (endY - startY) * eased;
+      try {
+        await windowManager.setPosition(Offset(centerX, currentY));
+      } catch (_) {}
+      if (frame < totalFrames) {
+        await Future.delayed(const Duration(milliseconds: 16));
+      }
+    }
+
+    _drawerShown = true;
+    _drawerAnimating = false;
+    _startHideTimer();
+  }
+
+  Future<void> _hideDrawer() async {
+    if (!_drawerShown || _drawerAnimating) return;
+    _drawerAnimating = true;
+    _resetHideTimer();
+
+    final centerX = (_screenWidth - PetConfig.windowWidth) / 2;
+
+    const startY = 10.0;
+    const endY = -PetConfig.windowHeight;
+    const totalFrames = 12;
+
+    for (var frame = 0; frame <= totalFrames; frame++) {
+      final progress = frame / totalFrames;
+      final eased = 1 - (1 - progress) * (1 - progress);
+      final currentY = startY + (endY - startY) * eased;
+      try {
+        await windowManager.setPosition(Offset(centerX, currentY));
+      } catch (_) {}
+      if (frame < totalFrames) {
+        await Future.delayed(const Duration(milliseconds: 16));
+      }
+    }
+
+    _drawerShown = false;
+    _drawerAnimating = false;
+  }
+
+  /// 打开 MenuScreen 窗口（右侧面板）
+  Future<void> _showMenuWindow() async {
     _menuVisible = true;
 
     final screenBounds = await _getScreenBounds();
@@ -454,11 +741,16 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
-  Future<void> _hideMenu() async {
-    _menuVisible = false;
-    try {
-      await _menuWindow?.hide();
-    } catch (_) {}
+  /// 切换 MenuScreen 显隐
+  Future<void> _toggleMenuWindow() async {
+    if (_menuVisible) {
+      _menuVisible = false;
+      try {
+        await _menuWindow?.hide();
+      } catch (_) {}
+    } else {
+      await _showMenuWindow();
+    }
   }
 
   // ─── Agent 弹窗显隐 ────────────────────────────────────────────────────────
@@ -476,8 +768,13 @@ class _PetScreenState extends State<PetScreen> {
       }
       _agentPopupFocused = true;
     } else {
-      // 显示且置顶 → 隐藏
-      _hideAgentChatPopup();
+      // 显示且置顶 → 最小化
+      if (_agentChatPopupWindow != null) {
+        try {
+          await _agentChatPopupWindow!.invokeMethod('minimize_window');
+        } catch (_) {}
+      }
+      _agentPopupFocused = false;
     }
   }
 
@@ -491,6 +788,9 @@ class _PetScreenState extends State<PetScreen> {
 
     final settings = await SettingsService.load();
     final popupTheme = settings.agentChatPopupTheme;
+    final model = settings.model.isEmpty
+        ? PlatformConfig.defaultChatModel(settings.platform)
+        : settings.model;
 
     if (_agentChatPopupWindow != null) {
       try {
@@ -500,6 +800,7 @@ class _PetScreenState extends State<PetScreen> {
           'width': _agentChatPopupWidth,
           'height': _agentChatPopupHeight,
           'theme': popupTheme,
+          'model': model,
         });
         return;
       } catch (_) {
@@ -518,6 +819,7 @@ class _PetScreenState extends State<PetScreen> {
           'width': _agentChatPopupWidth,
           'height': _agentChatPopupHeight,
           'theme': popupTheme,
+          'model': model,
         }),
       ),
     );
@@ -615,6 +917,10 @@ class _PetScreenState extends State<PetScreen> {
       final screenSize = display.visibleSize ?? display.size;
       final left = (screenSize.width - _agentChatPopupWidth) / 2;
       final top = (screenSize.height - _agentChatPopupHeight) / 2;
+      final settings = await SettingsService.load();
+      final model = settings.model.isEmpty
+          ? PlatformConfig.defaultChatModel(settings.platform)
+          : settings.model;
       _agentChatPopupWindow = await WindowController.create(
         WindowConfiguration(
           hiddenAtLaunch: true,
@@ -625,6 +931,7 @@ class _PetScreenState extends State<PetScreen> {
             'top': top,
             'width': _agentChatPopupWidth,
             'height': _agentChatPopupHeight,
+            'model': model,
           }),
         ),
       );
@@ -704,7 +1011,7 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _handleHotkeyEvent(MethodCall call) async {
     switch (call.method) {
       case 'toggle_menu':
-        _toggleMenu();
+        _toggleMenuWindow();
         return;
       case 'open_settings':
         _showSettings();
@@ -955,12 +1262,9 @@ class _PetScreenState extends State<PetScreen> {
   Widget build(BuildContext context) {
     return _PetBody(
       petStyle: _petStyle,
-      onToggleMenu: _toggleMenu,
+      onToggleMenu: () => _showMenuWindow(),
       onToggleAgent: _toggleAgentChatPopup,
       onToggleSettings: _showSettings,
-      onDragStart: () async {
-        await windowManager.startDragging();
-      },
     );
   }
 }
@@ -971,49 +1275,28 @@ class _PetBody extends StatefulWidget {
     required this.onToggleMenu,
     required this.onToggleAgent,
     required this.onToggleSettings,
-    required this.onDragStart,
   });
 
   final String petStyle;
   final VoidCallback onToggleMenu;
   final VoidCallback onToggleAgent;
   final VoidCallback onToggleSettings;
-  final VoidCallback onDragStart;
 
   @override
   State<_PetBody> createState() => _PetBodyState();
 }
 
 class _PetBodyState extends State<_PetBody> {
-  bool _dragging = false;
   bool _ballHovered = false;
   bool _terminalHovered = false;
   bool _settingsHovered = false;
-  Offset _pointerDownPos = Offset.zero;
-  static const _dragThreshold = 4.0;
 
   @override
   Widget build(BuildContext context) {
-    // 用 Listener（原始指针事件）检测拖拽，避免与外层 GestureDetector
-    // 的手势竞技场冲突。Listener 不参与手势竞技场，不会抢占内层 onTap。
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: (event) {
-        _dragging = false;
-        _pointerDownPos = event.localPosition;
-        windowManager.focus();
-      },
-      onPointerMove: (event) {
-        if (!_dragging &&
-            (event.localPosition - _pointerDownPos).distance > _dragThreshold) {
-          _dragging = true;
-          widget.onDragStart();
-        }
-      },
-      child: ClipRRect(
+    return ClipRRect(
         borderRadius: BorderRadius.circular(PetConfig.windowRadius),
         child: Container(
-          color: const Color(0x41393939),
+          color: const Color(0xDB393939),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1099,7 +1382,6 @@ class _PetBodyState extends State<_PetBody> {
             ),
           ],
         ),
-      ),
       ),
     );
   }

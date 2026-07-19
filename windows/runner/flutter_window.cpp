@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <algorithm>
 #include <dwmapi.h>
 #include <flutter/encodable_value.h>
 #include <flutter/method_channel.h>
@@ -17,6 +18,8 @@ constexpr char kWindowShapeChannelName[] = "orbby_window_shape";
 constexpr char kSetRoundedRegionMethod[] = "setRoundedRegion";
 constexpr char kClearRoundedRegionMethod[] = "clearRoundedRegion";
 constexpr char kRadiusArgument[] = "radius";
+constexpr char kTopRadiusArgument[] = "topRadius";
+constexpr char kBottomRadiusArgument[] = "bottomRadius";
 
 constexpr char kDropChannelName[] = "orbby_file_drop";
 constexpr char kHotkeyChannelName[] = "orbby_hotkey";
@@ -47,12 +50,13 @@ double GetNumberArgument(const flutter::EncodableValue& value,
   return fallback;
 }
 
-bool SetRoundedWindowRegion(HWND hwnd, double logical_radius) {
+bool SetRoundedWindowRegion(HWND hwnd, double logical_top_radius,
+                            double logical_bottom_radius) {
   if (!hwnd) {
     return false;
   }
 
-  if (logical_radius <= 0) {
+  if (logical_top_radius <= 0 && logical_bottom_radius <= 0) {
     return SetWindowRgn(hwnd, nullptr, TRUE) != 0;
   }
 
@@ -72,14 +76,59 @@ bool SetRoundedWindowRegion(HWND hwnd, double logical_radius) {
     dpi = USER_DEFAULT_SCREEN_DPI;
   }
 
-  const int radius =
-      static_cast<int>(logical_radius * dpi / USER_DEFAULT_SCREEN_DPI);
-  const int diameter = radius * 2;
-  HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter,
-                                   diameter);
-  if (!region) {
+  const int top_radius =
+      static_cast<int>(logical_top_radius * dpi / USER_DEFAULT_SCREEN_DPI);
+  const int bottom_radius =
+      static_cast<int>(logical_bottom_radius * dpi / USER_DEFAULT_SCREEN_DPI);
+
+  // Uniform radius: use simple CreateRoundRectRgn.
+  if (top_radius == bottom_radius) {
+    const int diameter = top_radius * 2;
+    HRGN region =
+        CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+    if (!region) {
+      return false;
+    }
+    if (SetWindowRgn(hwnd, region, TRUE) == 0) {
+      DeleteObject(region);
+      return false;
+    }
+    return true;
+  }
+
+  // Different top/bottom radii: combine a rectangle (top) with a rounded
+  // rectangle (bottom) so that top corners are sharp and bottom corners are
+  // rounded (or vice-versa).
+  const int max_radius = (std::max)(top_radius, bottom_radius);
+
+  // Rectangular region for the top part (up to max_radius height).
+  HRGN top_region = CreateRectRgn(0, 0, width + 1, max_radius + 1);
+  if (!top_region) {
     return false;
   }
+
+  // Rounded region for the full window, using bottom radius for the bottom
+  // corners and top radius for the top corners. CreateRoundRectRgn only
+  // supports uniform radius, so we build the bottom part separately.
+  const int bottom_diameter = bottom_radius * 2;
+  HRGN bottom_round =
+      CreateRoundRectRgn(0, max_radius, width + 1, height + 1,
+                         bottom_diameter, bottom_diameter);
+  if (!bottom_round) {
+    DeleteObject(top_region);
+    return false;
+  }
+
+  HRGN region = CreateRectRgn(0, 0, 0, 0);
+  if (CombineRgn(region, top_region, bottom_round, RGN_OR) == ERROR) {
+    DeleteObject(top_region);
+    DeleteObject(bottom_round);
+    DeleteObject(region);
+    return false;
+  }
+
+  DeleteObject(top_region);
+  DeleteObject(bottom_round);
 
   if (SetWindowRgn(hwnd, region, TRUE) == 0) {
     DeleteObject(region);
@@ -101,6 +150,8 @@ void RegisterWindowShapeChannel(flutter::BinaryMessenger* messenger,
                  result) {
         if (call.method_name() == kSetRoundedRegionMethod) {
           double radius = 0;
+          double top_radius = -1;
+          double bottom_radius = -1;
           const auto* arguments =
               std::get_if<flutter::EncodableMap>(call.arguments());
           if (arguments) {
@@ -109,9 +160,25 @@ void RegisterWindowShapeChannel(flutter::BinaryMessenger* messenger,
             if (radius_it != arguments->end()) {
               radius = GetNumberArgument(radius_it->second, radius);
             }
+            const auto top_it =
+                arguments->find(flutter::EncodableValue(kTopRadiusArgument));
+            if (top_it != arguments->end()) {
+              top_radius = GetNumberArgument(top_it->second, top_radius);
+            }
+            const auto bottom_it =
+                arguments->find(flutter::EncodableValue(kBottomRadiusArgument));
+            if (bottom_it != arguments->end()) {
+              bottom_radius =
+                  GetNumberArgument(bottom_it->second, bottom_radius);
+            }
           }
 
-          if (SetRoundedWindowRegion(hwnd, radius)) {
+          // If topRadius/bottomRadius are provided, use them; otherwise
+          // fall back to uniform radius.
+          if (top_radius < 0) top_radius = radius;
+          if (bottom_radius < 0) bottom_radius = radius;
+
+          if (SetRoundedWindowRegion(hwnd, top_radius, bottom_radius)) {
             result->Success(flutter::EncodableValue(true));
           } else {
             result->Error("set_window_region_failed",

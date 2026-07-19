@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showAgentChatPanel = true;
   String _appTheme = 'light';
   String _petStyle = 'colorful';
+  double _menuAutoHideDelay = 3.0;
   bool _showBalancePanel = true;
   bool _showTranslatePanel = true;
   bool _showTodoPanel = true;
@@ -55,6 +56,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   String _userName = '';
   String _userAvatarPath = '';
+  String _menuBgImage = '';
+
+  /// 内置菜单背景图列表
+  static const _menuBgOptions = <String>[
+    '',
+    'assets/png/menuBg/1.jpg',
+    'assets/png/menuBg/2.jpg',
+    'assets/png/menuBg/3.jpg',
+    'assets/png/menuBg/4.jpg',
+    'assets/png/menuBg/5.jpg',
+  ];
 
   static const _languages = {'zh': '中文', 'en': 'English'};
 
@@ -106,8 +118,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showAppSquarePanel = s.showAppSquarePanel;
       _showVibePanel = s.showVibePanel;
       _petStyle = s.petStyle;
+      _menuAutoHideDelay = s.menuAutoHideDelay;
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
+      _menuBgImage = s.menuBgImage;
       _userNameController.text = s.userName;
       _claudeHookInstalled = claudeHookInstalled;
       _loading = false;
@@ -327,6 +341,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               items: const ['colorful', 'round'],
               labelBuilder: (v) => v == 'colorful' ? '炫彩' : '雅黑',
               onChanged: (v) => setState(() => _petStyle = v),
+            ),
+          ),
+          _buildThinDivider(),
+          _buildMenuBgSelector(),
+          _buildThinDivider(),
+          _DropdownRow(
+            label: '顶部工作区-自动收起间隔',
+            labelWidth: 200,
+            child: _buildSegmented<double>(
+              value: _menuAutoHideDelay,
+              items: const [0.5, 3, 5, 10],
+              labelBuilder: (v) => v == v.roundToDouble() ? '${v.toInt()}秒' : '$v秒',
+              onChanged: (v) => setState(() => _menuAutoHideDelay = v),
             ),
           ),
         ],
@@ -699,6 +726,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Widget _buildMenuBgSelector() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('菜单背景', style: TextStyle(color: Color(0xFF555555), fontSize: 14)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 72,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _menuBgOptions.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, index) {
+                final path = _menuBgOptions[index];
+                final isSelected = path == _menuBgImage;
+                final isNone = path.isEmpty;
+                return GestureDetector(
+                  onTap: () => setState(() => _menuBgImage = path),
+                  child: Container(
+                    width: 56,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF66BB6A)
+                            : Colors.black.withValues(alpha: 0.1),
+                        width: isSelected ? 2.5 : 1,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: isNone
+                        ? Container(
+                            color: const Color(0xFFE0E0E0),
+                            child: const Center(
+                              child: Text('无', style: TextStyle(color: Color(0xFF999999), fontSize: 13)),
+                            ),
+                          )
+                        : Image.asset(path, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLanguageDropdown() {
     return _DropdownRow(
       label: '语言',
@@ -956,8 +1033,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showAppSquarePanel: _showAppSquarePanel,
       showVibePanel: _showVibePanel,
       petStyle: _petStyle,
+      menuAutoHideDelay: _menuAutoHideDelay,
       userName: _userNameController.text.trim(),
       userAvatarPath: _userAvatarPath,
+      menuBgImage: _menuBgImage,
     );
     SettingsService.save(settings);
     SettingsScreen.settingsChannel.invokeMethod('settings_saved');
