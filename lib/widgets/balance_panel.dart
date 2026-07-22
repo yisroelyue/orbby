@@ -22,14 +22,15 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
   bool _notConfigured = false;
   bool _connected = false;
   bool _loading = true;
-  bool _showVibePanel = true;
   bool _headerHovered = false;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _loadSettings();
     MenuScreen.refreshNotifier.addListener(_onRefresh);
+    // 程序启动时测试连通性
+    _testConnectivity();
   }
 
   @override
@@ -39,13 +40,24 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
   }
 
   void _onRefresh() {
-    _fetch();
+    _loadSettings();
+    // 只有点击刷新按钮时才测试连通性
   }
 
-  Future<void> _fetch() async {
+  Future<void> _loadSettings() async {
+    final settings = await SettingsService.load();
+    if (!mounted) return;
+    setState(() {
+      _platform = settings.platform;
+      _panelEnabled = settings.showBalancePanel;
+      _enableBalance = settings.enableBalance;
+      _notConfigured = settings.apiKey.isEmpty;
+    });
+  }
+
+  Future<void> _testConnectivity() async {
     setState(() {
       _loading = true;
-      _notConfigured = false;
       _connected = false;
     });
 
@@ -53,7 +65,6 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
     _platform = settings.platform;
     _panelEnabled = settings.showBalancePanel;
     _enableBalance = settings.enableBalance;
-    _showVibePanel = settings.showVibePanel;
     if (!_panelEnabled) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -68,7 +79,7 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
       return;
     }
 
-    // 先测试连通性
+    // 测试连通性
     final ok = await BalanceService.testConnectivity();
     if (!mounted) return;
     _connected = ok;
@@ -92,33 +103,14 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
     }
   }
 
-  Future<void> _toggleVibePanel() async {
-    final settings = await SettingsService.load();
-    settings.showVibePanel = !settings.showVibePanel;
-    await SettingsService.save(settings);
-    if (!mounted) return;
-    setState(() => _showVibePanel = settings.showVibePanel);
-    MenuScreen.menuChannel.invokeMethod('toggle_vibe_panel');
-  }
-
   Widget _buildActionButtons() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         InteractiveIcon(
           size: 32,
-          onTap: _fetch,
+          onTap: _testConnectivity,
           child: Icon(Icons.refresh_rounded, color: tertiaryText, size: 20),
-        ),
-        const SizedBox(width: 4),
-        InteractiveIcon(
-          size: 32,
-          onTap: _toggleVibePanel,
-          child: Icon(
-            _showVibePanel ? Icons.tv : Icons.tv_off,
-            color: _showVibePanel ? tertiaryText : faintText,
-            size: 18,
-          ),
         ),
       ],
     );
@@ -254,7 +246,7 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
           ),
           const SizedBox(height: 4),
           GestureDetector(
-            onTap: _fetch,
+            onTap: _testConnectivity,
             child: Text(
               '点击重试',
               style: TextStyle(color: tertiaryText, fontSize: 12),
@@ -273,7 +265,7 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
           ),
           const SizedBox(height: 4),
           GestureDetector(
-            onTap: _fetch,
+            onTap: _testConnectivity,
             child: Text(
               '点击重试',
               style: TextStyle(color: tertiaryText, fontSize: 12),

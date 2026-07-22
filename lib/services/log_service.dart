@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// 将运行日志写入 ~/.orbby/orbby.log。
 ///
@@ -98,12 +97,9 @@ class LogService {
 
   static Future<String> _logDir() async {
     try {
-      // path_provider 的 applicationSupportDirectory 在 Windows 上返回
-      // %USERPROFILE%/AppData/Roaming，太深了。
-      // 直接使用 Documents 的上级目录（即 %USERPROFILE%）。
       return Platform.environment['USERPROFILE'] ??
           Platform.environment['HOME'] ??
-          (await getApplicationDocumentsDirectory()).parent.path;
+          '.';
     } catch (_) {
       return '.';
     }

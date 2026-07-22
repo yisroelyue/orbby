@@ -146,7 +146,7 @@ class VibeTaskService {
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         '.';
-    return Directory('$home/.orbby');
+    return Directory('$home/.orbby/claude_task');
   }
 
   void start() {

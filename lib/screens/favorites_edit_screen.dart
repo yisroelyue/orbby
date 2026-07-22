@@ -300,7 +300,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
       scaffoldMessengerKey: _messengerKey,
       home: body,
     );

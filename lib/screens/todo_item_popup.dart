@@ -146,56 +146,74 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(
+        brightness: Brightness.light,
+        fontFamily: 'Microsoft YaHei',
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF5B6EF5),
+          brightness: Brightness.light,
+        ),
+      ),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
-            ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header
               Row(
                 children: [
-                  if (!_isCreate && _important)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Icon(
-                        Icons.star_rounded,
-                        color: Colors.amberAccent.withValues(alpha: 0.85),
-                        size: 18,
-                      ),
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF5B6EF5).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  Icon(
-                    _isCreate ? Icons.add_circle_outline : Icons.edit_note_rounded,
-                    color: Colors.white54,
-                    size: 18,
+                    child: Icon(
+                      _isCreate ? Icons.add_rounded : Icons.edit_rounded,
+                      color: const Color(0xFF5B6EF5),
+                      size: 18,
+                    ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 10),
                   Text(
                     _isCreate ? '添加笔记' : '编辑笔记',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
+                      color: Color(0xFF1A1A2E),
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (!_isCreate && _important) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.star_rounded,
+                      color: Colors.amber.shade600,
+                      size: 18,
+                    ),
+                  ],
                   const Spacer(),
-                  InteractiveIcon(
-                    size: 28,
+                  _buildIconBtn(
+                    icon: Icons.close_rounded,
                     onTap: _cancel,
-                    child: const Icon(Icons.close,
-                        color: Colors.white38, size: 16),
+                    color: Colors.grey.shade400,
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
+              // Text field
               Expanded(
                 child: Focus(
                   onKeyEvent: _handleKeyEvent,
@@ -206,37 +224,79 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
                     expands: true,
                     keyboardType: TextInputType.multiline,
                     textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: const TextStyle(
+                      color: Color(0xFF1A1A2E),
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
                     decoration: InputDecoration(
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.06),
+                      fillColor: const Color(0xFFF5F6FA),
+                      hintText: '输入笔记内容...',
+                      hintStyle: TextStyle(color: Colors.grey.shade400),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.all(10),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.grey.shade300,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
+              // Buttons
               Row(
                 children: [
                   if (!_isCreate) ...[
                     _buildBtn(
-                      _important ? '取消标记' : '标记',
+                      _important ? '取消标记' : '标记重要',
                       _markImportant,
                       accent: true,
                     ),
-                    const SizedBox(width: 6),
-                    _buildBtn('删除', _delete, destructive: true),
+                    const SizedBox(width: 8),
+                    _buildBtn(
+                      '删除',
+                      _delete,
+                      destructive: true,
+                    ),
                   ],
                   const Spacer(),
-                  _buildBtn('保存', _save, primary: true),
+                  _buildBtn(
+                    '保存',
+                    _save,
+                    primary: true,
+                  ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconBtn({
+    required IconData icon,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Icon(icon, color: color, size: 20),
         ),
       ),
     );
@@ -249,30 +309,33 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
     bool destructive = false,
     bool accent = false,
   }) {
+    final bgColor = primary
+        ? const Color(0xFF5B6EF5)
+        : destructive
+            ? const Color(0xFFE53935)
+            : accent
+                ? const Color(0xFFF5A623)
+                : Colors.grey.shade100;
+
+    final fgColor = primary || destructive || accent
+        ? Colors.white
+        : const Color(0xFF1A1A2E);
+
     return SizedBox(
-      height: 28,
+      height: 34,
       child: TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          foregroundColor: primary
-              ? Colors.black87
-              : destructive
-                  ? Colors.white70
-                  : accent
-                      ? Colors.black87
-                      : Colors.white,
-          backgroundColor: primary
-              ? Colors.greenAccent.withValues(alpha: 0.85)
-              : destructive
-                  ? Colors.redAccent.withValues(alpha: 0.35)
-                  : accent
-                      ? Colors.amberAccent.withValues(alpha: 0.55)
-                      : Colors.white.withValues(alpha: 0.06),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          foregroundColor: fgColor,
+          backgroundColor: bgColor,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
           ),
-          textStyle: const TextStyle(fontSize: 12),
+          textStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: (destructive || accent) ? FontWeight.w600 : FontWeight.w500,
+          ),
         ),
         child: Text(label),
       ),

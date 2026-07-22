@@ -57,7 +57,7 @@ class ChatStorageService {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
-    final dir = Directory('$home/.orbby/task');
+    final dir = Directory('$home/.orbby/claude_task/task');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

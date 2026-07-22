@@ -15,7 +15,7 @@ class SubAppWindowScreen extends StatelessWidget {
     if (subApp == null) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+        theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
         home: Scaffold(
           backgroundColor: Colors.transparent,
           body: Center(
@@ -30,7 +30,7 @@ class SubAppWindowScreen extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: Column(

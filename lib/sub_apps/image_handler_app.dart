@@ -47,7 +47,7 @@ class _ImageHandlerWrapper extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF7C4DFF),
         brightness: Brightness.dark,
         useMaterial3: true,
-        fontFamily: 'NotoSansSC',
+        fontFamily: 'Microsoft YaHei',
       ),
       home: Column(
         children: [

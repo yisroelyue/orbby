@@ -78,6 +78,7 @@ class _PetScreenState extends State<PetScreen> {
   bool _menuVisible = false;
   bool _agentPopupVisible = false;
   bool _agentPopupFocused = false;
+  bool _agentPopupMinimized = false;
 
   // 抽屉状态
   bool _drawerShown = false;
@@ -263,6 +264,13 @@ class _PetScreenState extends State<PetScreen> {
       case 'popup_focus_changed':
         final args = call.arguments as Map;
         _agentPopupFocused = args['focused'] as bool? ?? false;
+        return;
+      case 'popup_minimized':
+        final args = call.arguments as Map;
+        _agentPopupMinimized = args['minimized'] as bool? ?? false;
+        if (_agentPopupMinimized) {
+          _agentPopupFocused = false;
+        }
         return;
       case 'popup_close':
         _hideAgentChatPopup();
@@ -756,11 +764,22 @@ class _PetScreenState extends State<PetScreen> {
   // ─── Agent 弹窗显隐 ────────────────────────────────────────────────────────
 
   Future<void> _toggleAgentChatPopup() async {
-    if (!_agentPopupVisible) {
-      // 隐藏 → 显示
-      _showAgentChatPopup();
+    if (!_agentPopupVisible || _agentPopupMinimized) {
+      // 未打开或已最小化 → 打开/恢复
+      if (_agentPopupMinimized) {
+        // 恢复最小化的窗口
+        if (_agentChatPopupWindow != null) {
+          try {
+            await _agentChatPopupWindow!.invokeMethod('restore_window');
+          } catch (_) {}
+        }
+        _agentPopupMinimized = false;
+      } else {
+        await _showAgentChatPopup();
+      }
+      _agentPopupFocused = true;
     } else if (!_agentPopupFocused) {
-      // 显示但未置顶 → 置顶
+      // 已打开但未置顶 → 置顶
       if (_agentChatPopupWindow != null) {
         try {
           await _agentChatPopupWindow!.invokeMethod('focus_window');
@@ -768,13 +787,8 @@ class _PetScreenState extends State<PetScreen> {
       }
       _agentPopupFocused = true;
     } else {
-      // 显示且置顶 → 最小化
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('minimize_window');
-        } catch (_) {}
-      }
-      _agentPopupFocused = false;
+      // 已打开且置顶 → 关闭（隐藏）
+      await _hideAgentChatPopup();
     }
   }
 
@@ -829,6 +843,7 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _hideAgentChatPopup() async {
     _agentPopupVisible = false;
     _agentPopupFocused = false;
+    _agentPopupMinimized = false;
     if (_agentChatPopupWindow != null) {
       try {
         await _agentChatPopupWindow!.hide();
@@ -1262,7 +1277,7 @@ class _PetScreenState extends State<PetScreen> {
   Widget build(BuildContext context) {
     return _PetBody(
       petStyle: _petStyle,
-      onToggleMenu: () => _showMenuWindow(),
+      onToggleMenu: _toggleMenuWindow,
       onToggleAgent: _toggleAgentChatPopup,
       onToggleSettings: _showSettings,
     );

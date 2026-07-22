@@ -16,7 +16,7 @@ if (-not $homeDir) {
   exit 0
 }
 
-$stateDir = Join-Path -Path $homeDir -ChildPath ".orbby"
+$stateDir = Join-Path -Path $homeDir -ChildPath ".orbby\claude_task"
 $logPath = Join-Path -Path $stateDir -ChildPath "vibe_task_hook.log"
 
 function Write-HookLog {

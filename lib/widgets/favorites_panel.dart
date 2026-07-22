@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -180,40 +182,105 @@ class _FavoritesPanelState extends State<FavoritesPanel> with PanelThemeMixin {
       );
   }
 
+  Future<void> _openFolder(FavoriteFolder folder) async {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
+    final folderPath = '$home\\.orbby\\favorites\\${folder.name}';
+    final dir = Directory(folderPath);
+    if (await dir.exists()) {
+      await Process.start('explorer', [folderPath]);
+    }
+  }
+
   Widget _buildFolderTile(FavoriteFolder folder) {
-    return GestureDetector(
-      onTap: () => _openEditor(folderId: folder.id),
-      child: Container(
-        width: 64,
-        margin: const EdgeInsets.only(right: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: elementBg,
-                borderRadius: BorderRadius.circular(14),
+    return _FolderTileWidget(
+      folder: folder,
+      isDark: isDark,
+      elementBg: elementBg,
+      hoverBg: hoverBg,
+      onOpen: () => _openFolder(folder),
+      onEdit: () => _openEditor(folderId: folder.id),
+    );
+  }
+}
+
+class _FolderTileWidget extends StatefulWidget {
+  const _FolderTileWidget({
+    required this.folder,
+    required this.isDark,
+    required this.elementBg,
+    required this.hoverBg,
+    required this.onOpen,
+    required this.onEdit,
+  });
+
+  final FavoriteFolder folder;
+  final bool isDark;
+  final Color elementBg;
+  final Color hoverBg;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+
+  @override
+  State<_FolderTileWidget> createState() => _FolderTileWidgetState();
+}
+
+class _FolderTileWidgetState extends State<_FolderTileWidget> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        onSecondaryTap: widget.onEdit,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          width: 64,
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScale(
+                scale: _hovered ? 1.1 : 1.0,
+                duration: const Duration(milliseconds: 150),
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: widget.elementBg,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.folder_rounded,
+                    color: Color(0xFFE8B830),
+                    size: 26,
+                  ),
+                ),
               ),
-              child: const Icon(
-                Icons.folder_rounded,
-                color: Color(0xFFE8B830),
-                size: 26,
+              const SizedBox(height: 6),
+              Text(
+                widget.folder.name,
+                style: TextStyle(
+                  color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              folder.name,
-              style: TextStyle(
-                color: isDark ? Colors.white60 : const Color(0xFF888888),
-                fontSize: 13,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -89,7 +89,7 @@ Future<void> main(List<String> args) async {
     await _configureAppCenterWindow(windowController, windowArguments);
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
       home: const AppCenterScreen(),
     ));
     return;
@@ -183,8 +183,8 @@ Future<void> _openSettingsFromTray() async {
 }
 
 Future<void> _openAboutFromTray() async {
-  const aboutWidth = 400.0;
-  const aboutHeight = 510.0;
+  const aboutWidth = 700.0;
+  const aboutHeight = 720.0;
 
   final display = await screenRetriever.getPrimaryDisplay();
   final screenSize = display.visibleSize ?? display.size;

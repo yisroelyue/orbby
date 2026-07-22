@@ -8,6 +8,7 @@ import '../config/constants.dart';
 import '../config/settings.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/balance_panel.dart';
+import '../widgets/control_panel.dart';
 import '../widgets/favorites_panel.dart';
 import '../widgets/frosted_panel.dart';
 import '../widgets/interactive_icon.dart';
@@ -46,6 +47,7 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _todoHidden = false;
   bool _favoritesHidden = false;
   bool _appsHidden = false;
+  bool _controlHidden = false;
   Color _menuBgColor = const Color(0xFFA1A1A1);
   bool _isDark = true;
   String _userName = '';
@@ -89,6 +91,7 @@ class _MenuScreenState extends State<MenuScreen> {
       _todoHidden = !s.showTodoPanel;
       _favoritesHidden = !s.showFavoritesPanel;
       _appsHidden = !s.showAppSquarePanel;
+      _controlHidden = !s.showControlPanel;
       _isDark = s.appTheme == 'dark';
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
@@ -124,6 +127,8 @@ class _MenuScreenState extends State<MenuScreen> {
         s.showBalancePanel = true;
       case 'translate':
         s.showTranslatePanel = true;
+      case 'control':
+        s.showControlPanel = true;
     }
     await SettingsService.save(s);
     MenuScreen.triggerRefresh();
@@ -133,7 +138,7 @@ class _MenuScreenState extends State<MenuScreen> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'NotoSansSC'),
+      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: FrostedPanel(
@@ -273,7 +278,7 @@ class _MenuScreenState extends State<MenuScreen> {
       child: ListView.separated(
       primary: true,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: 6,
+      itemCount: 7,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, index) {
         if (index == 0) {
@@ -291,7 +296,10 @@ class _MenuScreenState extends State<MenuScreen> {
         if (index == 4) {
           return const FavoritesPanel();
         }
-        return const AppSquarePanel();
+        if (index == 5) {
+          return const AppSquarePanel();
+        }
+        return const ControlPanel();
       },
       ),
     );
@@ -317,6 +325,9 @@ class _MenuScreenState extends State<MenuScreen> {
     }
     if (_appsHidden) {
       hiddenIcons.add(_buildPanelToggleSvg('apps', 'assets/svg/应用.svg'));
+    }
+    if (_controlHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('control', Icons.tune_rounded, () => _showPanel('control')));
     }
 
     return Padding(

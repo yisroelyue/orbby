@@ -94,9 +94,5 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  fonts:
-    - family: NotoSansSC
-      fonts:
-        - asset: fonts/NotoSansSC[wght].ttf
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

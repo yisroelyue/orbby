@@ -37,6 +37,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
   String? _hoveredAction;
   bool _isSending = false;
   bool _isMaximized = false;
+  bool _wasFocused = false;
 
   // 对话管理
   List<ChatConversation> _conversations = [];
@@ -69,12 +70,30 @@ class _AgentChatPopupState extends State<AgentChatPopup>
 
   @override
   void onWindowFocus() {
-    AgentChatPopup.popupChannel.invokeMethod('popup_focus_changed', {'focused': true});
+    if (_wasFocused) {
+      // 窗口已经获得焦点时再次获得焦点（点击任务栏图标）→ 最小化
+      windowManager.minimize();
+      _wasFocused = false;
+    } else {
+      _wasFocused = true;
+      AgentChatPopup.popupChannel.invokeMethod('popup_focus_changed', {'focused': true});
+    }
   }
 
   @override
   void onWindowBlur() {
+    _wasFocused = false;
     AgentChatPopup.popupChannel.invokeMethod('popup_focus_changed', {'focused': false});
+  }
+
+  @override
+  void onWindowMinimize() {
+    AgentChatPopup.popupChannel.invokeMethod('popup_minimized', {'minimized': true});
+  }
+
+  @override
+  void onWindowRestore() {
+    AgentChatPopup.popupChannel.invokeMethod('popup_minimized', {'minimized': false});
   }
 
   Future<void> _init() async {
@@ -182,6 +201,11 @@ class _AgentChatPopupState extends State<AgentChatPopup>
           return;
         case 'minimize_window':
           await windowManager.minimize();
+          return;
+        case 'restore_window':
+          await windowManager.restore();
+          await windowManager.show();
+          await windowManager.focus();
           return;
         case 'add_message':
           final args = call.arguments as Map;
@@ -380,7 +404,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: isDark ? Brightness.dark : Brightness.light,
-        fontFamily: 'NotoSansSC',
+        fontFamily: 'Microsoft YaHei',
       ),
       home: Scaffold(
         backgroundColor: _theme.scaffoldBg,
@@ -974,7 +998,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         enabled: !_isSending,
         style: TextStyle(color: _theme.inputText, fontSize: 15),
         decoration: InputDecoration(
-          hintText: _isSending ? '' : '处理任何事务',
+          hintText: _isSending ? '' : '描述你的需求或想法',
           hintStyle: TextStyle(color: _theme.inputHint),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
@@ -1012,12 +1036,12 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         enabled: !_isSending,
         style: TextStyle(color: _theme.inputText, fontSize: 15),
         decoration: InputDecoration(
-          hintText: _isSending ? '' : '处理任何事务',
-          hintStyle: TextStyle(color: _theme.inputHint),
+          hintText: _isSending ? '' : '描述你的需求或想法',
+          hintStyle: TextStyle(color: _theme.inputHint,fontSize: 18),
           isDense: false,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
+            horizontal: 30,
+            vertical: 30,
           ),
           filled: true,
           fillColor: _theme.inputBg,
@@ -1169,31 +1193,37 @@ class _AgentChatPopupState extends State<AgentChatPopup>
             data: msg.streaming ? '${msg.text}▌' : msg.text,
             selectable: true,
             styleSheet: MarkdownStyleSheet(
-              p: TextStyle(color: _theme.bubbleText, fontSize: 16, fontWeight: FontWeight.w400),
+              p: TextStyle(color: _theme.bubbleText, fontSize: 16, fontWeight: FontWeight.w400, fontFamily: 'Microsoft YaHei'),
               h1: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 18,
-                  fontWeight: FontWeight.bold),
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Microsoft YaHei'),
               h2: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 16,
-                  fontWeight: FontWeight.bold),
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Microsoft YaHei'),
               h3: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 15,
-                  fontWeight: FontWeight.bold),
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Microsoft YaHei'),
               h4: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 16,
-                  fontWeight: FontWeight.w600),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Microsoft YaHei'),
               h5: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 15,
-                  fontWeight: FontWeight.w600),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Microsoft YaHei'),
               h6: TextStyle(
                   color: _theme.bubbleText,
                   fontSize: 15,
-                  fontWeight: FontWeight.w600),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Microsoft YaHei'),
               code: TextStyle(
                 color: _theme.bubbleText,
                 fontSize: 15,
@@ -1203,7 +1233,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                 color: _theme.bubbleText.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(6),
               ),
-              a: TextStyle(color: _theme.bubbleText),
+              a: TextStyle(color: _theme.bubbleText, fontFamily: 'Microsoft YaHei'),
               blockquoteDecoration: BoxDecoration(
                 color: _theme.bubbleText.withValues(alpha: 0.05),
                 border: Border(
@@ -1309,7 +1339,7 @@ class AgentChatColors {
     bg: Color(0xFFFFFFFF),
     inputBg: Color(0x0D000000),
     inputText: Color(0xFF333333),
-    inputHint: Color(0xFF6E6D6D),
+    inputHint: Color(0xFF888888),
     chipActiveBg: Color(0x14000000),
     chipActiveText: Color(0xFF333333),
     chipInactiveText: Color(0xFF999999),

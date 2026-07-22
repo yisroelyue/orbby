@@ -58,6 +58,16 @@ class FavoritesService {
     return dir;
   }
 
+  /// 获取真实文件夹路径
+  static Future<Directory> _getRealFolderDir(String folderName) async {
+    final storageDir = await _favoritesStorageDir();
+    final dir = Directory('${storageDir.path}/$folderName');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
   static Future<_FavoritesData> _load() async {
     try {
       final file = await _file();
@@ -85,12 +95,15 @@ class FavoritesService {
 
   static Future<FavoriteFolder> addFolder(String name) async {
     final data = await _load();
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
     final folder = FavoriteFolder(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: id,
       name: name,
     );
     data.folders.add(folder);
     await _save(data);
+    // 创建真实文件夹
+    await _getRealFolderDir(name);
     return folder;
   }
 
@@ -98,13 +111,24 @@ class FavoritesService {
     final data = await _load();
     final idx = data.folders.indexWhere((f) => f.id == id);
     if (idx == -1) return;
+    final oldName = data.folders[idx].name;
     data.folders[idx].name = name;
     await _save(data);
+    // 重命名真实文件夹
+    final storageDir = await _favoritesStorageDir();
+    final oldDir = Directory('${storageDir.path}/$oldName');
+    final newDir = Directory('${storageDir.path}/$name');
+    if (await oldDir.exists()) {
+      await oldDir.rename(newDir.path);
+    }
   }
 
   static Future<void> removeFolder(String id) async {
     final data = await _load();
-    data.folders.removeWhere((f) => f.id == id);
+    final idx = data.folders.indexWhere((f) => f.id == id);
+    if (idx == -1) return;
+    final folderName = data.folders[idx].name;
+    data.folders.removeAt(idx);
     // Move items in this folder to uncategorized.
     for (final item in data.items) {
       if (item.folderId == id) {
@@ -112,6 +136,12 @@ class FavoritesService {
       }
     }
     await _save(data);
+    // 删除真实文件夹
+    final storageDir = await _favoritesStorageDir();
+    final dir = Directory('${storageDir.path}/$folderName');
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
   }
 
   // ── Items ────────────────────────────────────────────────
@@ -131,13 +161,23 @@ class FavoritesService {
 
   static Future<FavoriteItem> add(String filePath, {String? folderId}) async {
     final data = await _load();
-    // Copy file to storage
-    final src = File(filePath);
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    final storageDir = await _favoritesStorageDir();
+    final src = File(filePath);
     final baseName = filePath.replaceAll('\\', '/').split('/').last;
-    final destPath = '${storageDir.path}/${id}_$baseName';
-    await src.copy(destPath);
+
+    String destPath;
+    if (folderId != null) {
+      // 复制到真实文件夹
+      final folder = data.folders.firstWhere((f) => f.id == folderId);
+      final folderDir = await _getRealFolderDir(folder.name);
+      destPath = '${folderDir.path}/$baseName';
+      await src.copy(destPath);
+    } else {
+      // 未分类的放到 favorites 根目录
+      final storageDir = await _favoritesStorageDir();
+      destPath = '${storageDir.path}/$baseName';
+      await src.copy(destPath);
+    }
 
     final item = FavoriteItem(
       id: id,
@@ -174,7 +214,31 @@ class FavoritesService {
     final data = await _load();
     final idx = data.items.indexWhere((i) => i.id == itemId);
     if (idx == -1) return;
-    data.items[idx].folderId = folderId;
+
+    final item = data.items[idx];
+    final oldFilePath = item.filePath;
+    final baseName = oldFilePath.replaceAll('\\', '/').split('/').last;
+
+    String newFilePath;
+    if (folderId != null) {
+      // 移动到目标文件夹
+      final folder = data.folders.firstWhere((f) => f.id == folderId);
+      final folderDir = await _getRealFolderDir(folder.name);
+      newFilePath = '${folderDir.path}/$baseName';
+    } else {
+      // 移动到未分类目录
+      final storageDir = await _favoritesStorageDir();
+      newFilePath = '${storageDir.path}/$baseName';
+    }
+
+    // 移动文件
+    final oldFile = File(oldFilePath);
+    if (await oldFile.exists()) {
+      await oldFile.rename(newFilePath);
+    }
+
+    item.filePath = newFilePath;
+    item.folderId = folderId;
     await _save(data);
   }
 

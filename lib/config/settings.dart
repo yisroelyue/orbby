@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
-
 import 'platform.dart';
 
 class PlatformApiConfig {
@@ -57,6 +55,8 @@ class AppSettings {
     this.showVibePanel = true,
     this.showPhotoWallPanel = true,
     this.showAgentChatPanel = true,
+    this.showControlPanel = true,
+    this.enableClipboardMonitor = false,
     this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
     this.agentChatPopupTheme = 'light',
@@ -92,6 +92,8 @@ class AppSettings {
   bool showVibePanel;
   bool showPhotoWallPanel;
   bool showAgentChatPanel;
+  bool showControlPanel;
+  bool enableClipboardMonitor;
   double menuAutoHideDelay;
   String appTheme;
   String agentChatPopupTheme;
@@ -172,6 +174,8 @@ class AppSettings {
       showVibePanel: json['showVibePanel'] as bool? ?? true,
       showPhotoWallPanel: json['showPhotoWallPanel'] as bool? ?? true,
       showAgentChatPanel: json['showAgentChatPanel'] as bool? ?? true,
+      showControlPanel: json['showControlPanel'] as bool? ?? true,
+      enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
       menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
       agentChatPopupTheme: json['agentChatPopupTheme'] as String? ?? 'light',
@@ -203,6 +207,8 @@ class AppSettings {
         'showVibePanel': showVibePanel,
         'showPhotoWallPanel': showPhotoWallPanel,
         'showAgentChatPanel': showAgentChatPanel,
+        'showControlPanel': showControlPanel,
+        'enableClipboardMonitor': enableClipboardMonitor,
         'menuAutoHideDelay': menuAutoHideDelay,
         'appTheme': appTheme,
         'agentChatPopupTheme': agentChatPopupTheme,
@@ -219,7 +225,13 @@ class SettingsService {
   SettingsService._();
 
   static Future<File> _file() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dir = Directory('$home/.orbby');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
     return File('${dir.path}/orbby_settings.json');
   }
 

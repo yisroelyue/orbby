@@ -104,7 +104,7 @@ class ClaudeHookInstaller {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '.';
-    final orbbyDir = Directory('$home\\.orbby');
+    final orbbyDir = Directory('$home\\.orbby\\claude_task');
     final claudeDir = Directory('$home\\.claude');
 
     return _ClaudeHookPaths(

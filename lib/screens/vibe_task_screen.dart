@@ -58,7 +58,7 @@ class _VibeTaskScreenState extends State<VibeTaskScreen> {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'NotoSansSC'),
+      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: Center(

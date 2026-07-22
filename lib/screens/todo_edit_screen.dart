@@ -233,7 +233,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
       scaffoldMessengerKey: _messengerKey,
       navigatorKey: _navigatorKey,
       home: Scaffold(

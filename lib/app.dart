@@ -9,7 +9,7 @@ class OrbbyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'NotoSansSC'),
+      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       home: const PetScreen(),
     );
   }

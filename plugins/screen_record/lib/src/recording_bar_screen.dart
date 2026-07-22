@@ -99,7 +99,7 @@ class _RecordingBarScreenState extends State<RecordingBarScreen> {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: const Color(0xFF1E1E1E),
         body: Container(

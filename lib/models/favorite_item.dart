@@ -37,7 +37,7 @@ class FavoriteItem {
        createdAt = createdAt ?? DateTime.now();
 
   final String id;
-  final String filePath;
+  String filePath;
   final String displayName;
   String? folderId; // null = uncategorized
   final DateTime createdAt;

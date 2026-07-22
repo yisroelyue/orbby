@@ -50,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showTodoPanel = true;
   bool _showFavoritesPanel = true;
   bool _showAppSquarePanel = true;
+  bool _showControlPanel = true;
   bool _showVibePanel = true;
   bool _claudeHookInstalled = false;
   bool _installingClaudeHooks = false;
@@ -116,6 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showTodoPanel = s.showTodoPanel;
       _showFavoritesPanel = s.showFavoritesPanel;
       _showAppSquarePanel = s.showAppSquarePanel;
+      _showControlPanel = s.showControlPanel;
       _showVibePanel = s.showVibePanel;
       _petStyle = s.petStyle;
       _menuAutoHideDelay = s.menuAutoHideDelay;
@@ -145,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: MaterialApp(
         scaffoldMessengerKey: _messengerKey,
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(brightness: Brightness.dark, fontFamily: 'NotoSansSC'),
+        theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
         home: Scaffold(
           backgroundColor: Colors.transparent,
           body: Container(
@@ -371,13 +373,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _buildCard(
         children: [
+          _buildSectionTitle('面板显示设置'),
+          _buildThinDivider(),
           _buildPanelToggle('照片墙', _showPhotoWallPanel, (v) => setState(() => _showPhotoWallPanel = v)),
           _buildThinDivider(),
           _buildPanelToggle('Agent 对话', _showAgentChatPanel, (v) => setState(() => _showAgentChatPanel = v)),
           _buildThinDivider(),
           _buildPanelToggle('AI流量管理', _showBalancePanel, (v) => setState(() => _showBalancePanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('Vibe任务监控', _showVibePanel, (v) => setState(() => _showVibePanel = v), compact: true),
           _buildThinDivider(),
           _buildPanelToggle('翻译', _showTranslatePanel, (v) => setState(() => _showTranslatePanel = v)),
           _buildThinDivider(),
@@ -386,6 +388,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildPanelToggle('我的收藏', _showFavoritesPanel, (v) => setState(() => _showFavoritesPanel = v)),
           _buildThinDivider(),
           _buildPanelToggle('应用中心', _showAppSquarePanel, (v) => setState(() => _showAppSquarePanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('控制面板', _showControlPanel, (v) => setState(() => _showControlPanel = v)),
         ],
       ),
     ];
@@ -440,7 +444,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildPanelToggle(String label, bool value, ValueChanged<bool> onChanged, {bool compact = false}) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: compact ? 0 : 1),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 0 : 1),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1031,6 +1035,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showTodoPanel: _showTodoPanel,
       showFavoritesPanel: _showFavoritesPanel,
       showAppSquarePanel: _showAppSquarePanel,
+      showControlPanel: _showControlPanel,
       showVibePanel: _showVibePanel,
       petStyle: _petStyle,
       menuAutoHideDelay: _menuAutoHideDelay,
