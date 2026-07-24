@@ -18,7 +18,8 @@ class TooltipPopup {
   static void show({
     required BuildContext context,
     required String title,
-    required String description,
+    String? description,
+    List<InlineSpan>? descriptionSpans,
     required Offset position,
     bool isDark = true,
     Duration delay = const Duration(milliseconds: 400),
@@ -30,6 +31,7 @@ class TooltipPopup {
         builder: (context) => _TooltipContent(
           title: title,
           description: description,
+          descriptionSpans: descriptionSpans,
           position: position,
           isDark: isDark,
           onDismiss: hide,
@@ -59,14 +61,16 @@ class TooltipPopup {
 class _TooltipContent extends StatefulWidget {
   const _TooltipContent({
     required this.title,
-    required this.description,
+    this.description,
+    this.descriptionSpans,
     required this.position,
     required this.isDark,
     required this.onDismiss,
   });
 
   final String title;
-  final String description;
+  final String? description;
+  final List<InlineSpan>? descriptionSpans;
   final Offset position;
   final bool isDark;
   final VoidCallback onDismiss;
@@ -147,7 +151,7 @@ class _TooltipContentState extends State<_TooltipContent>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '▸ ${widget.title}',
+                      '💡 ${widget.title}',
                       style: TextStyle(
                         color: textColor,
                         fontSize: 14,
@@ -155,13 +159,24 @@ class _TooltipContentState extends State<_TooltipContent>
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      '· ${widget.description}',
-                      style: TextStyle(
-                        color: descColor,
-                        fontSize: 12,
+                    if (widget.descriptionSpans != null)
+                      RichText(
+                        text: TextSpan(
+                          children: widget.descriptionSpans,
+                          style: TextStyle(
+                            color: descColor,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                    else if (widget.description != null)
+                      Text(
+                        '· ${widget.description}',
+                        style: TextStyle(
+                          color: descColor,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

@@ -162,7 +162,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                 ));
               }
             });
-            _scrollToBottom();
+            _scrollToBottom(force: true);
           }
           return;
         case 'conversation_deleted':
@@ -225,7 +225,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
                 _isSending = isUser;
               }
             });
-            _scrollToBottom();
+            _scrollToBottom(force: isUser);
           }
           return;
         case 'append_stream_chunk':
@@ -317,9 +317,15 @@ class _AgentChatPopupState extends State<AgentChatPopup>
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        // 如果不在底部且不是强制滚动，则不自动滚动
+        if (!force) {
+          final position = _scrollController.position;
+          final isAtBottom = position.pixels >= position.maxScrollExtent - 50;
+          if (!isAtBottom) return;
+        }
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
@@ -1147,13 +1153,15 @@ class _AgentChatPopupState extends State<AgentChatPopup>
           thickness: WidgetStatePropertyAll(0),
         ),
       ),
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _messages.length,
-        itemBuilder: (_, index) {
-          return _buildMessageBubble(_messages[index]);
-        },
+      child: SelectionArea(
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemCount: _messages.length,
+          itemBuilder: (_, index) {
+            return _buildMessageBubble(_messages[index]);
+          },
+        ),
       ),
     );
   }
@@ -1165,7 +1173,6 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          constraints: const BoxConstraints(maxWidth: 300),
           decoration: BoxDecoration(
             color: _theme.userBubble,
             borderRadius: const BorderRadius.only(
@@ -1191,7 +1198,7 @@ class _AgentChatPopupState extends State<AgentChatPopup>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: MarkdownBody(
             data: msg.streaming ? '${msg.text}▌' : msg.text,
-            selectable: true,
+            selectable: false,
             styleSheet: MarkdownStyleSheet(
               p: TextStyle(color: _theme.bubbleText, fontSize: 16, fontWeight: FontWeight.w400, fontFamily: 'Microsoft YaHei'),
               h1: TextStyle(

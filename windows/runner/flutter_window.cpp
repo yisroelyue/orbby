@@ -27,6 +27,7 @@ constexpr char kHotkeyChannelName[] = "orbby_hotkey";
 constexpr int kHotkeyIdToggleMenu = 1;
 constexpr int kHotkeyIdOpenSettings = 2;
 constexpr int kHotkeyIdToggleAgent = 3;
+constexpr int kHotkeyIdShowClipboard = 4;
 
 using WindowShapeChannel = flutter::MethodChannel<flutter::EncodableValue>;
 using DropChannel = flutter::MethodChannel<flutter::EncodableValue>;
@@ -234,11 +235,6 @@ bool FlutterWindow::OnCreate() {
   // mixin.one/desktop_multi_window channel to never be registered.
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  // Windows 11 native rounded corners (DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2)
-  int corner_preference = 2;
-  DwmSetWindowAttribute(GetHandle(), 33,
-                        &corner_preference, sizeof(corner_preference));
-
   RegisterPlugins(flutter_controller_->engine());
   RegisterWindowShapeChannel(flutter_controller_->engine()->messenger(),
                              GetHandle());
@@ -262,6 +258,11 @@ bool FlutterWindow::OnCreate() {
   RegisterHotKey(GetHandle(), kHotkeyIdOpenSettings, MOD_ALT | MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + ~
   RegisterHotKey(GetHandle(), kHotkeyIdToggleAgent, MOD_ALT, VK_OEM_3);
+  // Register global hotkey: Shift + Ctrl + V
+  RegisterHotKey(GetHandle(), kHotkeyIdShowClipboard, MOD_CONTROL | MOD_SHIFT, 0x56);
+
+  // Listen for clipboard content changes (event-driven, no polling).
+  AddClipboardFormatListener(GetHandle());
 
   // Create hotkey channel to notify Flutter of hotkey presses.
   g_hotkey_channel = std::make_unique<HotkeyChannel>(
@@ -309,6 +310,8 @@ void FlutterWindow::OnDestroy() {
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleMenu);
   UnregisterHotKey(GetHandle(), kHotkeyIdOpenSettings);
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleAgent);
+  UnregisterHotKey(GetHandle(), kHotkeyIdShowClipboard);
+  RemoveClipboardFormatListener(GetHandle());
   g_hotkey_channel = nullptr;
 
   if (flutter_controller_) {
@@ -344,7 +347,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         } else if (wparam == kHotkeyIdToggleAgent) {
           g_hotkey_channel->InvokeMethod(
               "toggle_agent", std::make_unique<flutter::EncodableValue>());
+        } else if (wparam == kHotkeyIdShowClipboard) {
+          g_hotkey_channel->InvokeMethod(
+              "show_clipboard", std::make_unique<flutter::EncodableValue>());
         }
+      }
+      return 0;
+    }
+    case WM_CLIPBOARDUPDATE: {
+      if (g_hotkey_channel) {
+        g_hotkey_channel->InvokeMethod(
+            "clipboard_changed", std::make_unique<flutter::EncodableValue>());
       }
       return 0;
     }

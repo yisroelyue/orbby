@@ -68,6 +68,8 @@ class _AboutScreenState extends State<AboutScreen> with WindowListener {
                     const SizedBox(height: 22),
                     _buildSummaryCard(),
                     const SizedBox(height: 22),
+                    _buildDeveloperInfo(),
+                    const SizedBox(height: 22),
                     _buildFooter(),
                   ]),
                 ),
@@ -104,7 +106,7 @@ class _AboutScreenState extends State<AboutScreen> with WindowListener {
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
     itemCount: _features.length,
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 2.0),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 2.0),
     itemBuilder: (_, index) {
       final feature = _features[index];
       return Container(
@@ -123,6 +125,22 @@ class _AboutScreenState extends State<AboutScreen> with WindowListener {
     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
     decoration: BoxDecoration(color: const Color(0xFF8F82E8).withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
     child: const Row(children: [Icon(Icons.bolt_rounded, color: Color(0xFFC1B7FF), size: 20), SizedBox(width: 10), Expanded(child: Text('从灵感记录到 AI 协作，把常用能力放在桌面触手可及的位置。', style: TextStyle(color: Colors.white70, height: 1.35, fontSize: 12)))]),
+  );
+
+  Widget _buildDeveloperInfo() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.055), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+    child: Row(children: [
+      Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF73A7FF).withValues(alpha: 0.16), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.person_rounded, color: Color(0xFF73A7FF), size: 20)),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('开发者', style: TextStyle(color: Colors.white54, fontSize: 10)),
+        const SizedBox(height: 2),
+        const Text('Yisroel', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        GestureDetector(onTap: () => _openUrl('mailto:Yisroel.yue@gmail.com'), child: const Text('Yisroel.yue@gmail.com', style: TextStyle(color: Color(0xFF73A7FF), fontSize: 11))),
+      ])),
+    ]),
   );
 
   Widget _buildFooter() => Row(children: [

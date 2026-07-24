@@ -23,6 +23,7 @@ import 'screens/sub_app_window_screen.dart';
 import 'screens/todo_edit_screen.dart';
 import 'screens/todo_item_popup.dart';
 import 'screens/agent_chat_popup.dart';
+import 'screens/clipboard_popup.dart';
 import 'services/log_service.dart';
 
 import 'screens/vibe_task_screen.dart';
@@ -107,6 +108,12 @@ Future<void> main(List<String> args) async {
     runApp(const AboutScreen());
     return;
   }
+  if (windowArguments['type'] == 'clipboard_popup') {
+    await Window.initialize();
+    await _configureClipboardPopupWindow(windowController, windowArguments);
+    runApp(const ClipboardPopup());
+    return;
+  }
 
   await Window.initialize();
   await _configurePetWindow();
@@ -183,7 +190,7 @@ Future<void> _openSettingsFromTray() async {
 }
 
 Future<void> _openAboutFromTray() async {
-  const aboutWidth = 700.0;
+  const aboutWidth = 1200.0;
   const aboutHeight = 720.0;
 
   final display = await screenRetriever.getPrimaryDisplay();
@@ -341,7 +348,9 @@ Future<void> _configureSettingsWindow(
       await windowManager.setBackgroundColor(const Color(0xFFF5F5F5));
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby Settings');
-      await windowManager.show();
+      if (arguments['hidden'] != true) {
+        await windowManager.show();
+      }
     },
   );
 }
@@ -575,6 +584,37 @@ Future<void> _configureAboutWindow(
       await windowManager.setTitle('About Orbby');
       await windowManager.setPreventClose(true);
       await windowManager.show();
+    },
+  );
+}
+
+Future<void> _configureClipboardPopupWindow(
+  WindowController windowController,
+  Map<String, dynamic> arguments,
+) async {
+  final bounds = _boundsFromArguments(arguments);
+  final hidden = arguments['hidden'] == true;
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: bounds.size,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: true,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      alwaysOnTop: true,
+    ),
+    () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setMinimumSize(bounds.size);
+      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setBounds(bounds);
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setBackgroundColor(Colors.transparent);
+      await windowManager.setSkipTaskbar(true);
+      if (!hidden) {
+        await windowManager.show();
+      }
     },
   );
 }

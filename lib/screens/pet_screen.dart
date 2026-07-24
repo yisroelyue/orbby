@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:ffi/ffi.dart' as pkg_ffi;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_retriever/screen_retriever.dart' show screenRetriever;
@@ -20,6 +22,7 @@ import '../screens/todo_item_popup.dart';
 import '../screens/agent_chat_popup.dart';
 import '../services/agent_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/clipboard_service.dart';
 import '../services/favorites_service.dart';
 import '../widgets/pet_ball_round.dart';
 import '../widgets/pet_ball_colorful.dart';
@@ -49,6 +52,8 @@ class _PetScreenState extends State<PetScreen> {
   static const _todoItemPopupHeight = 300.0;
   static const _agentChatPopupWidth = 1200.0;
   static const _agentChatPopupHeight = 1000.0;
+  static const _clipboardPopupWidth = 320.0;
+  static const _clipboardPopupHeight = 400.0;
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events',
     mode: ChannelMode.unidirectional,
@@ -73,6 +78,7 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _subAppWindow;
   WindowController? _todoItemPopupWindow;
   WindowController? _agentChatPopupWindow;
+  WindowController? _clipboardPopupWindow;
   final _agentConversations = <String, List<Map<String, String>>>{};
   String? _activeConversationId;
   bool _menuVisible = false;
@@ -110,6 +116,10 @@ class _PetScreenState extends State<PetScreen> {
           _autoHideDelay = settings.menuAutoHideDelay;
         });
       }
+      // 根据设置决定是否启动剪贴板监听
+      if (settings.enableClipboardMonitor) {
+        ClipboardService.instance.start();
+      }
       _initVibeWindow();
       _precreateWindows();
       _startMouseMonitor();
@@ -120,6 +130,7 @@ class _PetScreenState extends State<PetScreen> {
   void dispose() {
     _mouseMonitorTimer?.cancel();
     _hideTimer?.cancel();
+    ClipboardService.instance.dispose();
     _menuChannel.setMethodCallHandler(null);
     _settingsChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
@@ -182,6 +193,14 @@ class _PetScreenState extends State<PetScreen> {
         try {
           await _menuWindow?.hide();
         } catch (_) {}
+        return;
+      case 'toggle_clipboard_monitor':
+        final settings = await SettingsService.load();
+        if (settings.enableClipboardMonitor) {
+          ClipboardService.instance.start();
+        } else {
+          ClipboardService.instance.stop();
+        }
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
@@ -613,7 +632,7 @@ class _PetScreenState extends State<PetScreen> {
       // 当前宠物窗口区域
       final petLeft = (screenSize.width - PetConfig.windowWidth) / 2;
       final petRect = _drawerShown
-          ? Rect.fromLTWH(petLeft, 10, PetConfig.windowWidth, PetConfig.windowHeight)
+          ? Rect.fromLTWH(petLeft, 0, PetConfig.windowWidth, PetConfig.windowHeight)
           : Rect.fromLTWH(petLeft, -PetConfig.windowHeight, PetConfig.windowWidth, PetConfig.windowHeight);
       final inPet = petRect.contains(cursor);
 
@@ -659,7 +678,7 @@ class _PetScreenState extends State<PetScreen> {
     final centerX = (screenSize.width - PetConfig.windowWidth) / 2;
 
     const startY = -PetConfig.windowHeight;
-    const endY = 10.0;
+    const endY = 0.0;
     const totalFrames = 15;
 
     for (var frame = 0; frame <= totalFrames; frame++) {
@@ -687,7 +706,7 @@ class _PetScreenState extends State<PetScreen> {
 
     final centerX = (_screenWidth - PetConfig.windowWidth) / 2;
 
-    const startY = 10.0;
+    const startY = 0.0;
     const endY = -PetConfig.windowHeight;
     const totalFrames = 12;
 
@@ -856,11 +875,16 @@ class _PetScreenState extends State<PetScreen> {
   // ─── 各子窗口 ──────────────────────────────────────────────────────────────
 
   Future<void> _showSettings() async {
-    try {
-      await _settingsWindow?.hide();
-    } catch (_) {}
-    _settingsWindow = null;
+    if (_settingsWindow != null) {
+      try {
+        await _settingsWindow!.show();
+        return;
+      } catch (_) {
+        _settingsWindow = null;
+      }
+    }
 
+    // 窗口不存在时创建（兜底）
     final display = await screenRetriever.getPrimaryDisplay();
     final screenSize = display.visibleSize ?? display.size;
     final left = (screenSize.width - _settingsWidth) / 2;
@@ -878,6 +902,73 @@ class _PetScreenState extends State<PetScreen> {
       ),
     );
     _settingsWindow = createdWindow;
+  }
+
+  /// 显示剪贴板历史弹窗（在鼠标指针位置）
+  Future<void> _showClipboardPopup() async {
+    final cursorPos = _getCursorPos();
+
+    final display = await screenRetriever.getPrimaryDisplay();
+    final screenSize = display.visibleSize ?? display.size;
+    var left = cursorPos.dx - _clipboardPopupWidth / 2;
+    var top = cursorPos.dy - _clipboardPopupHeight - 8;
+
+    if (left < 0) left = 0;
+    if (left + _clipboardPopupWidth > screenSize.width) {
+      left = screenSize.width - _clipboardPopupWidth;
+    }
+    if (top < 0) top = cursorPos.dy + 8;
+
+    if (_clipboardPopupWindow != null) {
+      try {
+        await _clipboardPopupWindow!.invokeMethod('reposition', {
+          'left': left,
+          'top': top,
+        });
+        await _clipboardPopupWindow!.show();
+        return;
+      } catch (_) {
+        _clipboardPopupWindow = null;
+      }
+    }
+
+    // 窗口不存在时创建（兜底）
+    final createdWindow = await WindowController.create(
+      WindowConfiguration(
+        hiddenAtLaunch: true,
+        arguments: jsonEncode({
+          'type': 'clipboard_popup',
+          'hidden': true,
+          'left': left,
+          'top': top,
+          'width': _clipboardPopupWidth,
+          'height': _clipboardPopupHeight,
+        }),
+      ),
+    );
+    _clipboardPopupWindow = createdWindow;
+    await _clipboardPopupWindow!.show();
+  }
+
+  /// 获取当前鼠标指针屏幕坐标
+  Offset _getCursorPos() {
+    if (!Platform.isWindows) return Offset.zero;
+    // POINT 结构: 2个LONG (各4字节)
+    final point = pkg_ffi.calloc<ffi.Int32>(2);
+    final user32 = ffi.DynamicLibrary.open('user32.dll');
+    final getCursorPos = user32
+        .lookupFunction<
+          ffi.Int32 Function(ffi.Pointer<ffi.Int32>),
+          int Function(ffi.Pointer<ffi.Int32>)
+        >('GetCursorPos');
+    if (getCursorPos(point) != 0) {
+      final x = point[0];
+      final y = point[1];
+      pkg_ffi.calloc.free(point);
+      return Offset(x.toDouble(), y.toDouble());
+    }
+    pkg_ffi.calloc.free(point);
+    return Offset.zero;
   }
 
   Future<void> _initVibeWindow() async {
@@ -926,6 +1017,27 @@ class _PetScreenState extends State<PetScreen> {
       );
     } catch (_) {}
 
+    // 预创建设置窗口（居中）
+    try {
+      final display = await screenRetriever.getPrimaryDisplay();
+      final screenSize = display.visibleSize ?? display.size;
+      final left = (screenSize.width - _settingsWidth) / 2;
+      final top = (screenSize.height - _settingsHeight) / 2;
+      _settingsWindow = await WindowController.create(
+        WindowConfiguration(
+          hiddenAtLaunch: true,
+          arguments: jsonEncode({
+            'type': 'settings',
+            'hidden': true,
+            'left': left,
+            'top': top,
+            'width': _settingsWidth,
+            'height': _settingsHeight,
+          }),
+        ),
+      );
+    } catch (_) {}
+
     // 预创建 agent 消息弹窗（居中）
     try {
       final display = await screenRetriever.getPrimaryDisplay();
@@ -951,6 +1063,24 @@ class _PetScreenState extends State<PetScreen> {
         ),
       );
     } catch (_) {}
+
+    // 预创建剪贴板弹窗（位置在 _showClipboardPopup 中动态设置）
+    try {
+      _clipboardPopupWindow = await WindowController.create(
+        WindowConfiguration(
+          hiddenAtLaunch: true,
+          arguments: jsonEncode({
+            'type': 'clipboard_popup',
+            'hidden': true,
+            'left': 0,
+            'top': 0,
+            'width': _clipboardPopupWidth,
+            'height': _clipboardPopupHeight,
+          }),
+        ),
+      );
+    } catch (_) {}
+
   }
 
   Future<void> _syncVibeWindow() async {
@@ -1033,6 +1163,15 @@ class _PetScreenState extends State<PetScreen> {
         return;
       case 'toggle_agent':
         _toggleAgentChatPopup();
+        return;
+      case 'show_clipboard':
+        final settings = await SettingsService.load();
+        if (settings.enableClipboardMonitor) {
+          _showClipboardPopup();
+        }
+        return;
+      case 'clipboard_changed':
+        ClipboardService.instance.onClipboardChanged();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
@@ -1308,94 +1447,101 @@ class _PetBodyState extends State<_PetBody> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-        borderRadius: BorderRadius.circular(PetConfig.windowRadius),
+    return Container(
+      color: Colors.transparent,
+      padding: const EdgeInsets.symmetric(
+        horizontal: PetConfig.windowPaddingH,
+        vertical: PetConfig.windowPaddingV,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(PetConfig.innerRadius),
         child: Container(
           color: const Color(0xDB393939),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 悬浮球
-            GestureDetector(
-              onTap: widget.onToggleMenu,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                onEnter: (_) => setState(() => _ballHovered = true),
-                onExit: (_) => setState(() => _ballHovered = false),
-                child: AnimatedScale(
-                  scale: _ballHovered ? 1.15 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: SizedBox(
-                    width: PetConfig.ballSize,
-                    height: PetConfig.ballSize,
-                    child: widget.petStyle == 'colorful'
-                        ? const PetBallColorful()
-                        : const PetBallRound(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 悬浮球
+              GestureDetector(
+                onTap: widget.onToggleMenu,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) => setState(() => _ballHovered = true),
+                  onExit: (_) => setState(() => _ballHovered = false),
+                  child: AnimatedScale(
+                    scale: _ballHovered ? 1.15 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: SizedBox(
+                      width: PetConfig.ballSize,
+                      height: PetConfig.ballSize,
+                      child: widget.petStyle == 'colorful'
+                          ? const PetBallColorful()
+                          : const PetBallRound(),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            const SizedBox(width: 6),
-            // 终端按钮
-            GestureDetector(
-              onTap: widget.onToggleAgent,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                onEnter: (_) => setState(() => _terminalHovered = true),
-                onExit: (_) => setState(() => _terminalHovered = false),
-                child: AnimatedScale(
-                  scale: _terminalHovered ? 1.2 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: Center(
-                      child: SvgPicture.asset(
-                        'assets/svg/cli.svg',
-                        width: 23,
-                        height: 23,
-                        colorFilter: const ColorFilter.mode(
-                          Color(0xFFFFFFFF),
-                          BlendMode.srcIn,
+              const SizedBox(width: 6),
+              const SizedBox(width: 6),
+              // 终端按钮
+              GestureDetector(
+                onTap: widget.onToggleAgent,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) => setState(() => _terminalHovered = true),
+                  onExit: (_) => setState(() => _terminalHovered = false),
+                  child: AnimatedScale(
+                    scale: _terminalHovered ? 1.2 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: Center(
+                        child: SvgPicture.asset(
+                          'assets/svg/cli.svg',
+                          width: 23,
+                          height: 23,
+                          colorFilter: const ColorFilter.mode(
+                            Color(0xFFFFFFFF),
+                            BlendMode.srcIn,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            // 设置按钮
-            GestureDetector(
-              onTap: widget.onToggleSettings,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                onEnter: (_) => setState(() => _settingsHovered = true),
-                onExit: (_) => setState(() => _settingsHovered = false),
-                child: AnimatedScale(
-                  scale: _settingsHovered ? 1.2 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: SizedBox(
-                    width: 40,
-                    height: 30,
-                    child: Center(
-                      child: SvgPicture.asset(
-                        'assets/svg/设置.svg',
-                        width: 20,
-                        height: 20,
-                        colorFilter: const ColorFilter.mode(
-                          Color(0xFFFFFFFF),
-                          BlendMode.srcIn,
+              const SizedBox(width: 6),
+              // 设置按钮
+              GestureDetector(
+                onTap: widget.onToggleSettings,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) => setState(() => _settingsHovered = true),
+                  onExit: (_) => setState(() => _settingsHovered = false),
+                  child: AnimatedScale(
+                    scale: _settingsHovered ? 1.2 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: SizedBox(
+                      width: 40,
+                      height: 30,
+                      child: Center(
+                        child: SvgPicture.asset(
+                          'assets/svg/设置.svg',
+                          width: 20,
+                          height: 20,
+                          colorFilter: const ColorFilter.mode(
+                            Color(0xFFFFFFFF),
+                            BlendMode.srcIn,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

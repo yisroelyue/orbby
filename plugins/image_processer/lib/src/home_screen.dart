@@ -9,6 +9,7 @@ import 'screens/format_convert_screen.dart';
 import 'screens/canvas_expand_screen.dart';
 import 'screens/background_fill_screen.dart';
 import 'screens/watermark_screen.dart';
+import 'screens/compress_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen>
   Uint8List? _imageBytes;
 
   final List<String> _featureNames = [
-    '裁剪旋转', '格式转换', '扩图', '背景填充', '水印',
+    '裁剪旋转', '格式转换', '扩图', '背景填充', '水印', '压缩',
   ];
 
   @override
@@ -187,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen>
                 CanvasExpandScreen(imagePath: _imagePath, imageBytes: _imageBytes, loadedImage: _loadedImage, outputDir: _outputDir, onStatusUpdate: _updateStatus, onProcess: _processWithDialog),
                 BackgroundFillScreen(imagePath: _imagePath, imageBytes: _imageBytes, loadedImage: _loadedImage, outputDir: _outputDir, onStatusUpdate: _updateStatus, onProcess: _processWithDialog),
                 WatermarkScreen(imagePath: _imagePath, imageBytes: _imageBytes, loadedImage: _loadedImage, outputDir: _outputDir, onStatusUpdate: _updateStatus, onProcess: _processWithDialog),
+                CompressScreen(imagePath: _imagePath, imageBytes: _imageBytes, outputDir: _outputDir, onStatusUpdate: _updateStatus, onProcess: _processWithDialog),
               ],
             ),
           ),

@@ -7,6 +7,7 @@ import 'processors/format_converter.dart';
 import 'processors/canvas_expander.dart';
 import 'processors/background_filler.dart';
 import 'processors/watermark_processor.dart';
+import 'processors/compress_processor.dart';
 
 // Re-export models for convenience.
 export 'models/crop_rect.dart';
@@ -17,6 +18,7 @@ export 'processors/format_converter.dart';
 export 'processors/canvas_expander.dart';
 export 'processors/background_filler.dart';
 export 'processors/watermark_processor.dart';
+export 'processors/compress_processor.dart';
 
 /// Core image processing engine for Orbby.
 ///
@@ -132,6 +134,27 @@ class ImageProcessor {
       position: position,
       opacity: opacity,
       margin: margin,
+    );
+  }
+
+  /// Compress an image with specified quality and optional resize.
+  static Future<ProcessResult> compress({
+    required String inputPath,
+    required String outputDir,
+    int quality = 80,
+    int? maxWidth,
+    int? maxHeight,
+    bool keepAspectRatio = true,
+    String? outputFormat,
+  }) async {
+    return CompressProcessor.compress(
+      inputPath: inputPath,
+      outputDir: outputDir,
+      quality: quality,
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      keepAspectRatio: keepAspectRatio,
+      outputFormat: outputFormat,
     );
   }
 

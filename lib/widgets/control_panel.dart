@@ -12,7 +12,8 @@ class _ControlSwitch {
     required this.id,
     required this.title,
     required this.icon,
-    required this.description,
+    this.description,
+    this.descriptionSpans,
     this.value = true,
     this.onToggle,
   });
@@ -20,7 +21,8 @@ class _ControlSwitch {
   final String id;
   final String title;
   final IconData icon;
-  final String description;
+  final String? description;
+  final List<InlineSpan>? descriptionSpans;
 
   /// 当前开关状态
   final bool value;
@@ -38,6 +40,7 @@ class ControlPanel extends StatefulWidget {
 }
 
 class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
+  static const _primaryColor = Color(0xFF2196F3);
   bool _headerHovered = false;
   bool _panelHovered = false;
   bool _panelEnabled = true;
@@ -77,6 +80,7 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
     await SettingsService.save(settings);
     if (!mounted) return;
     setState(() => _enableClipboard = settings.enableClipboardMonitor);
+    MenuScreen.menuChannel.invokeMethod('toggle_clipboard_monitor');
   }
 
   Future<void> _toggleVibePanel() async {
@@ -94,7 +98,15 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
       id: 'clipboard',
       title: '快速剪切板',
       icon: Icons.content_paste_rounded,
-      description: '监听剪切板变化，自动保存复制内容到历史记录，方便快速查找和复用',
+      descriptionSpans: [
+        const TextSpan(text: '监听剪切板变化，自动保存复制内容\n'),
+        const TextSpan(text: '按 '),
+        TextSpan(
+          text: 'Ctrl+Shift+V',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: ' 打开历史记录\n选择后自动复制到剪贴板'),
+      ],
       value: _enableClipboard,
       onToggle: _toggleClipboard,
     ),
@@ -102,7 +114,20 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
       id: 'vibe',
       title: 'Claude 监测',
       icon: Icons.tv,
-      description: '开启或关闭 Vibe Coding 状态条，显示 Claude Code 任务进度',
+      descriptionSpans: [
+        const TextSpan(text: '实时监控 '),
+        TextSpan(
+          text: 'Claude Code',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: ' 任务状态\n'),
+        const TextSpan(text: '自动检测 '),
+        TextSpan(
+          text: 'Hook 事件',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: ' 并更新进度，状态'),
+      ],
       value: _showVibePanel,
       onToggle: _toggleVibePanel,
     ),
@@ -113,6 +138,7 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
       context: context,
       title: item.title,
       description: item.description,
+      descriptionSpans: item.descriptionSpans,
       position: position,
       isDark: isDark,
     );

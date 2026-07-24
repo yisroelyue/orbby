@@ -13,7 +13,7 @@ class ImageHandlerApp extends SubApp {
   String get name => '图像处理器';
 
   @override
-  String get description => '裁剪旋转、格式转换、扩图、背景填充、水印';
+  String get description => '裁剪旋转、格式转换、扩图、背景填充、水印、压缩';
 
   @override
   String get iconAsset => 'assets/svg/图像处理.svg';

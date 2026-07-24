@@ -35,7 +35,7 @@ PetScreen（悬浮球主窗口，150×40，置顶，无边框，固定在屏幕�
 | 设置 | `~/.orbby/orbby_settings.json` |
 | 待办 | `~/.orbby/orbby_todos.json` |
 | 收藏索引 | `~/.orbby/orbby_favorites.json` |
-| 收藏文件 | `~/.orbby/favorites/<id>_<文件名>` |
+| 收藏文件 | `~/.orbby/favorites/<文件名>` |
 | Chat 对话 | `~/.orbby/claude_task/task/<id>/<id>.json` |
 | Claude 任务状态 | `~/.orbby/claude_task/vibe_task_<sessionId>.json` |
 | 自定义应用 | `~/.orbby/custom_apps.json` |
@@ -87,7 +87,7 @@ plugins/<name>/             ← 功能插件（UI + 原生代码），monorepo �
 
 | ID | 名称 | 插件 | 功能 |
 |----|------|------|------|
-| `image_handler` | 图像处理器 | `orbby_plugin_image_processer` | 裁剪旋转、格式转换、扩图、背景填充、水印 |
+| `image_handler` | 图像处理器 | `orbby_plugin_image_processer` | 裁剪旋转、格式转换、扩图、背景填充、水印、压缩 |
 | `screen_record` | 屏幕录制 | `orbby_plugin_screen_record` | 录制全屏视频，支持暂停/恢复 |
 
 ### 不要执行耗时操作，测试交给我来做
