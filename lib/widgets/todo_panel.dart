@@ -1,27 +1,40 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../config/panel_theme.dart';
 import '../screens/menu_screen.dart';
 import '../services/todo_service.dart';
+import 'base_panel.dart';
 
-class TodoPanel extends StatefulWidget {
+class TodoPanel extends BasePanel {
   const TodoPanel({super.key});
 
   @override
   State<TodoPanel> createState() => _TodoPanelState();
 }
 
-class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
+class _TodoPanelState extends BasePanelState<TodoPanel> {
   List<TodoItem> _normalTodos = [];
   List<TodoItem> _importantTodos = [];
   bool _panelEnabled = true;
   bool _loading = true;
-  bool _headerHovered = false;
   bool _addHovered = false;
   String? _hoveredId;
   bool _panelHovered = false;
+
+  @override
+  String get panelTitle => '我的笔记';
+
+  @override
+  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/笔记.svg');
+
+  @override
+  VoidCallback? get onHeaderTap => _openAllTodos;
+
+  @override
+  bool get panelEnabled => _panelEnabled || _loading;
+
+  @override
+  bool get panelHovered => _panelHovered;
 
   @override
   void initState() {
@@ -82,6 +95,46 @@ class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
     MenuScreen.todoRefreshNotifier.value++;
   }
 
+  void _openAllTodos() {
+    MenuScreen.menuChannel.invokeMethod('open_todo_editor', {
+      'id': '',
+      'title': '',
+    });
+  }
+
+  @override
+  Widget buildContent(BuildContext context) {
+    // 实际内容在 build() 中渲染（需要 MouseRegion 包裹）
+    return const SizedBox.shrink();
+  }
+
+  @override
+  List<Widget> buildHeaderActions() {
+    return [
+      GestureDetector(
+        onTap: _openAddPopup,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _addHovered = true),
+          onExit: (_) => setState(() => _addHovered = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: _addHovered ? elementBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              Icons.add,
+              color: _addHovered ? primaryText : mutedText,
+              size: 20,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_panelEnabled && !_loading) {
@@ -91,7 +144,7 @@ class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
         child: Container(
           padding: const EdgeInsets.all(16),
           color: panelBg,
@@ -99,7 +152,7 @@ class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(),
+              buildHeader(),
               const SizedBox(height: 10),
               if (_loading)
                 Padding(
@@ -117,78 +170,6 @@ class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
                 )
               else
                 _buildTodoList(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openAllTodos() {
-    MenuScreen.menuChannel.invokeMethod('open_todo_editor', {
-      'id': '',
-      'title': '',
-    });
-  }
-
-  Widget _buildHeader() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: _openAllTodos,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered
-                ? hoverBg
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/svg/笔记.svg',
-                width: 22,
-                height: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '我的笔记',
-                  style: TextStyle(
-                    color: primaryText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: _openAddPopup,
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  onEnter: (_) => setState(() => _addHovered = true),
-                  onExit: (_) => setState(() => _addHovered = false),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: _addHovered
-                          ? elementBg
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(
-                      Icons.add,
-                      color: _addHovered ? primaryText : mutedText,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -259,9 +240,7 @@ class _TodoPanelState extends State<TodoPanel> with PanelThemeMixin {
           margin: const EdgeInsets.symmetric(vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: isHovered
-                ? hoverBg
-                : Colors.transparent,
+            color: isHovered ? hoverBg : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(

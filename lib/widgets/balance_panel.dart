@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../config/platform.dart';
 import '../config/settings.dart';
-import '../config/panel_theme.dart';
 import '../screens/menu_screen.dart';
 import '../services/balance_service.dart';
+import 'base_panel.dart';
 import 'interactive_icon.dart';
 
-class BalancePanel extends StatefulWidget {
+class BalancePanel extends BasePanel {
   const BalancePanel({super.key});
 
   @override
   State<BalancePanel> createState() => BalancePanelState();
 }
 
-class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
+class BalancePanelState extends BasePanelState<BalancePanel> {
   BalanceInfo? _balance;
   String _platform = 'deepseek';
   bool _panelEnabled = true;
@@ -22,15 +22,44 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
   bool _notConfigured = false;
   bool _connected = false;
   bool _loading = true;
-  bool _headerHovered = false;
+  bool _initialTestDone = false;
+
+  @override
+  String get panelTitle => PlatformConfig.platforms[_platform]?.name ?? 'AI 流量';
+
+  @override
+  PanelIcon get panelIcon => PanelIcon.widget(
+    _loading
+        ? SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: tertiaryText,
+            ),
+          )
+        : Image.asset(
+            PlatformConfig.assetPath(_platform),
+            width: 22,
+            height: 22,
+          ),
+  );
+
+  @override
+  VoidCallback? get onHeaderTap => _openSettings;
+
+  @override
+  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
     MenuScreen.refreshNotifier.addListener(_onRefresh);
-    // 程序启动时测试连通性
-    _testConnectivity();
+    if (!_initialTestDone) {
+      _initialTestDone = true;
+      _testConnectivity();
+    }
   }
 
   @override
@@ -41,7 +70,6 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
 
   void _onRefresh() {
     _loadSettings();
-    // 只有点击刷新按钮时才测试连通性
   }
 
   Future<void> _loadSettings() async {
@@ -79,12 +107,10 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
       return;
     }
 
-    // 测试连通性
     final ok = await BalanceService.testConnectivity();
     if (!mounted) return;
     _connected = ok;
 
-    // 如果开启了余额查询且连通，再获取余额
     if (_enableBalance && ok) {
       try {
         final balance = await BalanceService.fetchBalance();
@@ -103,47 +129,23 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
     }
   }
 
-  Widget _buildActionButtons() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InteractiveIcon(
-          size: 32,
-          onTap: _testConnectivity,
-          child: Icon(Icons.refresh_rounded, color: tertiaryText, size: 20),
-        ),
-      ],
-    );
-  }
-
   @override
-  Widget build(BuildContext context) {
-    if (!_panelEnabled && !_loading) {
-      return const SizedBox.shrink();
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        color: panelBg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 10),
-            const SizedBox(height: 6),
-            _buildContent(),
-          ],
-        ),
+  List<Widget> buildHeaderActions() {
+    return [
+      InteractiveIcon(
+        size: 32,
+        onTap: _testConnectivity,
+        child: Icon(Icons.refresh_rounded, color: tertiaryText, size: 20),
       ),
-    );
+    ];
   }
 
   void _openSettings() {
     MenuScreen.menuChannel.invokeMethod('open_settings');
   }
 
-  Widget _buildHeader() {
+  @override
+  Widget buildHeader() {
     Color statusColor;
     String statusText;
     if (_notConfigured) {
@@ -160,79 +162,22 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
       statusText = '不可用';
     }
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: _openSettings,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered ? hoverBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              if (_loading)
-                SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: tertiaryText,
-                  ),
-                )
-              else
-                Image.asset(
-                  PlatformConfig.assetPath(_platform),
-                  width: 22,
-                  height: 22,
-                ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  PlatformConfig.platforms[_platform]?.name ?? 'AI 流量',
-                  style: TextStyle(
-                    color: primaryText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                statusText,
-                style: TextStyle(color: secondaryText, fontSize: 13),
-              ),
-              const SizedBox(width: 6),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _headerHovered ? 1.0 : 0.0,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: mutedText,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return _BalanceHeader(
+      icon: buildIconWidget(),
+      title: panelTitle,
+      titleColor: primaryText,
+      hoverBg: hoverBg,
+      mutedText: mutedText,
+      statusColor: statusColor,
+      statusText: statusText,
+      secondaryText: secondaryText,
+      onTap: _openSettings,
+      actions: buildHeaderActions(),
     );
   }
 
-  Widget _buildContent() {
+  @override
+  Widget buildContent(BuildContext context) {
     if (_loading) {
       return Text('检测中...', style: TextStyle(color: mutedText, fontSize: 14));
     }
@@ -275,7 +220,6 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
       );
     }
 
-    // 连通成功
     if (_enableBalance && _balance != null) {
       final b = _balance!;
       final symbol = b.currency == 'USD' ? '\$' : '¥';
@@ -294,26 +238,117 @@ class BalancePanelState extends State<BalancePanel> with PanelThemeMixin {
               ),
             ),
           ),
-
-          _buildActionButtons(),
         ],
       );
     }
 
-    // 连通但未开启余额
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20,bottom: 10),
+          padding: const EdgeInsets.only(left: 20, bottom: 10),
           child: Text(
             '暂无API余额信息',
-            style: TextStyle(color: mutedText, fontSize: 14,fontWeight:  FontWeight.w600,),
+            style: TextStyle(color: mutedText, fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ),
-        _buildActionButtons(),
       ],
+    );
+  }
+}
+
+/// BalancePanel 专用 header，带状态指示器
+class _BalanceHeader extends StatefulWidget {
+  const _BalanceHeader({
+    required this.icon,
+    required this.title,
+    required this.titleColor,
+    required this.hoverBg,
+    required this.mutedText,
+    required this.statusColor,
+    required this.statusText,
+    required this.secondaryText,
+    this.onTap,
+    this.actions = const [],
+  });
+
+  final Widget icon;
+  final String title;
+  final Color titleColor;
+  final Color hoverBg;
+  final Color mutedText;
+  final Color statusColor;
+  final String statusText;
+  final Color secondaryText;
+  final VoidCallback? onTap;
+  final List<Widget> actions;
+
+  @override
+  State<_BalanceHeader> createState() => _BalanceHeaderState();
+}
+
+class _BalanceHeaderState extends State<_BalanceHeader> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              widget.icon,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: TextStyle(
+                    color: widget.titleColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: widget.statusColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                widget.statusText,
+                style: TextStyle(color: widget.secondaryText, fontSize: 13),
+              ),
+              const SizedBox(width: 6),
+              ...widget.actions,
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: _hovered ? 1.0 : 0.0,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: widget.mutedText,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

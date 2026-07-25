@@ -56,6 +56,11 @@ class AppSettings {
     this.showPhotoWallPanel = true,
     this.showAgentChatPanel = true,
     this.showControlPanel = true,
+    this.showWeatherPanel = true,
+    this.showNewsPanel = true,
+    this.showScriptPanel = true,
+    this.showSchedulePanel = true,
+    this.showDailyQuotePanel = true,
     this.enableClipboardMonitor = false,
     this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
@@ -65,7 +70,7 @@ class AppSettings {
     this.panelAppIds = const [],
     this.userName = '',
     this.userAvatarPath = '',
-    this.menuBgImage = 'assets/png/menuBg/1.jpg',
+    this.menuBgImage = 'assets/png/menuBg/11826657.jpg',
     Map<String, PlatformApiConfig>? apiConfigs,
   }) : apiConfigs = apiConfigs ?? {
           'deepseek': PlatformApiConfig(
@@ -93,6 +98,11 @@ class AppSettings {
   bool showPhotoWallPanel;
   bool showAgentChatPanel;
   bool showControlPanel;
+  bool showWeatherPanel;
+  bool showNewsPanel;
+  bool showScriptPanel;
+  bool showSchedulePanel;
+  bool showDailyQuotePanel;
   bool enableClipboardMonitor;
   double menuAutoHideDelay;
   String appTheme;
@@ -175,6 +185,11 @@ class AppSettings {
       showPhotoWallPanel: json['showPhotoWallPanel'] as bool? ?? true,
       showAgentChatPanel: json['showAgentChatPanel'] as bool? ?? true,
       showControlPanel: json['showControlPanel'] as bool? ?? true,
+      showWeatherPanel: json['showWeatherPanel'] as bool? ?? true,
+      showNewsPanel: json['showNewsPanel'] as bool? ?? true,
+      showScriptPanel: json['showScriptPanel'] as bool? ?? true,
+      showSchedulePanel: json['showSchedulePanel'] as bool? ?? true,
+      showDailyQuotePanel: json['showDailyQuotePanel'] as bool? ?? true,
       enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
       menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
@@ -187,7 +202,7 @@ class AppSettings {
           [],
       userName: json['userName'] as String? ?? '',
       userAvatarPath: json['userAvatarPath'] as String? ?? '',
-      menuBgImage: json['menuBgImage'] as String? ?? 'assets/png/menuBg/1.jpg',
+      menuBgImage: json['menuBgImage'] as String? ?? 'assets/png/menuBg/11826657.jpg',
       apiConfigs: configs,
     );
   }
@@ -208,6 +223,11 @@ class AppSettings {
         'showPhotoWallPanel': showPhotoWallPanel,
         'showAgentChatPanel': showAgentChatPanel,
         'showControlPanel': showControlPanel,
+        'showWeatherPanel': showWeatherPanel,
+        'showNewsPanel': showNewsPanel,
+        'showScriptPanel': showScriptPanel,
+        'showSchedulePanel': showSchedulePanel,
+        'showDailyQuotePanel': showDailyQuotePanel,
         'enableClipboardMonitor': enableClipboardMonitor,
         'menuAutoHideDelay': menuAutoHideDelay,
         'appTheme': appTheme,
@@ -253,13 +273,13 @@ class SettingsService {
     );
   }
 
-  /// 头像存储路径（~/.orbby/user/user_avatar.png）
+  /// 头像存储路径（~/.orbby/user/user_avatar_<timestamp>.png）
   static Future<String> avatarFilePath() async {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
     final dir = Directory('$home/.orbby/user');
     if (!await dir.exists()) await dir.create(recursive: true);
-    return '${dir.path}/user_avatar.png';
+    return '${dir.path}/user_avatar_${DateTime.now().millisecondsSinceEpoch}.png';
   }
 }

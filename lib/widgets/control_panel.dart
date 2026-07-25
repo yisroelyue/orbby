@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/panel_theme.dart';
 import '../config/settings.dart';
 import '../screens/menu_screen.dart';
+import 'base_panel.dart';
 import 'tooltip_popup.dart';
 
 /// 控制面板开关项配置
@@ -32,20 +31,31 @@ class _ControlSwitch {
 }
 
 /// 控制面板组件
-class ControlPanel extends StatefulWidget {
+class ControlPanel extends BasePanel {
   const ControlPanel({super.key});
 
   @override
   State<ControlPanel> createState() => _ControlPanelState();
 }
 
-class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
+class _ControlPanelState extends BasePanelState<ControlPanel> {
   static const _primaryColor = Color(0xFF2196F3);
-  bool _headerHovered = false;
-  bool _panelHovered = false;
   bool _panelEnabled = true;
+  bool _panelHovered = false;
   bool _showVibePanel = true;
   bool _enableClipboard = false;
+
+  @override
+  String get panelTitle => '控制面板';
+
+  @override
+  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/控制.svg');
+
+  @override
+  VoidCallback? get onHeaderTap => _openSettings;
+
+  @override
+  bool get panelHovered => _panelHovered;
 
   @override
   void initState() {
@@ -133,6 +143,12 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
     ),
   ];
 
+  @override
+  Widget buildContent(BuildContext context) {
+    // 实际内容在 build() 中渲染（需要 MouseRegion 包裹）
+    return const SizedBox.shrink();
+  }
+
   void _showTooltip(BuildContext context, _ControlSwitch item, Offset position) {
     TooltipPopup.show(
       context: context,
@@ -144,6 +160,10 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
     );
   }
 
+  void _openSettings() {
+    MenuScreen.menuChannel.invokeMethod('open_settings');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_panelEnabled) {
@@ -153,7 +173,7 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
         child: Container(
           padding: const EdgeInsets.all(16),
           color: panelBg,
@@ -161,7 +181,7 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(),
+              buildHeader(),
               const SizedBox(height: 12),
               _buildContent(),
             ],
@@ -171,61 +191,7 @@ class _ControlPanelState extends State<ControlPanel> with PanelThemeMixin {
     );
   }
 
-  void _openSettings() {
-    MenuScreen.menuChannel.invokeMethod('open_settings');
-  }
-
-  Widget _buildHeader() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: _openSettings,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered ? hoverBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/svg/控制.svg',
-                width: 22,
-                height: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '控制面板',
-                  style: TextStyle(
-                    color: primaryText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _headerHovered ? 1.0 : 0.0,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: mutedText,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildContent() {
-    // 默认显示一行（2个），hover 时显示全部
     final visibleItems = _panelHovered ? _items : _items.take(2).toList();
     final rowCount = (visibleItems.length / 2).ceil();
     final rows = <Widget>[];
@@ -306,7 +272,6 @@ class _ControlItemWidgetState extends State<_ControlItemWidget> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
           setState(() => _hovered = true);
-          // 获取位置并显示 tooltip
           final renderBox = context.findRenderObject() as RenderBox?;
           if (renderBox != null && renderBox.attached) {
             final position = renderBox.localToGlobal(

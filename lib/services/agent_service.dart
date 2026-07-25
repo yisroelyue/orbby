@@ -1,13 +1,101 @@
-import 'dart:convert';
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../agent/agent_core.dart';
+import '../agent/llm_client.dart';
+import '../agent/tool_registry.dart';
+import '../agent/tools/builtin_tools.dart';
+import '../agent/types.dart' as agent_types;
 import '../config/platform.dart';
 import '../config/settings.dart';
 
 class AgentService {
   AgentService._();
+
+  static Agent? _agent;
+  static String? _currentPlatform;
+  static String? _currentModel;
+
+  /// 获取或创建 Agent 实例
+  static Future<Agent> _getAgent({
+    String? compactModel,
+    bool forceRecreate = false,
+  }) async {
+    final settings = await SettingsService.load();
+    final platform = settings.platform;
+    final model = settings.model.isEmpty
+        ? PlatformConfig.defaultChatModel(platform)
+        : settings.model;
+
+    // 如果配置变化或需要重建
+    if (_agent == null || forceRecreate ||
+        _currentPlatform != platform || _currentModel != model) {
+      final chatUrl = settings.chatUrl.isEmpty
+          ? PlatformConfig.defaultChatUrl(platform)
+          : settings.chatUrl.trim();
+
+      // 创建主 LLM 客户端
+      final llm = LLMClient(
+        baseURL: chatUrl,
+        apiKey: settings.apiKey,
+        model: model,
+        verbose: kDebugMode,
+      );
+
+      // 创建压缩 LLM 客户端（使用轻量模型）
+      final compactModelName = compactModel ?? _getDefaultCompactModel(platform);
+      final compactLLM = LLMClient(
+        baseURL: chatUrl,
+        apiKey: settings.apiKey,
+        model: compactModelName,
+        verbose: false,
+      );
+
+      // 创建工具注册中心
+      final registry = ToolRegistry();
+      registerBuiltinTools(registry);
+
+      // 创建 Agent
+      _agent = Agent(
+        llm: llm,
+        compactLLM: compactLLM,
+        registry: registry,
+        conversationOptions: const agent_types.ConversationOptions(
+          maxTokens: 32000,
+          keepRecentTurns: 3,
+          summaryMaxChars: 2400,
+          maxToolResultChars: 12000,
+        ),
+      );
+
+      // 初始化
+      _agent!.init();
+
+      _currentPlatform = platform;
+      _currentModel = model;
+
+      debugPrint('━━━ Agent 初始化完成 ━━━');
+      debugPrint('平台: $platform  模型: $model  压缩模型: $compactModelName');
+    }
+
+    return _agent!;
+  }
+
+  /// 获取默认压缩模型
+  static String _getDefaultCompactModel(String platform) {
+    return switch (platform) {
+      'deepseek' => 'deepseek-chat',
+      'openai' => 'gpt-3.5-turbo',
+      'anthropic' => 'claude-3-haiku-20240307',
+      'doubao' => 'doubao-lite-32k',
+      'mimo' => 'mimo-mini',
+      'qwen' => 'qwen-turbo',
+      'kimi' => 'moonshot-v1-8k',
+      'zhipu' => 'glm-4-flash',
+      _ => 'deepseek-chat',
+    };
+  }
 
   /// 发送消息到 AI，返回回复文本（非流式，一次性返回）
   static Future<String> chat(
@@ -25,33 +113,25 @@ class AgentService {
       throw AgentException('请先在设置中配置 API Key');
     }
 
-    final chatUrl = settings.chatUrl.isEmpty
-        ? PlatformConfig.defaultChatUrl(settings.platform)
-        : settings.chatUrl.trim();
+    final agent = await _getAgent();
 
-    final model = settings.model.isEmpty
-        ? PlatformConfig.defaultChatModel(settings.platform)
-        : settings.model;
-
-    debugPrint('━━━ Agent 请求 ━━━');
-    debugPrint('平台: ${settings.platform}  模型: $model  模式: $mode');
-
-    final systemPrompt = _systemPrompt(mode);
-
-    final messages = <Map<String, String>>[
-      {'role': 'system', 'content': systemPrompt},
-      ...history,
-      {'role': 'user', 'content': trimmed},
-    ];
-
-    if (PlatformConfig.isAnthropicPlatform(settings.platform)) {
-      return _callAnthropic(
-        chatUrl, model, settings.apiKey, systemPrompt, messages,
-      );
+    // 如果有历史消息，添加到对话中
+    if (history.isNotEmpty) {
+      for (final msg in history) {
+        final role = msg['role'] ?? 'user';
+        final content = msg['content'] ?? '';
+        if (role == 'user') {
+          agent.conversation.addUserMessage(content);
+        } else if (role == 'assistant') {
+          agent.conversation.addAssistantMessage(
+            agent_types.LLMResponse(content: content),
+          );
+        }
+      }
     }
-    return _callCompatible(
-      chatUrl, model, settings.apiKey, messages,
-    );
+
+    // 处理消息
+    return agent.processMessage(trimmed);
   }
 
   /// 发送消息到 AI，返回流式 token（边生成边返回）
@@ -70,324 +150,82 @@ class AgentService {
       throw AgentException('请先在设置中配置 API Key');
     }
 
-    final chatUrl = settings.chatUrl.isEmpty
-        ? PlatformConfig.defaultChatUrl(settings.platform)
-        : settings.chatUrl.trim();
+    final agent = await _getAgent();
 
-    final model = settings.model.isEmpty
-        ? PlatformConfig.defaultChatModel(settings.platform)
-        : settings.model;
-
-    debugPrint('━━━ Agent 流式请求 ━━━');
-    debugPrint('平台: ${settings.platform}  模型: $model  模式: $mode');
-
-    final systemPrompt = _systemPrompt(mode);
-
-    final messages = <Map<String, String>>[
-      {'role': 'system', 'content': systemPrompt},
-      ...history,
-      {'role': 'user', 'content': trimmed},
-    ];
-
-    if (PlatformConfig.isAnthropicPlatform(settings.platform)) {
-      yield* _callAnthropicStream(
-        chatUrl, model, settings.apiKey, systemPrompt, messages,
-      );
-    } else {
-      yield* _callCompatibleStream(
-        chatUrl, model, settings.apiKey, messages,
-      );
-    }
-  }
-
-  static String _systemPrompt(String mode) {
-    switch (mode) {
-      case 'plan':
-        return '你是一个注重规划和结构的助手。回答问题时，先分析需求，'
-            '然后提供分步骤的解决方案。回答要结构清晰，条理分明。';
-      case 'auto':
-        return '你是一个全能助手，根据问题类型自动选择最合适的回答方式。'
-            '简洁问题直接回答，复杂问题结构化分析。尽量简洁高效。';
-      case 'accept':
-      default:
-        return '你是 AI 助手。名字叫做 Orbby 助手。是能够帮助用户处理日常任务的电脑助手';
-    }
-  }
-
-  /// OpenAI 兼容 API
-  static Future<String> _callCompatible(
-    String url,
-    String model,
-    String apiKey,
-    List<Map<String, String>> messages,
-  ) async {
-    final uri = Uri.parse(url);
-    final body = jsonEncode({
-      'model': model,
-      'messages': messages,
-    });
-
-    debugPrint('━━━ 请求体 ━━━');
-    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-      request.headers.set('Authorization', 'Bearer $apiKey');
-      final bytes = utf8.encode(body);
-      request.headers.set('Content-Length', bytes.length.toString());
-      request.add(bytes);
-
-      final response = await request.close().timeout(
-            const Duration(seconds: 60),
-            onTimeout: () => throw AgentException('请求超时'),
+    // 如果有历史消息，添加到对话中
+    if (history.isNotEmpty) {
+      for (final msg in history) {
+        final role = msg['role'] ?? 'user';
+        final content = msg['content'] ?? '';
+        if (role == 'user') {
+          agent.conversation.addUserMessage(content);
+        } else if (role == 'assistant') {
+          agent.conversation.addAssistantMessage(
+            agent_types.LLMResponse(content: content),
           );
-
-      final raw = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode != 200) {
-        debugPrint('━━━ 响应 [${response.statusCode}] ━━━');
-        debugPrint(raw);
-        throw AgentException('请求失败: HTTP ${response.statusCode}');
-      }
-
-      debugPrint('━━━ 响应体 ━━━');
-      debugPrint(raw);
-      final json = jsonDecode(raw) as Map<String, dynamic>;
-      final choices = json['choices'] as List<dynamic>?;
-      if (choices == null || choices.isEmpty) {
-        throw AgentException('AI 返回为空');
-      }
-      final content = choices.first['message']?['content'] as String?;
-      if (content == null || content.trim().isEmpty) {
-        throw AgentException('AI 返回为空');
-      }
-      return content.trim();
-    } catch (e) {
-      if (e is AgentException) rethrow;
-      debugPrint('Agent 异常: $e');
-      throw AgentException('请求失败: $e');
-    } finally {
-      client.close();
-    }
-  }
-
-  /// OpenAI 兼容 API（流式）
-  static Stream<String> _callCompatibleStream(
-    String url,
-    String model,
-    String apiKey,
-    List<Map<String, String>> messages,
-  ) async* {
-    final uri = Uri.parse(url);
-    final body = jsonEncode({
-      'model': model,
-      'messages': messages,
-      'stream': true,
-    });
-
-    debugPrint('━━━ 流式请求体 ━━━');
-    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-      request.headers.set('Authorization', 'Bearer $apiKey');
-      final bytes = utf8.encode(body);
-      request.headers.set('Content-Length', bytes.length.toString());
-      request.add(bytes);
-
-      final response = await request.close().timeout(
-            const Duration(seconds: 120),
-            onTimeout: () => throw AgentException('请求超时'),
-          );
-
-      if (response.statusCode != 200) {
-        final raw = await response.transform(utf8.decoder).join();
-        debugPrint('━━━ 流式响应 [${response.statusCode}] ━━━');
-        debugPrint(raw);
-        throw AgentException('请求失败: HTTP ${response.statusCode}');
-      }
-
-      final lines = response
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
-      await for (final line in lines) {
-        if (!line.startsWith('data: ')) continue;
-        final data = line.substring(6).trim();
-        if (data == '[DONE]') break;
-        try {
-          final json = jsonDecode(data) as Map<String, dynamic>;
-          final choices = json['choices'] as List<dynamic>?;
-          if (choices != null && choices.isNotEmpty) {
-            final delta = choices.first['delta'] as Map<String, dynamic>?;
-            final content = delta?['content'] as String?;
-            if (content != null && content.isNotEmpty) {
-              yield content;
-            }
-          }
-        } catch (_) {
-          // 跳过解析失败的行
         }
       }
-    } catch (e) {
-      if (e is AgentException) rethrow;
-      debugPrint('Agent 流式异常: $e');
-      throw AgentException('请求失败: $e');
-    } finally {
-      client.close();
     }
-  }
 
-  /// Anthropic API
-  static Future<String> _callAnthropic(
-    String url,
-    String model,
-    String apiKey,
-    String systemPrompt,
-    List<Map<String, String>> messages,
-  ) async {
-    final uri = Uri.parse(url);
-    // Anthropic 格式：system 放在顶层，messages 不包含 system
-    final userMessages = messages
-        .where((m) => m['role'] != 'system')
-        .map((m) => {'role': m['role'], 'content': m['content']})
-        .toList();
+    // 使用 StreamController 处理流式输出
+    final controller = StreamController<String>();
+    var hasStreamedTokens = false;
 
-    final body = jsonEncode({
-      'model': model,
-      'max_tokens': 4096,
-      'system': systemPrompt,
-      'messages': userMessages,
+    // 异步处理消息
+    agent.processMessage(trimmed, onToken: (token) {
+      hasStreamedTokens = true;
+      controller.add(token);
+    }).then((result) {
+      // 只有当没有流式输出时，才添加最终结果
+      if (!controller.isClosed && !hasStreamedTokens) {
+        controller.add(result);
+        controller.close();
+      } else if (!controller.isClosed) {
+        controller.close();
+      }
+    }).catchError((error) {
+      if (!controller.isClosed) {
+        controller.addError(error is Exception ? error : Exception('$error'));
+        controller.close();
+      }
     });
 
-    debugPrint('━━━ 请求体 ━━━');
-    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-      request.headers.set('x-api-key', apiKey);
-      request.headers.set('anthropic-version', '2023-06-01');
-      final bytes = utf8.encode(body);
-      request.headers.set('Content-Length', bytes.length.toString());
-      request.add(bytes);
-
-      final response = await request.close().timeout(
-            const Duration(seconds: 60),
-            onTimeout: () => throw AgentException('请求超时'),
-          );
-
-      final raw = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode != 200) {
-        debugPrint('━━━ 响应 [${response.statusCode}] ━━━');
-        debugPrint(raw);
-        throw AgentException('请求失败: HTTP ${response.statusCode}');
-      }
-
-      debugPrint('━━━ 响应体 ━━━');
-      debugPrint(raw);
-      final json = jsonDecode(raw) as Map<String, dynamic>;
-      final contentList = json['content'] as List<dynamic>?;
-      if (contentList == null || contentList.isEmpty) {
-        throw AgentException('AI 返回为空');
-      }
-      final text = contentList.first['text'] as String?;
-      if (text == null || text.trim().isEmpty) {
-        throw AgentException('AI 返回为空');
-      }
-      return text.trim();
-    } catch (e) {
-      if (e is AgentException) rethrow;
-      debugPrint('Anthropic Agent 异常: $e');
-      throw AgentException('请求失败: $e');
-    } finally {
-      client.close();
-    }
+    yield* controller.stream;
   }
 
-  /// Anthropic API（流式）
-  static Stream<String> _callAnthropicStream(
-    String url,
-    String model,
-    String apiKey,
-    String systemPrompt,
-    List<Map<String, String>> messages,
-  ) async* {
-    final uri = Uri.parse(url);
-    final userMessages = messages
-        .where((m) => m['role'] != 'system')
-        .map((m) => {'role': m['role'], 'content': m['content']})
+  /// 重置对话
+  static void resetConversation() {
+    _agent?.conversation.reset();
+  }
+
+  /// 获取对话状态
+  static agent_types.ConversationStats? getConversationStats() {
+    return _agent?.conversation.stats();
+  }
+
+  /// 手动触发上下文压缩
+  static Future<String> compact() async {
+    final agent = await _getAgent();
+    return agent.handleCompact();
+  }
+
+  /// 获取可用工具列表
+  static List<Map<String, dynamic>> getAvailableTools() {
+    if (_agent == null) return [];
+    return _agent!.registry.getToolDefinitions()
+        .map((t) => {
+          'name': t.name,
+          'description': t.description,
+        })
         .toList();
+  }
 
-    final body = jsonEncode({
-      'model': model,
-      'max_tokens': 4096,
-      'system': systemPrompt,
-      'messages': userMessages,
-      'stream': true,
-    });
-
-    debugPrint('━━━ 流式请求体 ━━━');
-    debugPrint(const JsonEncoder.withIndent('  ').convert(jsonDecode(body)));
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-      request.headers.set('x-api-key', apiKey);
-      request.headers.set('anthropic-version', '2023-06-01');
-      final bytes = utf8.encode(body);
-      request.headers.set('Content-Length', bytes.length.toString());
-      request.add(bytes);
-
-      final response = await request.close().timeout(
-            const Duration(seconds: 120),
-            onTimeout: () => throw AgentException('请求超时'),
-          );
-
-      if (response.statusCode != 200) {
-        final raw = await response.transform(utf8.decoder).join();
-        debugPrint('━━━ 流式响应 [${response.statusCode}] ━━━');
-        debugPrint(raw);
-        throw AgentException('请求失败: HTTP ${response.statusCode}');
-      }
-
-      final lines = response
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
-      await for (final line in lines) {
-        if (!line.startsWith('data: ')) continue;
-        final data = line.substring(6).trim();
-        try {
-          final json = jsonDecode(data) as Map<String, dynamic>;
-          final type = json['type'] as String?;
-          if (type == 'content_block_delta') {
-            final delta = json['delta'] as Map<String, dynamic>?;
-            final text = delta?['text'] as String?;
-            if (text != null && text.isNotEmpty) {
-              yield text;
-            }
-          }
-        } catch (_) {
-          // 跳过解析失败的行
-        }
-      }
-    } catch (e) {
-      if (e is AgentException) rethrow;
-      debugPrint('Anthropic 流式异常: $e');
-      throw AgentException('请求失败: $e');
-    } finally {
-      client.close();
-    }
+  /// 强制重新创建 Agent（配置变化时调用）
+  static Future<void> recreate() async {
+    _agent = null;
+    _currentPlatform = null;
+    _currentModel = null;
+    await _getAgent(forceRecreate: true);
   }
 }
 

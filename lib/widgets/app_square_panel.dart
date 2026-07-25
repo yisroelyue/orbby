@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../config/panel_theme.dart';
 import '../screens/menu_screen.dart';
+import 'base_panel.dart';
 
 class AppInfo {
   const AppInfo({
@@ -54,20 +54,34 @@ class AppInfo {
       };
 }
 
-class AppSquarePanel extends StatefulWidget {
+class AppSquarePanel extends BasePanel {
   const AppSquarePanel({super.key});
 
   @override
   State<AppSquarePanel> createState() => _AppSquarePanelState();
 }
 
-class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
+class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   bool _panelEnabled = true;
   bool _loading = true;
-  bool _headerHovered = false;
   bool _panelHovered = false;
   List<AppInfo> _apps = [];
   int? _hoveredIndex;
+
+  @override
+  String get panelTitle => '应用中心';
+
+  @override
+  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/应用.svg');
+
+  @override
+  VoidCallback? get onHeaderTap => _openAppCenter;
+
+  @override
+  bool get panelEnabled => _panelEnabled || _loading;
+
+  @override
+  bool get panelHovered => _panelHovered;
 
   @override
   void initState() {
@@ -145,6 +159,12 @@ class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
     });
   }
 
+  @override
+  Widget buildContent(BuildContext context) {
+    // 实际内容在 build() 中渲染（需要 MouseRegion 包裹）
+    return const SizedBox.shrink();
+  }
+
   Widget _buildAppIcon(AppInfo app) {
     if (app.icon.startsWith('assets/')) {
       if (app.icon.endsWith('.svg')) {
@@ -185,7 +205,7 @@ class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
         child: Container(
           padding: const EdgeInsets.all(16),
           color: panelBg,
@@ -193,7 +213,7 @@ class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(),
+              buildHeader(),
               const SizedBox(height: 10),
               if (_loading)
                 Padding(
@@ -211,57 +231,6 @@ class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
                 )
               else
                 _buildContent(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: _openAppCenter,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered
-                ? hoverBg
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/svg/应用.svg',
-                width: 22,
-                height: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '应用中心',
-                  style: TextStyle(
-                    color: primaryText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _headerHovered ? 1.0 : 0.0,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: mutedText,
-                  size: 20,
-                ),
-              ),
             ],
           ),
         ),
@@ -316,9 +285,7 @@ class _AppSquarePanelState extends State<AppSquarePanel> with PanelThemeMixin {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
           decoration: BoxDecoration(
-            color: isHovered
-                ? hoverBg
-                : Colors.transparent,
+            color: isHovered ? hoverBg : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
@@ -462,8 +429,8 @@ class AppConfig {
           .toList();
     } catch (e) {
       debugPrint('Failed to load custom apps: $e');
-      return [];
     }
+    return [];
   }
 
   static Future<void> saveCustomApps(List<AppInfo> apps) async {

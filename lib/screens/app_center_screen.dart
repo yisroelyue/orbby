@@ -64,7 +64,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
       context: ctx,
       position: RelativeRect.fromLTRB(
           position.dx, position.dy, position.dx + 1, position.dy + 1),
-      color: const Color(0xFF2E2E2E),
+      color: const Color(0xFFF5F5F5),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       items: [
         if (alreadyIn)
@@ -72,9 +72,9 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             value: 'remove',
             child: Row(
               children: [
-                Icon(Icons.remove_circle_outline, color: Colors.white54, size: 18),
+                Icon(Icons.remove_circle_outline, color: Colors.black54, size: 18),
                 SizedBox(width: 8),
-                Text('从面板移除', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text('从面板移除', style: TextStyle(color: Colors.black54, fontSize: 14)),
               ],
             ),
           )
@@ -83,9 +83,9 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             value: 'add',
             child: Row(
               children: [
-                Icon(Icons.add_circle_outline, color: Colors.white54, size: 18),
+                Icon(Icons.add_circle_outline, color: Colors.black54, size: 18),
                 SizedBox(width: 8),
-                Text('加入显示面板', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text('加入显示面板', style: TextStyle(color: Colors.black54, fontSize: 14)),
               ],
             ),
           ),
@@ -128,17 +128,17 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
+        backgroundColor: const Color(0xFFF5F5F5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('确认删除',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
+            style: TextStyle(color: Colors.black87, fontSize: 16)),
         content: Text('确定要删除「${app.name}」吗？',
-            style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            style: const TextStyle(color: Colors.black54, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消',
-                style: TextStyle(color: Colors.white38, fontSize: 14)),
+                style: TextStyle(color: Colors.black38, fontSize: 14)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -187,45 +187,53 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF2A2A2A),
+      backgroundColor: Colors.transparent,
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTitleBar(),
-              if (!_loading) _buildPanelBar(),
-              if (_loading)
-                const Expanded(
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white54,
-                      strokeWidth: 2,
+        padding: const EdgeInsets.all(8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            color: const Color(0xFFF5F5F5),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTitleBar(),
+                  if (!_loading) _buildPanelBar(),
+                  if (_loading)
+                    const Expanded(
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.black26,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.only(top: 8),
+                        children: [
+                          _buildSection(
+                            title: 'Orbby应用',
+                            apps: _systemApps,
+                            isSystem: true,
+                          ),
+                          _buildSection(
+                            title: '用户应用',
+                            apps: _customApps,
+                            isSystem: false,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                )
-              else
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.only(top: 8),
-                    children: [
-                      _buildSection(
-                        title: 'Orbby应用',
-                        apps: _systemApps,
-                        isSystem: true,
-                      ),
-
-                      _buildSection(
-                        title: '用户应用',
-                        apps: _customApps,
-                        isSystem: false,
-                      ),
-                    ],
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
+      ),
     );
   }
 
@@ -240,7 +248,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
           child: Text(
             '应用中心',
             style: TextStyle(
-              color: Colors.white,
+              color: Colors.black87,
               fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
@@ -249,7 +257,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
         InteractiveIcon(
           size: 30,
           onTap: () => windowManager.hide(),
-          child: const Icon(Icons.close, color: Colors.white54, size: 18),
+          child: const Icon(Icons.close, color: Colors.black38, size: 18),
         ),
       ],
       ),
@@ -276,7 +284,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             const Text(
               '面板中显示',
               style: TextStyle(
-                color: Colors.white70,
+                color: Colors.black54,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -284,7 +292,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             const SizedBox(width: 6),
             Text(
               '(${filled.length}/$maxSlots)',
-              style: const TextStyle(color: Colors.white38, fontSize: 13),
+              style: const TextStyle(color: Colors.black38, fontSize: 13),
             ),
           ],
         ),
@@ -294,13 +302,13 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Center(
                 child: Text(
                   '右键下方应用来添加到显示面板',
-                  style: TextStyle(color: Colors.white38, fontSize: 13),
+                  style: TextStyle(color: Colors.black38, fontSize: 13),
                 ),
               ),
             )
@@ -343,7 +351,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: Colors.black.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -352,7 +360,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                       : Text(
                           app.name.isNotEmpty ? app.name[0] : '?',
                           style: const TextStyle(
-                            color: Colors.white54,
+                            color: Colors.black54,
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
                           ),
@@ -362,7 +370,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               const SizedBox(height: 6),
               Text(
                 app.name,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                style: const TextStyle(color: Colors.black87, fontSize: 12),
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
@@ -377,7 +385,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: Colors.black.withValues(alpha: 0.06),
           width: 1,
         ),
       ),
@@ -399,7 +407,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             Text(
               title,
               style: const TextStyle(
-                color: Colors.white70,
+                color: Colors.black54,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -407,7 +415,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             const SizedBox(width: 6),
             Text(
               '(${apps.length})',
-              style: const TextStyle(color: Colors.white38, fontSize: 13),
+              style: const TextStyle(color: Colors.black38, fontSize: 13),
             ),
           ],
         ),
@@ -417,13 +425,13 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 20),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Center(
               child: Text(
                 '暂无应用',
-                style: TextStyle(color: Colors.white38, fontSize: 13),
+                style: TextStyle(color: Colors.black38, fontSize: 13),
               ),
             ),
           )
@@ -467,8 +475,8 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                   height: 52,
                   decoration: BoxDecoration(
                     color: _isInPanel(app.id)
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.06),
+                        ? Colors.black.withValues(alpha: 0.10)
+                        : Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
@@ -477,7 +485,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                         : Text(
                             app.name.isNotEmpty ? app.name[0] : '?',
                             style: const TextStyle(
-                              color: Colors.white54,
+                              color: Colors.black54,
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
                             ),
@@ -494,11 +502,11 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                         width: 18,
                         height: 18,
                         decoration: BoxDecoration(
-                          color: Colors.black54,
+                          color: Colors.black26,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Icon(Icons.close,
-                            color: Colors.white38, size: 11),
+                            color: Colors.black38, size: 11),
                       ),
                     ),
                   ),
@@ -507,7 +515,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             const SizedBox(height: 6),
             Text(
               app.name,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+              style: const TextStyle(color: Colors.black87, fontSize: 12),
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
             ),
@@ -531,16 +539,16 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   width: 1.5,
                 ),
               ),
-              child: const Icon(Icons.add, color: Colors.white38, size: 24),
+              child: const Icon(Icons.add, color: Colors.black38, size: 24),
             ),
             const SizedBox(height: 6),
             const Text(
               '添加',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+              style: TextStyle(color: Colors.black38, fontSize: 12),
             ),
           ],
         ),
@@ -624,11 +632,11 @@ class _AddAppDialogState extends State<_AddAppDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF2A2A2A),
+      backgroundColor: const Color(0xFFF5F5F5),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Text(
         '添加应用',
-        style: TextStyle(color: Colors.white, fontSize: 16),
+        style: TextStyle(color: Colors.black87, fontSize: 16),
       ),
       content: SizedBox(
         width: 360,
@@ -646,14 +654,14 @@ class _AddAppDialogState extends State<_AddAppDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _nameCtrl,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              cursorColor: Colors.white70,
+              style: const TextStyle(color: Colors.black87, fontSize: 14),
+              cursorColor: Colors.black54,
               decoration: InputDecoration(
                 hintText: '应用名称',
                 hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.35), fontSize: 14),
+                    color: Colors.black.withValues(alpha: 0.35), fontSize: 14),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.06),
+                fillColor: Colors.black.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -671,21 +679,21 @@ class _AddAppDialogState extends State<_AddAppDialog> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     children: [
                       const Icon(Icons.folder_open_rounded,
-                          color: Colors.white54, size: 18),
+                          color: Colors.black54, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _selectedPath ?? '选择应用文件',
                           style: TextStyle(
                             color: _selectedPath != null
-                                ? Colors.white70
-                                : Colors.white.withValues(alpha: 0.35),
+                                ? Colors.black54
+                                : Colors.black.withValues(alpha: 0.35),
                             fontSize: 14,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -705,12 +713,12 @@ class _AddAppDialogState extends State<_AddAppDialog> {
                           horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: _selectedPluginId == p.id
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.04),
+                            ? Colors.black.withValues(alpha: 0.10)
+                            : Colors.black.withValues(alpha: 0.03),
                         borderRadius: BorderRadius.circular(8),
                         border: _selectedPluginId == p.id
                             ? Border.all(
-                                color: Colors.white.withValues(alpha: 0.2))
+                                color: Colors.black.withValues(alpha: 0.15))
                             : null,
                       ),
                       child: Row(
@@ -719,14 +727,14 @@ class _AddAppDialogState extends State<_AddAppDialog> {
                             child: Text(
                               p.name,
                               style: const TextStyle(
-                                  color: Colors.white, fontSize: 14),
+                                  color: Colors.black87, fontSize: 14),
                             ),
                           ),
                           if (p.description.isNotEmpty)
                             Text(
                               p.description,
                               style: const TextStyle(
-                                  color: Colors.white38, fontSize: 12),
+                                  color: Colors.black38, fontSize: 12),
                             ),
                         ],
                       ),
@@ -740,7 +748,7 @@ class _AddAppDialogState extends State<_AddAppDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
             '取消',
-            style: TextStyle(color: Colors.white38, fontSize: 14),
+            style: TextStyle(color: Colors.black38, fontSize: 14),
           ),
         ),
         TextButton(
@@ -759,7 +767,7 @@ class _AddAppDialogState extends State<_AddAppDialog> {
           },
           child: const Text(
             '添加',
-            style: TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(color: Colors.black87, fontSize: 14),
           ),
         ),
       ],
@@ -774,14 +782,14 @@ class _AddAppDialogState extends State<_AddAppDialog> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: active
-              ? Colors.white.withValues(alpha: 0.12)
-              : Colors.white.withValues(alpha: 0.04),
+              ? Colors.black.withValues(alpha: 0.10)
+              : Colors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.white : Colors.white38,
+            color: active ? Colors.black87 : Colors.black38,
             fontSize: 13,
           ),
         ),

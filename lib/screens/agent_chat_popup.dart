@@ -413,23 +413,29 @@ class _AgentChatPopupState extends State<AgentChatPopup>
         fontFamily: 'Microsoft YaHei',
       ),
       home: Scaffold(
-        backgroundColor: _theme.scaffoldBg,
+        backgroundColor: Colors.transparent,
         body: DragToResizeArea(
-          child: Container(
-            color: _theme.scaffoldBg,
-            child: Column(
-              children: [
-                _buildHeader(),
-                Expanded(
-                  child: Row(
-                    children: [
-                      _buildSidebar(),
-                      Container(width: 1, color: _theme.dividerColor),
-                      Expanded(child: _buildChatArea()),
-                    ],
-                  ),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                color: _theme.scaffoldBg,
+                child: Column(
+                  children: [
+                    _buildHeader(),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildSidebar(),
+                          Container(width: 1, color: _theme.dividerColor),
+                          Expanded(child: _buildChatArea()),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

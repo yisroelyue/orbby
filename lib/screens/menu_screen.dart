@@ -9,12 +9,17 @@ import '../config/settings.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/balance_panel.dart';
 import '../widgets/control_panel.dart';
+import '../widgets/daily_quote_panel.dart';
 import '../widgets/favorites_panel.dart';
 import '../widgets/frosted_panel.dart';
 import '../widgets/interactive_icon.dart';
+import '../widgets/news_panel.dart';
 import '../widgets/photo_wall_panel.dart';
+import '../widgets/schedule_panel.dart';
+import '../widgets/script_panel.dart';
 import '../widgets/todo_panel.dart';
 import '../widgets/translate_panel.dart';
+import '../widgets/weather_panel.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -48,6 +53,11 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _favoritesHidden = false;
   bool _appsHidden = false;
   bool _controlHidden = false;
+  bool _weatherHidden = false;
+  bool _newsHidden = false;
+  bool _scriptHidden = false;
+  bool _scheduleHidden = false;
+  bool _dailyQuoteHidden = false;
   Color _menuBgColor = const Color(0xFFA1A1A1);
   bool _isDark = true;
   String _userName = '';
@@ -92,6 +102,11 @@ class _MenuScreenState extends State<MenuScreen> {
       _favoritesHidden = !s.showFavoritesPanel;
       _appsHidden = !s.showAppSquarePanel;
       _controlHidden = !s.showControlPanel;
+      _weatherHidden = !s.showWeatherPanel;
+      _newsHidden = !s.showNewsPanel;
+      _scriptHidden = !s.showScriptPanel;
+      _scheduleHidden = !s.showSchedulePanel;
+      _dailyQuoteHidden = !s.showDailyQuotePanel;
       _isDark = s.appTheme == 'dark';
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
@@ -129,6 +144,16 @@ class _MenuScreenState extends State<MenuScreen> {
         s.showTranslatePanel = true;
       case 'control':
         s.showControlPanel = true;
+      case 'weather':
+        s.showWeatherPanel = true;
+      case 'news':
+        s.showNewsPanel = true;
+      case 'script':
+        s.showScriptPanel = true;
+      case 'schedule':
+        s.showSchedulePanel = true;
+      case 'daily_quote':
+        s.showDailyQuotePanel = true;
     }
     await SettingsService.save(s);
     MenuScreen.triggerRefresh();
@@ -141,49 +166,43 @@ class _MenuScreenState extends State<MenuScreen> {
       theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: FrostedPanel(
-          color: _menuBgColor,
-          child: Stack(
-            children: [
-              // 底层：顶部 1/8 图片背景
-              if (_menuBgImage.isNotEmpty)
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final topHeight = constraints.maxHeight / 8;
-                        return SizedBox(
-                          height: topHeight,
-                          width: double.infinity,
-                          child: Image.asset(
-                            _menuBgImage,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.center,
-                          ),
-                        );
-                      },
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: FrostedPanel(
+              color: _menuBgColor,
+              child: Stack(
+                children: [
+                  // 底层：全屏图片背景
+                  if (_menuBgImage.isNotEmpty)
+                    Positioned.fill(
+                      child: Image.asset(
+                        _menuBgImage,
+                        fit: BoxFit.fitHeight,
+                        alignment: Alignment.center,
+                      ),
+                    ),
+                  // 上层：原有内容
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    child: Column(
+                      children: [
+                        // 顶行
+                        _buildTopRow(),
+                        // 面板区域
+                        Expanded(child: _buildPanelList()),
+                        // 底部功能按钮
+                        _buildBottomRow(),
+                      ],
                     ),
                   ),
-                ),
-              // 上层：原有内容
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                child: Column(
-                  children: [
-                    // 顶行
-                    _buildTopRow(),
-                    // 面板区域
-                    Expanded(child: _buildPanelList()),
-                    // 底部功能按钮
-                    _buildBottomRow(),
-                  ],
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -278,25 +297,40 @@ class _MenuScreenState extends State<MenuScreen> {
       child: ListView.separated(
       primary: true,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: 7,
+      itemCount: 12,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, index) {
         if (index == 0) {
-          return const PhotoWallPanel();
+          return const DailyQuotePanel();
         }
         if (index == 1) {
-          return const BalancePanel();
+          return const PhotoWallPanel();
         }
         if (index == 2) {
-          return const TranslatePanel();
+          return const BalancePanel();
         }
         if (index == 3) {
-          return const TodoPanel();
+          return const TranslatePanel();
         }
         if (index == 4) {
-          return const FavoritesPanel();
+          return const WeatherPanel();
         }
         if (index == 5) {
+          return const NewsPanel();
+        }
+        if (index == 6) {
+          return const SchedulePanel();
+        }
+        if (index == 7) {
+          return const ScriptPanel();
+        }
+        if (index == 8) {
+          return const TodoPanel();
+        }
+        if (index == 9) {
+          return const FavoritesPanel();
+        }
+        if (index == 10) {
           return const AppSquarePanel();
         }
         return const ControlPanel();
@@ -328,6 +362,21 @@ class _MenuScreenState extends State<MenuScreen> {
     }
     if (_controlHidden) {
       hiddenIcons.add(_buildPanelActionIcon('control', Icons.tune_rounded, () => _showPanel('control')));
+    }
+    if (_weatherHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('weather', Icons.cloud_rounded, () => _showPanel('weather')));
+    }
+    if (_newsHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('news', Icons.newspaper_rounded, () => _showPanel('news')));
+    }
+    if (_scriptHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('script', Icons.code_rounded, () => _showPanel('script')));
+    }
+    if (_scheduleHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('schedule', Icons.calendar_today_rounded, () => _showPanel('schedule')));
+    }
+    if (_dailyQuoteHidden) {
+      hiddenIcons.add(_buildPanelActionIcon('daily_quote', Icons.format_quote_rounded, () => _showPanel('daily_quote')));
     }
 
     return Padding(

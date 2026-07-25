@@ -1,26 +1,36 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../config/panel_theme.dart';
 import '../models/favorite_item.dart';
 import '../screens/menu_screen.dart';
 import '../services/favorites_service.dart';
+import 'base_panel.dart';
 
-class FavoritesPanel extends StatefulWidget {
+class FavoritesPanel extends BasePanel {
   const FavoritesPanel({super.key});
 
   @override
   State<FavoritesPanel> createState() => _FavoritesPanelState();
 }
 
-class _FavoritesPanelState extends State<FavoritesPanel> with PanelThemeMixin {
+class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
   List<FavoriteFolder> _folders = [];
   bool _panelEnabled = true;
   bool _loading = true;
-  bool _headerHovered = false;
+
+  @override
+  String get panelTitle => '我的收藏';
+
+  @override
+  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/收藏.svg');
+
+  @override
+  VoidCallback? get onHeaderTap => () => _openEditor();
+
+  @override
+  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   void initState() {
@@ -63,94 +73,22 @@ class _FavoritesPanelState extends State<FavoritesPanel> with PanelThemeMixin {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!_panelEnabled && !_loading) {
-      return const SizedBox.shrink();
+  Widget buildContent(BuildContext context) {
+    if (_loading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: tertiaryText,
+            ),
+          ),
+        ),
+      );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        color: panelBg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 10),
-            if (_loading)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: tertiaryText,
-                    ),
-                  ),
-                ),
-              )
-            else
-              _buildContent(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: () => _openEditor(),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered
-                ? hoverBg
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/svg/收藏.svg',
-                width: 22,
-                height: 22,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '我的收藏',
-                style: TextStyle(
-                  color: primaryText,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _headerHovered ? 1.0 : 0.0,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: mutedText,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
     if (_folders.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -179,7 +117,7 @@ class _FavoritesPanelState extends State<FavoritesPanel> with PanelThemeMixin {
           itemCount: displayFolders.length,
           itemBuilder: (_, index) => _buildFolderTile(displayFolders[index]),
         ),
-      );
+    );
   }
 
   Future<void> _openFolder(FavoriteFolder folder) async {
@@ -255,8 +193,8 @@ class _FolderTileWidgetState extends State<_FolderTileWidget> {
                 scale: _hovered ? 1.1 : 1.0,
                 duration: const Duration(milliseconds: 150),
                 child: Container(
-                  width: 50,
-                  height: 50,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: widget.elementBg,
                     borderRadius: BorderRadius.circular(14),

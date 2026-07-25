@@ -233,37 +233,46 @@ class _TodoEditScreenState extends State<TodoEditScreen>
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
+      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       scaffoldMessengerKey: _messengerKey,
       navigatorKey: _navigatorKey,
       home: Scaffold(
-          backgroundColor: const Color(0xFF2A2A2A),
-          body: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTitleBar(),
-                  const SizedBox(height: 10),
-                  if (!_loading) _buildTabBar(),
-                  const SizedBox(height: 8),
-                  if (_loading)
-                    const Expanded(
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white54,
-                          strokeWidth: 2,
+        backgroundColor: Colors.transparent,
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              color: const Color(0xFFF5F5F5),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTitleBar(),
+                    const SizedBox(height: 10),
+                    if (!_loading) _buildTabBar(),
+                    const SizedBox(height: 8),
+                    if (_loading)
+                      const Expanded(
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.black26,
+                            strokeWidth: 2,
+                          ),
                         ),
-                      ),
-                    )
-                  else
-                    Expanded(child: _buildTabViews()),
-                  const SizedBox(height: 8),
-                  _buildAddRow(),
-                ],
+                      )
+                    else
+                      Expanded(child: _buildTabViews()),
+                    const SizedBox(height: 8),
+                    _buildAddRow(),
+                  ],
+                ),
               ),
             ),
+          ),
         ),
+      ),
     );
   }
 
@@ -274,7 +283,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
         onPressed: onTap,
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          foregroundColor: Colors.white54,
+          foregroundColor: Colors.black54,
           textStyle: const TextStyle(fontSize: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         ),
@@ -288,13 +297,13 @@ class _TodoEditScreenState extends State<TodoEditScreen>
       onPanStart: (_) => windowManager.startDragging(),
       child: Row(
       children: [
-        const Icon(Icons.edit_note_rounded, color: Colors.white70, size: 22),
+        const Icon(Icons.edit_note_rounded, color: Colors.black54, size: 22),
         const SizedBox(width: 8),
         const Expanded(
           child: Text(
             '笔记管理',
             style: TextStyle(
-              color: Colors.white,
+              color: Colors.black87,
               fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
@@ -306,7 +315,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
         const SizedBox(width: 8),
         InteractiveIcon(
           onTap: () => windowManager.hide(),
-          child: const Icon(Icons.close, color: Colors.white54, size: 20),
+          child: const Icon(Icons.close, color: Colors.black38, size: 20),
         ),
       ],
       ),
@@ -319,8 +328,8 @@ class _TodoEditScreenState extends State<TodoEditScreen>
       isScrollable: false,
       dividerHeight: 0,
       indicatorSize: TabBarIndicatorSize.label,
-      labelColor: Colors.white,
-      unselectedLabelColor: Colors.white38,
+      labelColor: Colors.black87,
+      unselectedLabelColor: Colors.black38,
       indicatorColor: Colors.greenAccent,
       labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       unselectedLabelStyle: const TextStyle(fontSize: 13),
@@ -346,7 +355,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
       return Center(
         child: Text(
           items == _uncompleted ? '暂无笔记' : '暂无已完成项',
-          style: const TextStyle(color: Colors.white24, fontSize: 13),
+          style: const TextStyle(color: Colors.black26, fontSize: 13),
         ),
       );
     }
@@ -373,11 +382,11 @@ class _TodoEditScreenState extends State<TodoEditScreen>
         ),
         decoration: BoxDecoration(
           color: isEditing
-              ? Colors.white.withValues(alpha: 0.10)
-              : Colors.white.withValues(alpha: 0.04),
+              ? Colors.black.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(isEditing ? 12 : 8),
           border: isEditing
-              ? Border.all(color: Colors.white.withValues(alpha: 0.12))
+              ? Border.all(color: Colors.black.withValues(alpha: 0.08))
               : null,
         ),
         child: isEditing
@@ -391,7 +400,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                         child: Icon(
                           isCompleted ? Icons.check_box : Icons.check_box_outline_blank,
                           size: 18,
-                          color: isCompleted ? Colors.greenAccent : Colors.white38,
+                          color: isCompleted ? Colors.greenAccent : Colors.black38,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -406,7 +415,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                         ),
                       const Text(
                         '编辑中',
-                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                        style: TextStyle(color: Colors.black38, fontSize: 11),
                       ),
                     ],
                   ),
@@ -416,10 +425,10 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                     autofocus: true,
                     maxLines: 6,
                     minLines: 4,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    style: const TextStyle(color: Colors.black87, fontSize: 16),
                     decoration: InputDecoration(
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.08),
+                      fillColor: Colors.black.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -466,12 +475,12 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                       child: Text(
                         item.title,
                         style: TextStyle(
-                          color: isCompleted ? Colors.white38 : Colors.white,
+                          color: isCompleted ? Colors.black38 : Colors.black87,
                           fontSize: 14,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,
-                          decorationColor: Colors.white38,
+                          decorationColor: Colors.black38,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -482,7 +491,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                     InteractiveIcon(
                       size: 24,
                       onTap: () => _toggleTodo(item.id),
-                      child: const Icon(Icons.undo_rounded, color: Colors.white38, size: 14),
+                      child: const Icon(Icons.undo_rounded, color: Colors.black38, size: 14),
                     )
                   else
                     InteractiveIcon(
@@ -493,12 +502,12 @@ class _TodoEditScreenState extends State<TodoEditScreen>
                   InteractiveIcon(
                     size: 24,
                     onTap: () => _startEdit(item),
-                    child: const Icon(Icons.edit, color: Colors.white24, size: 14),
+                    child: const Icon(Icons.edit, color: Colors.black26, size: 14),
                   ),
                   InteractiveIcon(
                     size: 24,
                     onTap: () => _deleteTodo(item.id),
-                    child: const Icon(Icons.close, color: Colors.white24, size: 14),
+                    child: const Icon(Icons.close, color: Colors.black26, size: 14),
                   ),
                 ],
               ),
@@ -509,19 +518,19 @@ class _TodoEditScreenState extends State<TodoEditScreen>
   Widget _buildAddRow() {
     return Row(
       children: [
-        const Icon(Icons.add, color: Colors.white38, size: 20),
+        const Icon(Icons.add, color: Colors.black38, size: 20),
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
             controller: _addController,
-            cursorColor: Colors.white70,
+            cursorColor: Colors.black54,
             minLines: 1,
             maxLines: 6,
             keyboardType: TextInputType.multiline,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            style: const TextStyle(color: Colors.black87, fontSize: 16),
             decoration: InputDecoration(
               hintText: '添加新笔记...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
+              hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.35)),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
               border: InputBorder.none,
@@ -531,7 +540,7 @@ class _TodoEditScreenState extends State<TodoEditScreen>
         InteractiveIcon(
           size: 32,
           onTap: _addTodo,
-          child: const Icon(Icons.send_rounded, color: Colors.white54, size: 18),
+          child: const Icon(Icons.send_rounded, color: Colors.black38, size: 18),
         ),
       ],
     );

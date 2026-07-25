@@ -266,41 +266,50 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
   @override
   Widget build(BuildContext context) {
     final body = Scaffold(
-      backgroundColor: const Color(0xFF2A2A2A),
+      backgroundColor: Colors.transparent,
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-        child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.all(8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            color: const Color(0xFFF5F5F5),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+              child: Stack(
                 children: [
-                  _buildTitleBar(),
-                  const SizedBox(height: 10),
-                  if (!_loading) _buildTabBar(),
-                  const SizedBox(height: 8),
-                  if (_loading)
-                    const Expanded(
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white54, strokeWidth: 2,
-                        ),
-                      ),
-                    )
-                  else
-                    Expanded(child: _buildTabViews()),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTitleBar(),
+                      const SizedBox(height: 10),
+                      if (!_loading) _buildTabBar(),
+                      const SizedBox(height: 8),
+                      if (_loading)
+                        const Expanded(
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.black26, strokeWidth: 2,
+                            ),
+                          ),
+                        )
+                      else
+                        Expanded(child: _buildTabViews()),
+                    ],
+                  ),
+                  if (_showNewFolderDialog) _buildOverlay(_buildNewFolderDialog()),
+                  if (_showDeleteFolderDialog) _buildOverlay(_buildDeleteFolderDialog()),
+                  if (_showMoveDialog) _buildOverlay(_buildMoveDialog()),
                 ],
               ),
-              if (_showNewFolderDialog) _buildOverlay(_buildNewFolderDialog()),
-              if (_showDeleteFolderDialog) _buildOverlay(_buildDeleteFolderDialog()),
-              if (_showMoveDialog) _buildOverlay(_buildMoveDialog()),
-            ],
+            ),
           ),
         ),
+      ),
     );
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
+      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       scaffoldMessengerKey: _messengerKey,
       home: body,
     );
@@ -322,28 +331,28 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       onPanStart: (_) => windowManager.startDragging(),
       child: Row(
       children: [
-        const Icon(Icons.folder_rounded, color: Colors.white70, size: 22),
+        const Icon(Icons.folder_rounded, color: Colors.black54, size: 22),
         const SizedBox(width: 8),
         const Expanded(
           child: Text('收藏管理',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+            style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w600),
           ),
         ),
         InteractiveIcon(
           size: 30,
           onTap: _uploadFile,
-          child: const Icon(Icons.add, color: Colors.white, size: 20),
+          child: const Icon(Icons.add, color: Colors.black87, size: 20),
         ),
         const SizedBox(width: 4),
         InteractiveIcon(
           size: 30,
           onTap: _openNewFolderDialog,
-          child: const Icon(Icons.create_new_folder, color: Colors.white, size: 20),
+          child: const Icon(Icons.create_new_folder, color: Colors.black87, size: 20),
         ),
         const SizedBox(width: 4),
         InteractiveIcon(
           onTap: () => windowManager.hide(),
-          child: const Icon(Icons.close, color: Colors.white, size: 20),
+          child: const Icon(Icons.close, color: Colors.black54, size: 20),
         ),
       ],
       ),
@@ -370,8 +379,8 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
             dividerHeight: 0,
             tabAlignment: TabAlignment.start,
             indicatorSize: TabBarIndicatorSize.label,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white38,
+            labelColor: Colors.black87,
+            unselectedLabelColor: Colors.black38,
             indicatorColor: Colors.greenAccent,
             labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
@@ -385,7 +394,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
           InteractiveIcon(
             size: 28,
             onTap: () => _openDeleteFolderDialog(_folders[_tabIndex - 1].id),
-            child: const Icon(Icons.delete_outline, color: Colors.white, size: 18),
+            child: const Icon(Icons.delete_outline, color: Colors.black54, size: 18),
           ),
         ],
       ],
@@ -412,7 +421,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       return Center(
         child: Text(
           folderId == null ? '暂无未分类文件' : '此收藏夹为空',
-          style: const TextStyle(color: Colors.white24, fontSize: 13),
+          style: const TextStyle(color: Colors.black26, fontSize: 13),
         ),
       );
     }
@@ -431,17 +440,17 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
           margin: const EdgeInsets.only(bottom: 2),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
-              Icon(_fileIcon(item.filePath), size: 18, color: Colors.white38),
+              Icon(_fileIcon(item.filePath), size: 18, color: Colors.black38),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   item.displayName,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: const TextStyle(color: Colors.black87, fontSize: 14),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -452,12 +461,12 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
                   size: 24,
                   onTap: () => _openMoveDialog(item.id),
                   child: const Icon(Icons.drive_file_move_outline,
-                      color: Colors.white, size: 16),
+                      color: Colors.black54, size: 16),
                 ),
               InteractiveIcon(
                 size: 24,
                 onTap: () => _deleteItem(item.id),
-                child: const Icon(Icons.close, color: Colors.white, size: 14),
+                child: const Icon(Icons.close, color: Colors.black38, size: 14),
               ),
             ],
           ),
@@ -473,7 +482,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       width: 360,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -481,18 +490,18 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('新建收藏夹',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           TextField(
             controller: _newFolderController,
             autofocus: true,
-            cursorColor: Colors.white70,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+            cursorColor: Colors.black54,
+            style: const TextStyle(color: Colors.black87, fontSize: 15),
             decoration: InputDecoration(
               hintText: '输入收藏夹名称...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
+              hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.35)),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.08),
+              fillColor: Colors.black.withValues(alpha: 0.05),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,
@@ -507,12 +516,12 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
             children: [
               TextButton(
                 onPressed: _cancelNewFolder,
-                child: const Text('取消', style: TextStyle(color: Colors.white70)),
+                child: const Text('取消', style: TextStyle(color: Colors.black54)),
               ),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: _confirmNewFolder,
-                child: const Text('创建', style: TextStyle(color: Colors.white)),
+                child: const Text('创建', style: TextStyle(color: Colors.black87)),
               ),
             ],
           ),
@@ -526,7 +535,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       width: 360,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -534,22 +543,22 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('删除收藏夹',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
           const Text('删除后其中的文件将移至未分类',
-              style: TextStyle(color: Colors.white54, fontSize: 14)),
+              style: TextStyle(color: Colors.black54, fontSize: 14)),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
                 onPressed: _cancelDeleteFolder,
-                child: const Text('取消', style: TextStyle(color: Colors.white70)),
+                child: const Text('取消', style: TextStyle(color: Colors.black54)),
               ),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: _confirmDeleteFolder,
-                child: const Text('删除', style: TextStyle(color: Colors.white)),
+                child: const Text('删除', style: TextStyle(color: Colors.black87)),
               ),
             ],
           ),
@@ -563,7 +572,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       width: 320,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -571,7 +580,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('移动到收藏夹',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           ..._buildMoveOptions(),
           const SizedBox(height: 8),
@@ -579,7 +588,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _cancelMove,
-              child: const Text('取消', style: TextStyle(color: Colors.white70)),
+              child: const Text('取消', style: TextStyle(color: Colors.black54)),
             ),
           ),
         ],
@@ -605,7 +614,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
       widgets.add(const Padding(
         padding: EdgeInsets.symmetric(vertical: 8),
         child: Text('没有可用的目标收藏夹',
-            style: TextStyle(color: Colors.white38, fontSize: 13)),
+            style: TextStyle(color: Colors.black38, fontSize: 13)),
       ));
     }
 
@@ -620,11 +629,11 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           alignment: Alignment.centerLeft,
-          foregroundColor: Colors.white,
+          foregroundColor: Colors.black87,
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: Colors.white54),
+            Icon(icon, size: 18, color: Colors.black54),
             const SizedBox(width: 8),
             Text(name, style: const TextStyle(fontSize: 14)),
           ],

@@ -51,6 +51,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showFavoritesPanel = true;
   bool _showAppSquarePanel = true;
   bool _showControlPanel = true;
+  bool _showWeatherPanel = true;
+  bool _showNewsPanel = true;
+  bool _showScriptPanel = true;
+  bool _showSchedulePanel = true;
+  bool _showDailyQuotePanel = true;
   bool _showVibePanel = true;
   bool _claudeHookInstalled = false;
   bool _installingClaudeHooks = false;
@@ -62,11 +67,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 内置菜单背景图列表
   static const _menuBgOptions = <String>[
     '',
-    'assets/png/menuBg/1.jpg',
-    'assets/png/menuBg/2.jpg',
-    'assets/png/menuBg/3.jpg',
-    'assets/png/menuBg/4.jpg',
-    'assets/png/menuBg/5.jpg',
+    'assets/png/menuBg/11826657.jpg',
+    'assets/png/menuBg/70927355.jpg',
+    'assets/png/menuBg/80939131.png',
+    'assets/png/menuBg/55754261.png',
+    'assets/png/menuBg/95782214.png',
+    'assets/png/menuBg/80039502.png',
+    'assets/png/menuBg/13889129.png',
   ];
 
   static const _languages = {'zh': '中文', 'en': 'English'};
@@ -118,6 +125,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showFavoritesPanel = s.showFavoritesPanel;
       _showAppSquarePanel = s.showAppSquarePanel;
       _showControlPanel = s.showControlPanel;
+      _showWeatherPanel = s.showWeatherPanel;
+      _showNewsPanel = s.showNewsPanel;
+      _showScriptPanel = s.showScriptPanel;
+      _showSchedulePanel = s.showSchedulePanel;
+      _showDailyQuotePanel = s.showDailyQuotePanel;
       _showVibePanel = s.showVibePanel;
       _petStyle = s.petStyle;
       _menuAutoHideDelay = s.menuAutoHideDelay;
@@ -390,6 +402,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildPanelToggle('应用中心', _showAppSquarePanel, (v) => setState(() => _showAppSquarePanel = v)),
           _buildThinDivider(),
           _buildPanelToggle('控制面板', _showControlPanel, (v) => setState(() => _showControlPanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('天气', _showWeatherPanel, (v) => setState(() => _showWeatherPanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('新闻', _showNewsPanel, (v) => setState(() => _showNewsPanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('脚本库', _showScriptPanel, (v) => setState(() => _showScriptPanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('日程', _showSchedulePanel, (v) => setState(() => _showSchedulePanel = v)),
+          _buildThinDivider(),
+          _buildPanelToggle('每日一言', _showDailyQuotePanel, (v) => setState(() => _showDailyQuotePanel = v)),
         ],
       ),
     ];
@@ -738,42 +760,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           const Text('菜单背景', style: TextStyle(color: Color(0xFF555555), fontSize: 14)),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _menuBgOptions.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, index) {
-                final path = _menuBgOptions[index];
-                final isSelected = path == _menuBgImage;
-                final isNone = path.isEmpty;
-                return GestureDetector(
-                  onTap: () => setState(() => _menuBgImage = path),
-                  child: Container(
-                    width: 56,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF66BB6A)
-                            : Colors.black.withValues(alpha: 0.1),
-                        width: isSelected ? 2.5 : 1,
-                      ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _menuBgOptions.map((path) {
+              final isSelected = path == _menuBgImage;
+              final isNone = path.isEmpty;
+              return GestureDetector(
+                onTap: () => setState(() => _menuBgImage = path),
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF66BB6A)
+                          : Colors.black.withValues(alpha: 0.1),
+                      width: isSelected ? 2.5 : 1,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: isNone
-                        ? Container(
-                            color: const Color(0xFFE0E0E0),
-                            child: const Center(
-                              child: Text('无', style: TextStyle(color: Color(0xFF999999), fontSize: 13)),
-                            ),
-                          )
-                        : Image.asset(path, fit: BoxFit.cover),
                   ),
-                );
-              },
-            ),
+                  clipBehavior: Clip.antiAlias,
+                  child: isNone
+                      ? Container(
+                          color: const Color(0xFFE0E0E0),
+                          child: const Center(
+                            child: Text('无', style: TextStyle(color: Color(0xFF999999), fontSize: 13)),
+                          ),
+                        )
+                      : Image.asset(path, fit: BoxFit.cover),
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -1036,6 +1054,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showFavoritesPanel: _showFavoritesPanel,
       showAppSquarePanel: _showAppSquarePanel,
       showControlPanel: _showControlPanel,
+      showWeatherPanel: _showWeatherPanel,
+      showNewsPanel: _showNewsPanel,
+      showScriptPanel: _showScriptPanel,
+      showSchedulePanel: _showSchedulePanel,
+      showDailyQuotePanel: _showDailyQuotePanel,
       showVibePanel: _showVibePanel,
       petStyle: _petStyle,
       menuAutoHideDelay: _menuAutoHideDelay,

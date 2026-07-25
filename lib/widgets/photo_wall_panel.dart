@@ -5,23 +5,52 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../config/settings.dart';
-import '../config/panel_theme.dart';
 import '../screens/menu_screen.dart';
 import '../services/photo_wall_service.dart';
+import 'base_panel.dart';
 
-class PhotoWallPanel extends StatefulWidget {
+class PhotoWallPanel extends BasePanel {
   const PhotoWallPanel({super.key});
 
   @override
   State<PhotoWallPanel> createState() => _PhotoWallPanelState();
 }
 
-class _PhotoWallPanelState extends State<PhotoWallPanel> with PanelThemeMixin {
+class _PhotoWallPanelState extends BasePanelState<PhotoWallPanel> {
   List<String> _photos = [];
   bool _panelEnabled = true;
   bool _loading = true;
-  bool _headerHovered = false;
   Timer? _shuffleTimer;
+
+  @override
+  String get panelTitle => '照片墙';
+
+  @override
+  PanelIcon get panelIcon => const PanelIcon.icon(Icons.photo_library_rounded);
+
+  @override
+  Color get panelIconColor => secondaryText;
+
+  @override
+  VoidCallback? get onHeaderTap => _addPhotos;
+
+  @override
+  bool get panelEnabled => _panelEnabled || _loading;
+
+  @override
+  List<Widget> buildHeaderActions() {
+    return [
+      AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: 1.0,
+        child: Icon(
+          Icons.add_photo_alternate_rounded,
+          color: mutedText,
+          size: 20,
+        ),
+      ),
+    ];
+  }
 
   @override
   void initState() {
@@ -55,7 +84,6 @@ class _PhotoWallPanelState extends State<PhotoWallPanel> with PanelThemeMixin {
   Future<void> _fetch() async {
     final settings = await SettingsService.load();
     final photos = await PhotoWallService.loadPhotos();
-    // 过滤掉已经不存在的文件
     final valid = photos.where((p) => File(p).existsSync()).toList();
     if (valid.length != photos.length) {
       await PhotoWallService.savePhotos(valid);
@@ -88,80 +116,19 @@ class _PhotoWallPanelState extends State<PhotoWallPanel> with PanelThemeMixin {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!_panelEnabled && !_loading) {
-      return const SizedBox.shrink();
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        color: panelBg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 10),
-            _buildContent(),
-          ],
-        ),
-      ),
+  Widget buildHeader() {
+    return _PhotoWallHeader(
+      icon: buildIconWidget(),
+      title: panelTitle,
+      titleColor: primaryText,
+      hoverBg: hoverBg,
+      mutedText: mutedText,
+      onTap: _addPhotos,
     );
   }
 
-  Widget _buildHeader() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _headerHovered = true),
-      onExit: (_) => setState(() => _headerHovered = false),
-      child: GestureDetector(
-        onTap: _addPhotos,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _headerHovered
-                ? hoverBg
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.photo_library_rounded,
-                color: secondaryText,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '照片墙',
-                  style: TextStyle(
-                    color: primaryText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _headerHovered ? 1.0 : 0.0,
-                child: Icon(
-                  Icons.add_photo_alternate_rounded,
-                  color: mutedText,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
+  @override
+  Widget buildContent(BuildContext context) {
     if (_loading) {
       return SizedBox(
         height: 150,
@@ -179,10 +146,8 @@ class _PhotoWallPanelState extends State<PhotoWallPanel> with PanelThemeMixin {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 左侧大图
           Expanded(child: _buildLargePhoto(0)),
           const SizedBox(width: 10),
-          // 右侧 2×2 正方形网格
           IntrinsicWidth(
             child: Column(
               children: [
@@ -267,6 +232,79 @@ class _PhotoWallPanelState extends State<PhotoWallPanel> with PanelThemeMixin {
             Icons.add_rounded,
             color: tertiaryText,
             size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// PhotoWallPanel 专用 header，带添加照片图标
+class _PhotoWallHeader extends StatefulWidget {
+  const _PhotoWallHeader({
+    required this.icon,
+    required this.title,
+    required this.titleColor,
+    required this.hoverBg,
+    required this.mutedText,
+    this.onTap,
+  });
+
+  final Widget icon;
+  final String title;
+  final Color titleColor;
+  final Color hoverBg;
+  final Color mutedText;
+  final VoidCallback? onTap;
+
+  @override
+  State<_PhotoWallHeader> createState() => _PhotoWallHeaderState();
+}
+
+class _PhotoWallHeaderState extends State<_PhotoWallHeader> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              widget.icon,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: TextStyle(
+                    color: widget.titleColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: _hovered ? 1.0 : 0.0,
+                child: Icon(
+                  Icons.add_photo_alternate_rounded,
+                  color: widget.mutedText,
+                  size: 20,
+                ),
+              ),
+            ],
           ),
         ),
       ),

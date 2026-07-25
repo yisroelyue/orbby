@@ -1,25 +1,24 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
 import '../screens/menu_screen.dart';
-import '../services/translate_service.dart';
+import '../services/llm_service.dart';
 import 'base_panel.dart';
 import 'interactive_icon.dart';
 
-class TranslatePanel extends BasePanel {
-  const TranslatePanel({super.key});
+class WeatherPanel extends BasePanel {
+  const WeatherPanel({super.key});
 
   @override
-  State<TranslatePanel> createState() => _TranslatePanelState();
+  State<WeatherPanel> createState() => _WeatherPanelState();
 }
 
-class _TranslatePanelState extends BasePanelState<TranslatePanel> {
+class _WeatherPanelState extends BasePanelState<WeatherPanel> {
   bool _panelEnabled = true;
   bool _loading = true;
-  bool _isTranslating = false;
+  bool _isQuerying = false;
   bool _isError = false;
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
@@ -27,10 +26,10 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
   Timer? _clearTimer;
 
   @override
-  String get panelTitle => '翻译';
+  String get panelTitle => '天气';
 
   @override
-  PanelIcon get panelIcon => const PanelIcon.icon(Icons.translate_rounded);
+  PanelIcon get panelIcon => const PanelIcon.icon(Icons.cloud_rounded);
 
   @override
   VoidCallback? get onHeaderTap => () {};
@@ -57,32 +56,42 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
 
   void _startClearTimer() {
     _clearTimer?.cancel();
-    _clearTimer = Timer(const Duration(minutes: 5), () {
+    _clearTimer = Timer(const Duration(minutes: 10), () {
       if (mounted) setState(() => _resultText = '');
     });
   }
 
-  Future<void> _performTranslation() async {
-    final text = _inputController.text.trim();
-    if (text.isEmpty) {
+  static const _systemPrompt = '你是一个天气查询助手。根据用户输入的城市名，提供简洁的天气信息。'
+      '请用以下格式回复（不要添加其他内容）：\n'
+      '城市：xxx\n'
+      '天气：晴/多云/雨等\n'
+      '温度：xx°C ~ xx°C\n'
+      '风力：xx级\n'
+      '建议：穿衣/出行建议（一句话）';
+
+  Future<void> _queryWeather() async {
+    final city = _inputController.text.trim();
+    if (city.isEmpty) {
       setState(() {
-        _resultText = '请输入要翻译的文本';
+        _resultText = '请输入城市名称';
         _isError = true;
       });
       return;
     }
     _clearTimer?.cancel();
-    setState(() => _isTranslating = true);
+    setState(() => _isQuerying = true);
     try {
-      final result = await TranslateService.translate(text);
+      final result = await LlmService.ask(
+        '$city今天天气怎么样？',
+        systemPrompt: _systemPrompt,
+      );
       if (!mounted) return;
       setState(() {
         _resultText = result;
         _isError = false;
-        _inputController.clear();
       });
       _startClearTimer();
-    } on TranslateException catch (e) {
+    } on LlmException catch (e) {
       if (!mounted) return;
       setState(() {
         _resultText = e.message;
@@ -91,18 +100,18 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _resultText = '翻译失败: $e';
+        _resultText = '查询失败: $e';
         _isError = true;
       });
     } finally {
-      if (mounted) setState(() => _isTranslating = false);
+      if (mounted) setState(() => _isQuerying = false);
     }
   }
 
   Future<void> _fetch() async {
     setState(() => _loading = true);
     final settings = await SettingsService.load();
-    _panelEnabled = settings.showTranslatePanel;
+    _panelEnabled = settings.showWeatherPanel;
     if (!mounted) return;
     setState(() => _loading = false);
   }
@@ -117,7 +126,7 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildInputRow(),
-        _buildAnswerArea(),
+        _buildResultArea(),
       ],
     );
   }
@@ -136,15 +145,22 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
               controller: _inputController,
               focusNode: _inputFocus,
               cursorColor: primaryText,
-              style: TextStyle(color: primaryText, fontSize: 12,fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: primaryText,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
               maxLines: 1,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) {
-                if (!_isTranslating) _performTranslation();
+                if (!_isQuerying) _queryWeather();
               },
               decoration: InputDecoration(
-                hintText: '粘贴要翻译的文本...',
-                hintStyle: TextStyle(color: hintColor,fontWeight: FontWeight.w600),
+                hintText: '输入城市名称...',
+                hintStyle: TextStyle(
+                  color: hintColor,
+                  fontWeight: FontWeight.w600,
+                ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
@@ -153,10 +169,10 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
           InteractiveIcon(
             size: 32,
             onTap: () {
-              if (_isTranslating) return;
-              _performTranslation();
+              if (_isQuerying) return;
+              _queryWeather();
             },
-            child: _isTranslating
+            child: _isQuerying
                 ? SizedBox(
                     width: 18,
                     height: 18,
@@ -165,63 +181,59 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
                       color: tertiaryText,
                     ),
                   )
-                : SvgPicture.asset(
-                    'assets/svg/翻译.svg',
-                    width: 22,
-                    height: 22,
-                  ),
+                : Icon(Icons.cloud_rounded, color: tertiaryText, size: 20),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAnswerArea() {
+  Widget _buildResultArea() {
     if (_resultText.isEmpty) {
       return const SizedBox.shrink();
     }
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _isError ? '错误' : '翻译结果',
-                style: TextStyle(
-                  color: _isError ? Colors.redAccent : tertiaryText,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _isError ? '错误' : '天气信息',
+                  style: TextStyle(
+                    color: _isError ? Colors.redAccent : tertiaryText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              InteractiveIcon(
-                size: 24,
-                onTap: () => setState(() => _resultText = ''),
-                child: Icon(Icons.close, color: mutedText, size: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            _resultText,
-            style: TextStyle(
-              color: _isError ? Colors.redAccent : primaryText,
-              fontSize: 13,
-              height: 1.5,
+                InteractiveIcon(
+                  size: 24,
+                  onTap: () => setState(() => _resultText = ''),
+                  child: Icon(Icons.close, color: mutedText, size: 16),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            SelectableText(
+              _resultText,
+              style: TextStyle(
+                color: _isError ? Colors.redAccent : primaryText,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
