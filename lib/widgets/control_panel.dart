@@ -47,7 +47,6 @@ class ControlPanel extends BasePanel {
 
 class _ControlPanelState extends BasePanelState<ControlPanel> {
   static const _primaryColor = Color(0xFF2196F3);
-  bool _panelEnabled = true;
   bool _panelHovered = false;
   bool _showVibePanel = true;
   bool _enableClipboard = false;
@@ -60,7 +59,6 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     super.initState();
     _loadSettings();
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showControlPanel);
   }
 
   @override
@@ -73,7 +71,6 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     final settings = await SettingsService.load();
     if (!mounted) return;
     setState(() {
-      _panelEnabled = settings.showControlPanel;
       _showVibePanel = settings.showVibePanel;
       _enableClipboard = settings.enableClipboardMonitor;
     });
@@ -161,9 +158,6 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_panelEnabled) {
-      return const SizedBox.shrink();
-    }
     return MouseRegion(
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),

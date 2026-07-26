@@ -24,13 +24,9 @@ class PhotoWallPanel extends BasePanel {
 
 class _PhotoWallPanelState extends BasePanelState<PhotoWallPanel> {
   List<String> _photos = [];
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _hovered = false;
   Timer? _shuffleTimer;
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   EdgeInsetsGeometry get panelPadding => EdgeInsets.zero;
@@ -40,7 +36,6 @@ class _PhotoWallPanelState extends BasePanelState<PhotoWallPanel> {
     super.initState();
     _fetch();
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showPhotoWallPanel);
     _shuffleTimer = Timer.periodic(
       const Duration(minutes: 3),
       (_) => _shuffle(),
@@ -66,7 +61,6 @@ class _PhotoWallPanelState extends BasePanelState<PhotoWallPanel> {
   }
 
   Future<void> _fetch() async {
-    final settings = await SettingsService.load();
     final photos = await PhotoWallService.loadPhotos();
     final valid = photos.where((p) => File(p).existsSync()).toList();
     if (valid.length != photos.length) {
@@ -74,7 +68,6 @@ class _PhotoWallPanelState extends BasePanelState<PhotoWallPanel> {
     }
     if (!mounted) return;
     setState(() {
-      _panelEnabled = settings.showPhotoWallPanel;
       _photos = List<String>.from(valid)..shuffle();
       _loading = false;
     });

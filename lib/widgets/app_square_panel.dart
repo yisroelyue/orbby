@@ -68,14 +68,10 @@ class AppSquarePanel extends BasePanel {
 }
 
 class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _panelHovered = false;
   List<AppInfo> _apps = [];
   int? _hoveredIndex;
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   bool get panelHovered => _panelHovered;
@@ -85,7 +81,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
     super.initState();
     _fetch();
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showAppSquarePanel);
   }
 
   @override
@@ -102,7 +97,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
     setState(() => _loading = true);
 
     final settings = await SettingsService.load();
-    _panelEnabled = settings.showAppSquarePanel;
 
     final custom = AppConfig.loadCustomApps();
     final system = AppConfig.loadSystemApps();
@@ -158,9 +152,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
 
   @override
   Widget buildContent(BuildContext context) {
-    if (!_panelEnabled && !_loading) {
-      return const SizedBox.shrink();
-    }
     return MouseRegion(
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),
@@ -215,42 +206,85 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
 
 
   Widget _buildContent() {
-    if (_apps.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text(
-            '暂无应用',
-            style: TextStyle(color: tertiaryText, fontSize: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 标题栏
+        GestureDetector(
+          onTap: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
+          child: Row(
+            children: [
+              SvgPicture.asset('assets/svg/应用.svg', width: 22, height: 22),
+              const SizedBox(width: 8),
+              Text(
+                '应用中心',
+                style: TextStyle(
+                  color: primaryText,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
-      );
-    }
-
-    final visibleCount = _panelHovered ? _apps.length : (_apps.length > 6 ? 6 : _apps.length);
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 240),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 1.0,
+        const SizedBox(height: 10),
+        // 内容区域
+        if (_loading) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: tertiaryText,
+                ),
+              ),
             ),
-            itemCount: visibleCount,
-            itemBuilder: (_, index) => _buildAppTile(_apps[index], index),
           ),
-        ),
-      ),
+        ] else if (_apps.isEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                '暂无应用',
+                style: TextStyle(color: tertiaryText, fontSize: 12),
+              ),
+            ),
+          ),
+        ] else ...[
+          Builder(
+            builder: (context) {
+              final visibleCount = _panelHovered ? _apps.length : (_apps.length > 6 ? 6 : _apps.length);
+              return AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 240),
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.0,
+                      ),
+                      itemCount: visibleCount,
+                      itemBuilder: (_, index) => _buildAppTile(_apps[index], index),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ],
     );
   }
 
@@ -267,16 +301,8 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
-            color: isHovered ? hoverBg : elementBg,
+            color: isHovered ? hoverBg : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isHovered
-                  ? (isDark
-                      ? Colors.white.withOpacity(0.08)
-                      : Colors.black.withOpacity(0.06))
-                  : Colors.transparent,
-              width: 0.5,
-            ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

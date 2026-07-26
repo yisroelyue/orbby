@@ -59,22 +59,6 @@ final Map<String, String> panelNameMap = {
   'script': '脚本',
 };
 
-/// 面板名称到 AppSettings 中对应开关字段名的映射
-/// 用于 Dashboard 层过滤禁用的面板，避免占用布局空间
-final Map<String, bool Function(AppSettings)> panelEnabledMap = {
-  'daily_quote': (s) => s.showDailyQuotePanel,
-  'photo_wall': (s) => s.showPhotoWallPanel,
-  'balance': (s) => s.showBalancePanel,
-  'translate': (s) => s.showTranslatePanel,
-  'weather': (s) => s.showWeatherPanel,
-  'news': (s) => s.showNewsPanel,
-  'schedule': (s) => s.showSchedulePanel,
-  'todo': (s) => s.showTodoPanel,
-  'favorites': (s) => s.showFavoritesPanel,
-  'app_square': (s) => s.showAppSquarePanel,
-  'control': (s) => s.showControlPanel,
-  'script': (s) => s.showScriptPanel,
-};
 
 /// 按顺序构建面板列表
 List<BasePanel> buildOrderedPanels(List<String> order) {
@@ -150,8 +134,6 @@ class _DashboardTabState extends State<DashboardTab> {
   List<String> _hiddenPanels = [];
   bool _editing = false;
 
-  /// 缓存各面板的启用状态，用于布局过滤
-  Map<String, bool> _panelEnabledStates = {};
 
   /// 按面板名缓存实例，移动顺序时只重排引用，不重建
   final Map<String, BasePanel> _panelCache = {};
@@ -194,16 +176,9 @@ class _DashboardTabState extends State<DashboardTab> {
         : defaultPanelOrder;
     if (!mounted) return;
 
-    // 读取各面板的启用状态
-    final enabledStates = <String, bool>{};
-    for (final entry in panelEnabledMap.entries) {
-      enabledStates[entry.key] = entry.value(settings);
-    }
-
     setState(() {
       _panelOrder = order;
       _hiddenPanels = List.from(settings.hiddenPanels);
-      _panelEnabledStates = enabledStates;
     });
   }
 
@@ -262,13 +237,10 @@ class _DashboardTabState extends State<DashboardTab> {
     _saveLayout();
   }
 
-  /// 获取可见面板的有序列表（排除隐藏的和设置中禁用的）
+  /// 获取可见面板的有序列表（排除隐藏的）
   List<String> _getVisibleOrder() {
     return _panelOrder.where((name) {
       if (_hiddenPanels.contains(name)) return false;
-      // 如果面板在设置中被禁用，也不显示
-      final enabled = _panelEnabledStates[name];
-      if (enabled == false) return false;
       return true;
     }).toList();
   }

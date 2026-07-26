@@ -23,7 +23,6 @@ class WeatherPanel extends BasePanel {
 }
 
 class _WeatherPanelState extends BasePanelState<WeatherPanel> {
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _isQuerying = false;
   bool _isError = false;
@@ -52,7 +51,6 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
     }
 
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showWeatherPanel);
     _fetch();
   }
 
@@ -89,16 +87,13 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
     }
 
     try {
-      final settings = await SettingsService.load();
-
       if (!mounted) return;
 
       setState(() {
-        _panelEnabled = settings.showWeatherPanel;
         _loading = false;
       });
 
-      if (_panelEnabled && _resultText.isEmpty) {
+      if (_resultText.isEmpty) {
         await _fetchWeather();
       }
     } catch (e) {
@@ -241,7 +236,7 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
   }
 
   @override
-  bool get panelEnabled => _panelEnabled || _loading;
+
 
   @override
   BoxDecoration? get panelDecoration {

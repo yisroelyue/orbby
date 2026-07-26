@@ -40,23 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscureApiKey = true;
   bool _autoStart = false;
   String _language = 'zh';
-  bool _showPhotoWallPanel = true;
-  bool _showAgentChatPanel = true;
   String _appTheme = 'light';
   String _petStyle = 'colorful';
   double _menuAutoHideDelay = 3.0;
-  bool _showBalancePanel = true;
-  bool _showTranslatePanel = true;
-  bool _showTodoPanel = true;
-  bool _showFavoritesPanel = true;
-  bool _showAppSquarePanel = true;
-  bool _showControlPanel = true;
-  bool _showWeatherPanel = true;
-  bool _showNewsPanel = true;
-  bool _showScriptPanel = true;
-  bool _showSchedulePanel = true;
-  bool _showDailyQuotePanel = true;
-  bool _showVibePanel = true;
   bool _claudeHookInstalled = false;
   bool _installingClaudeHooks = false;
   bool _loading = true;
@@ -116,21 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _enableBalance = cfg.enableBalance;
       _autoStart = s.autoStart;
       _language = s.language;
-      _showPhotoWallPanel = s.showPhotoWallPanel;
-      _showAgentChatPanel = s.showAgentChatPanel;
       _appTheme = s.appTheme;
-      _showBalancePanel = s.showBalancePanel;
-      _showTranslatePanel = s.showTranslatePanel;
-      _showTodoPanel = s.showTodoPanel;
-      _showFavoritesPanel = s.showFavoritesPanel;
-      _showAppSquarePanel = s.showAppSquarePanel;
-      _showControlPanel = s.showControlPanel;
-      _showWeatherPanel = s.showWeatherPanel;
-      _showNewsPanel = s.showNewsPanel;
-      _showScriptPanel = s.showScriptPanel;
-      _showSchedulePanel = s.showSchedulePanel;
-      _showDailyQuotePanel = s.showDailyQuotePanel;
-      _showVibePanel = s.showVibePanel;
       _petStyle = s.petStyle;
       _menuAutoHideDelay = s.menuAutoHideDelay;
       _userName = s.userName;
@@ -383,37 +355,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildHotkeyRow('打开设置', 'Alt+Ctrl+`'),
         ],
       ),
-      _buildCard(
-        children: [
-          _buildSectionTitle('面板显示设置'),
-          _buildThinDivider(),
-          _buildPanelToggle('照片墙', _showPhotoWallPanel, (v) => setState(() => _showPhotoWallPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('Agent 对话', _showAgentChatPanel, (v) => setState(() => _showAgentChatPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('AI流量管理', _showBalancePanel, (v) => setState(() => _showBalancePanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('翻译', _showTranslatePanel, (v) => setState(() => _showTranslatePanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('我的笔记', _showTodoPanel, (v) => setState(() => _showTodoPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('我的收藏', _showFavoritesPanel, (v) => setState(() => _showFavoritesPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('应用中心', _showAppSquarePanel, (v) => setState(() => _showAppSquarePanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('控制面板', _showControlPanel, (v) => setState(() => _showControlPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('天气', _showWeatherPanel, (v) => setState(() => _showWeatherPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('新闻', _showNewsPanel, (v) => setState(() => _showNewsPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('脚本库', _showScriptPanel, (v) => setState(() => _showScriptPanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('日程', _showSchedulePanel, (v) => setState(() => _showSchedulePanel = v)),
-          _buildThinDivider(),
-          _buildPanelToggle('每日一言', _showDailyQuotePanel, (v) => setState(() => _showDailyQuotePanel = v)),
-        ],
-      ),
     ];
   }
 
@@ -464,28 +405,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
 
-  Widget _buildPanelToggle(String label, bool value, ValueChanged<bool> onChanged, {bool compact = false}) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 0 : 1),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: const Color(0xFF555555), fontSize: compact ? 12 : 14)),
-          Transform.scale(
-            scale: compact ? 0.68 : 0.8,
-            child: Switch(
-              value: value,
-              activeColor: const Color(0xFF66BB6A),
-              activeTrackColor: Colors.black12,
-              inactiveThumbColor: Colors.grey,
-              inactiveTrackColor: Colors.black12,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   List<Widget> _buildGeneralSettings() {
     return [
@@ -1030,7 +949,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _saveSettings() {
+  Future<void> _saveSettings() async {
     // 保存当前平台的配置到 map
     _apiConfigs[_platform] = PlatformApiConfig(
       apiKey: _apiKeyController.text.trim(),
@@ -1040,33 +959,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       enableBalance: _enableBalance,
     );
 
-    final settings = AppSettings(
-      platform: _platform,
-      apiConfigs: _apiConfigs,
-      autoStart: _autoStart,
-      language: _language,
-      showPhotoWallPanel: _showPhotoWallPanel,
-      showAgentChatPanel: _showAgentChatPanel,
-      appTheme: _appTheme,
-      showBalancePanel: _showBalancePanel,
-      showTranslatePanel: _showTranslatePanel,
-      showTodoPanel: _showTodoPanel,
-      showFavoritesPanel: _showFavoritesPanel,
-      showAppSquarePanel: _showAppSquarePanel,
-      showControlPanel: _showControlPanel,
-      showWeatherPanel: _showWeatherPanel,
-      showNewsPanel: _showNewsPanel,
-      showScriptPanel: _showScriptPanel,
-      showSchedulePanel: _showSchedulePanel,
-      showDailyQuotePanel: _showDailyQuotePanel,
-      showVibePanel: _showVibePanel,
-      petStyle: _petStyle,
-      menuAutoHideDelay: _menuAutoHideDelay,
-      userName: _userNameController.text.trim(),
-      userAvatarPath: _userAvatarPath,
-      menuBgImage: _menuBgImage,
-    );
-    SettingsService.save(settings);
+    // 基于已有设置更新，保留面板布局等设置界面不管理的字段
+    final existing = await SettingsService.load();
+    existing.platform = _platform;
+    existing.apiConfigs = _apiConfigs;
+    existing.autoStart = _autoStart;
+    existing.language = _language;
+    existing.appTheme = _appTheme;
+    existing.petStyle = _petStyle;
+    existing.menuAutoHideDelay = _menuAutoHideDelay;
+    existing.userName = _userNameController.text.trim();
+    existing.userAvatarPath = _userAvatarPath;
+    existing.menuBgImage = _menuBgImage;
+    SettingsService.save(existing);
     SettingsScreen.settingsChannel.invokeMethod('settings_saved');
     windowManager.hide();
   }

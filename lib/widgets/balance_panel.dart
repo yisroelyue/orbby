@@ -21,15 +21,11 @@ class BalancePanel extends BasePanel {
 class BalancePanelState extends BasePanelState<BalancePanel> {
   BalanceInfo? _balance;
   String _platform = 'deepseek';
-  bool _panelEnabled = true;
   bool _enableBalance = true;
   bool _notConfigured = false;
   bool _connected = false;
   bool _loading = true;
   bool _initialTestDone = false;
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   void initState() {
@@ -45,7 +41,6 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
     }
 
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showBalancePanel);
 
     if (cachedBalance != null) {
       // 有缓存只读设置，不做连通性测试
@@ -77,7 +72,6 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
     if (!mounted) return;
     setState(() {
       _platform = settings.platform;
-      _panelEnabled = settings.showBalancePanel;
       _enableBalance = settings.enableBalance;
       _notConfigured = settings.apiKey.isEmpty;
       // 有缓存时不显示 loading
@@ -93,14 +87,7 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
 
     final settings = await SettingsService.load();
     _platform = settings.platform;
-    _panelEnabled = settings.showBalancePanel;
     _enableBalance = settings.enableBalance;
-    if (!_panelEnabled) {
-      if (!mounted) return;
-      PanelCache.set('balance_connected', false);
-      setState(() => _loading = false);
-      return;
-    }
     if (settings.apiKey.isEmpty) {
       if (!mounted) return;
       PanelCache.set('balance_connected', false);

@@ -210,8 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTopRow() {
     final hasUserInfo = _userName.isNotEmpty ||
         (_userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync());
-    const topTextColor = Colors.white;
-    const topIconColor = Colors.white;
+    final topIconColor = _isDark ? Colors.white : Colors.black87;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -233,7 +232,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Text(
                 _userName,
-                style: const TextStyle(color: topTextColor, fontSize: 19, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: _isDark ? Colors.white : Colors.black,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -244,7 +247,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Text(
                 'Orbby Assistant',
-                style: const TextStyle(color: topTextColor, fontSize: 19, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: _isDark ? Colors.white : Colors.black,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -277,14 +284,14 @@ class _HomeScreenState extends State<HomeScreen> {
               'assets/svg/设置.svg',
               width: 20,
               height: 20,
-              colorFilter: const ColorFilter.mode(topIconColor, BlendMode.srcIn),
+              colorFilter: ColorFilter.mode(topIconColor, BlendMode.srcIn),
             ),
           ),
           const SizedBox(width: 6),
           InteractiveIcon(
             size: 32,
             onTap: () => HomeScreen.menuChannel.invokeMethod('close_menu'),
-            child: const Icon(Icons.close_rounded, color: topIconColor, size: 20),
+            child: Icon(Icons.close_rounded, color: topIconColor, size: 20),
           ),
         ],
       ),

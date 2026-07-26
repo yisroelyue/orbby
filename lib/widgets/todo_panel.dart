@@ -19,14 +19,10 @@ class TodoPanel extends BasePanel {
 class _TodoPanelState extends BasePanelState<TodoPanel> {
   List<TodoItem> _normalTodos = [];
   List<TodoItem> _importantTodos = [];
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _addHovered = false;
   String? _hoveredId;
   bool _panelHovered = false;
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   bool get panelHovered => _panelHovered;
@@ -36,7 +32,6 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
     super.initState();
     _fetch(firstLoad: true);
     HomeScreen.todoRefreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showTodoPanel);
   }
 
   @override
@@ -52,13 +47,6 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   Future<void> _fetch({bool firstLoad = false}) async {
     if (firstLoad) {
       setState(() => _loading = true);
-    }
-    final settings = await SettingsService.load();
-    _panelEnabled = settings.showTodoPanel;
-    if (!_panelEnabled) {
-      if (!mounted) return;
-      if (firstLoad) setState(() => _loading = false);
-      return;
     }
     final todos = await TodoService.loadAll();
     if (!mounted) return;
@@ -106,9 +94,6 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_panelEnabled && !_loading) {
-      return const SizedBox.shrink();
-    }
     return MouseRegion(
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),

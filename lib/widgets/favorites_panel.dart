@@ -24,18 +24,13 @@ class FavoritesPanel extends BasePanel {
 
 class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
   List<FavoriteFolder> _folders = [];
-  bool _panelEnabled = true;
   bool _loading = true;
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   void initState() {
     super.initState();
     _fetch();
     HomeScreen.favoritesRefreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showFavoritesPanel);
   }
 
   @override
@@ -50,13 +45,6 @@ class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
 
   Future<void> _fetch() async {
     setState(() => _loading = true);
-    final settings = await SettingsService.load();
-    _panelEnabled = settings.showFavoritesPanel;
-    if (!_panelEnabled) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      return;
-    }
     final folders = await FavoritesService.loadFolders();
     if (!mounted) return;
     setState(() {

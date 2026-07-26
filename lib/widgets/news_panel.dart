@@ -24,7 +24,6 @@ class NewsPanel extends BasePanel {
 
 class _NewsPanelState extends BasePanelState<NewsPanel>
     with SingleTickerProviderStateMixin {
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _isQuerying = false;
   bool _isError = false;
@@ -64,7 +63,6 @@ class _NewsPanelState extends BasePanelState<NewsPanel>
 
     _fetchSettings();
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showNewsPanel);
   }
 
   @override
@@ -126,12 +124,8 @@ class _NewsPanelState extends BasePanelState<NewsPanel>
   }
 
   Future<void> _fetchSettings() async {
-    setState(() => _loading = true);
-    final settings = await SettingsService.load();
-    _panelEnabled = settings.showNewsPanel;
-    if (!mounted) return;
     setState(() => _loading = false);
-    if (_panelEnabled && _resultText.isEmpty) _fetchNews();
+    if (_resultText.isEmpty) _fetchNews();
   }
 
   /// 解析新闻列表
@@ -170,7 +164,7 @@ class _NewsPanelState extends BasePanelState<NewsPanel>
   }
 
   @override
-  bool get panelEnabled => _panelEnabled || _loading;
+
 
   @override
   BoxDecoration? get panelDecoration {

@@ -27,7 +27,6 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
     with SingleTickerProviderStateMixin {
   @override
   EdgeInsetsGeometry get panelPadding => const EdgeInsets.symmetric(horizontal: 14, vertical: 12);
-  bool _panelEnabled = true;
   bool _loading = true;
   bool _isQuerying = false;
   bool _isError = false;
@@ -72,7 +71,6 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
     }
 
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showDailyQuotePanel);
     _fetch();
   }
 
@@ -111,16 +109,13 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
     }
 
     try {
-      final settings = await SettingsService.load();
-
       if (!mounted) return;
 
       setState(() {
-        _panelEnabled = settings.showDailyQuotePanel;
         _loading = false;
       });
 
-      if (_panelEnabled && _quoteText.isEmpty) {
+      if (_quoteText.isEmpty) {
         await _fetchQuote();
       }
     } catch (e) {
@@ -212,7 +207,7 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
   }
 
   @override
-  bool get panelEnabled => _panelEnabled || _loading;
+
 
   @override
   BoxDecoration? get panelDecoration {

@@ -47,20 +47,7 @@ class AppSettings {
     this.refreshInterval = 30,
     this.autoStart = false,
     this.language = 'zh',
-    this.showBalancePanel = true,
-    this.showTranslatePanel = true,
-    this.showTodoPanel = true,
-    this.showFavoritesPanel = true,
-    this.showAppSquarePanel = true,
     this.showVibePanel = true,
-    this.showPhotoWallPanel = true,
-    this.showAgentChatPanel = true,
-    this.showControlPanel = true,
-    this.showWeatherPanel = true,
-    this.showNewsPanel = true,
-    this.showScriptPanel = true,
-    this.showSchedulePanel = true,
-    this.showDailyQuotePanel = true,
     this.enableClipboardMonitor = false,
     this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
@@ -91,20 +78,7 @@ class AppSettings {
   int refreshInterval;
   bool autoStart;
   String language;
-  bool showBalancePanel;
-  bool showTranslatePanel;
-  bool showTodoPanel;
-  bool showFavoritesPanel;
-  bool showAppSquarePanel;
   bool showVibePanel;
-  bool showPhotoWallPanel;
-  bool showAgentChatPanel;
-  bool showControlPanel;
-  bool showWeatherPanel;
-  bool showNewsPanel;
-  bool showScriptPanel;
-  bool showSchedulePanel;
-  bool showDailyQuotePanel;
   bool enableClipboardMonitor;
   double menuAutoHideDelay;
   String appTheme;
@@ -180,20 +154,7 @@ class AppSettings {
       refreshInterval: json['refreshInterval'] as int? ?? 30,
       autoStart: json['autoStart'] as bool? ?? false,
       language: json['language'] as String? ?? 'zh',
-      showBalancePanel: json['showBalancePanel'] as bool? ?? true,
-      showTranslatePanel: json['showTranslatePanel'] as bool? ?? true,
-      showTodoPanel: json['showTodoPanel'] as bool? ?? true,
-      showFavoritesPanel: json['showFavoritesPanel'] as bool? ?? true,
-      showAppSquarePanel: json['showAppSquarePanel'] as bool? ?? true,
       showVibePanel: json['showVibePanel'] as bool? ?? true,
-      showPhotoWallPanel: json['showPhotoWallPanel'] as bool? ?? true,
-      showAgentChatPanel: json['showAgentChatPanel'] as bool? ?? true,
-      showControlPanel: json['showControlPanel'] as bool? ?? true,
-      showWeatherPanel: json['showWeatherPanel'] as bool? ?? true,
-      showNewsPanel: json['showNewsPanel'] as bool? ?? true,
-      showScriptPanel: json['showScriptPanel'] as bool? ?? true,
-      showSchedulePanel: json['showSchedulePanel'] as bool? ?? true,
-      showDailyQuotePanel: json['showDailyQuotePanel'] as bool? ?? true,
       enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
       menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
@@ -226,20 +187,7 @@ class AppSettings {
         'refreshInterval': refreshInterval,
         'autoStart': autoStart,
         'language': language,
-        'showBalancePanel': showBalancePanel,
-        'showTranslatePanel': showTranslatePanel,
-        'showTodoPanel': showTodoPanel,
-        'showFavoritesPanel': showFavoritesPanel,
-        'showAppSquarePanel': showAppSquarePanel,
         'showVibePanel': showVibePanel,
-        'showPhotoWallPanel': showPhotoWallPanel,
-        'showAgentChatPanel': showAgentChatPanel,
-        'showControlPanel': showControlPanel,
-        'showWeatherPanel': showWeatherPanel,
-        'showNewsPanel': showNewsPanel,
-        'showScriptPanel': showScriptPanel,
-        'showSchedulePanel': showSchedulePanel,
-        'showDailyQuotePanel': showDailyQuotePanel,
         'enableClipboardMonitor': enableClipboardMonitor,
         'menuAutoHideDelay': menuAutoHideDelay,
         'appTheme': appTheme,

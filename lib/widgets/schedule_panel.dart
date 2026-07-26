@@ -20,7 +20,6 @@ class SchedulePanel extends BasePanel {
 
 class _SchedulePanelState extends BasePanelState<SchedulePanel>
     with SingleTickerProviderStateMixin {
-  bool _panelEnabled = true;
   bool _loading = true;
 
   late AnimationController _pulseController;
@@ -48,7 +47,6 @@ class _SchedulePanelState extends BasePanelState<SchedulePanel>
     );
 
     _fetchSettings();
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showSchedulePanel);
   }
 
   @override
@@ -58,15 +56,8 @@ class _SchedulePanelState extends BasePanelState<SchedulePanel>
   }
 
   Future<void> _fetchSettings() async {
-    setState(() => _loading = true);
-    final settings = await SettingsService.load();
-    _panelEnabled = settings.showSchedulePanel;
-    if (!mounted) return;
     setState(() => _loading = false);
   }
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   static final _fakeItems = [
     _ScheduleItem('09:00', '团队站会', Icons.groups_rounded),

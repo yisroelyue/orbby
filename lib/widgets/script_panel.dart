@@ -18,7 +18,6 @@ class ScriptPanel extends BasePanel {
 }
 
 class _ScriptPanelState extends BasePanelState<ScriptPanel> {
-  bool _panelEnabled = true;
   bool _loading = true;
 
   @override
@@ -26,7 +25,6 @@ class _ScriptPanelState extends BasePanelState<ScriptPanel> {
     super.initState();
     _fetch();
     HomeScreen.refreshNotifier.addListener(_onRefresh);
-    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showScriptPanel);
   }
 
   @override
@@ -40,15 +38,8 @@ class _ScriptPanelState extends BasePanelState<ScriptPanel> {
   }
 
   Future<void> _fetch() async {
-    setState(() => _loading = true);
-    final settings = await SettingsService.load();
-    _panelEnabled = settings.showScriptPanel;
-    if (!mounted) return;
     setState(() => _loading = false);
   }
-
-  @override
-  bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   Widget buildContent(BuildContext context) {
