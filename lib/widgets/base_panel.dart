@@ -1,42 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/panel_theme.dart';
+import '../config/settings.dart';
+import '../screens/home_screen.dart';
 
-/// 面板图标类型
-enum PanelIconType { icon, svg, asset, widget }
+/// 面板尺寸：small 占半宽，full 占满宽
+enum PanelSize { small, full }
 
-/// 面板图标配置
-class PanelIcon {
-  const PanelIcon.icon(this.iconData)
-      : type = PanelIconType.icon,
-        asset = null,
-        widget = null;
-  const PanelIcon.svg(this.asset)
-      : type = PanelIconType.svg,
-        iconData = null,
-        widget = null;
-  const PanelIcon.asset(this.asset)
-      : type = PanelIconType.asset,
-        iconData = null,
-        widget = null;
-  const PanelIcon.widget(this.widget)
-      : type = PanelIconType.widget,
-        asset = null,
-        iconData = null;
-
-  final PanelIconType type;
-  final IconData? iconData;
-  final String? asset;
-  final Widget? widget;
-}
-
-/// 面板基类，提供统一的容器、header、主题样式
+/// 面板基类，提供统一的容器和主题样式
 ///
-/// 子类需实现 [panelTitle]、[panelIcon]、[buildContent]。
-/// 可选覆写 [panelEnabled]、[buildHeaderActions]、[onHeaderTap]。
+/// 子类需实现 [buildContent]。
+/// 可选覆写 [panelEnabled]。
 abstract class BasePanel extends StatefulWidget {
   const BasePanel({super.key});
+
+  /// 面板尺寸，small 占半宽，full 占满宽
+  /// 子类可覆写，默认 full
+  PanelSize get panelSize => PanelSize.full;
+
+  /// 面板唯一标识，子类必须覆写
+  String get panelName;
 
   @override
   State<BasePanel> createState();
@@ -50,18 +33,6 @@ abstract class BasePanelState<T extends BasePanel> extends State<T>
   @override
   bool get wantKeepAlive => true;
 
-  /// 面板标题
-  String get panelTitle;
-
-  /// 面板图标
-  PanelIcon get panelIcon;
-
-  /// 标题行点击回调，null 时不响应点击
-  VoidCallback? get onHeaderTap => null;
-
-  /// header 右侧额外操作按钮
-  List<Widget> buildHeaderActions() => [];
-
   /// 面板内容区域
   Widget buildContent(BuildContext context);
 
@@ -70,147 +41,70 @@ abstract class BasePanelState<T extends BasePanel> extends State<T>
   bool get panelHovered => false;
 
   /// 面板外层圆角
-  static const double panelBorderRadius = 8;
+  static const double panelBorderRadius = 16;
 
-  /// 面板图标颜色，默认 primaryText
-  /// 子类可覆写为 secondaryText 等
-  Color get panelIconColor => primaryText;
+  /// 面板自定义装饰，子类可覆写以自定义背景样式
+  /// 返回 null 时使用默认的 panelBg 纯色背景
+  BoxDecoration? get panelDecoration => null;
 
-  /// 构建图标 widget（根据 PanelIcon 类型分发）
-  @protected
-  Widget buildIconWidget() {
-    switch (panelIcon.type) {
-      case PanelIconType.icon:
-        return Icon(panelIcon.iconData, color: panelIconColor, size: 22);
-      case PanelIconType.svg:
-        return SvgPicture.asset(
-          panelIcon.asset!,
-          width: 22,
-          height: 22,
-        );
-      case PanelIconType.asset:
-        return Image.asset(
-          panelIcon.asset!,
-          width: 22,
-          height: 22,
-          errorBuilder: (_, __, ___) =>
-              Icon(Icons.image, color: secondaryText, size: 22),
-        );
-      case PanelIconType.widget:
-        return panelIcon.widget!;
-    }
+  /// 面板内边距，子类可覆写
+  EdgeInsetsGeometry get panelPadding => const EdgeInsets.all(16);
+
+  bool _listeningSettings = false;
+  void Function(bool)? _panelEnabledSetter;
+
+  /// 子类在 initState 中调用，注册面板开关的读写
+  /// [setter] 直接赋值子类的 _panelEnabled 字段
+  /// [settingsKey] 从 AppSettings 中读取对应字段
+  void registerPanelEnabled(
+    void Function(bool) setter,
+    bool Function(AppSettings) settingsKey,
+  ) {
+    _panelEnabledSetter = (value) {
+      setter(value);
+      if (mounted) setState(() {});
+    };
+    _settingsKey = settingsKey;
   }
 
-  Widget buildHeader() {
-    return _PanelHeader(
-      icon: buildIconWidget(),
-      title: panelTitle,
-      titleColor: primaryText,
-      hoverBg: hoverBg,
-      mutedText: mutedText,
-      onTap: onHeaderTap,
-      actions: buildHeaderActions(),
-    );
+  bool Function(AppSettings)? _settingsKey;
+
+  void _onSettingsChanged() async {
+    if (_panelEnabledSetter == null || _settingsKey == null) return;
+    final s = await SettingsService.load();
+    if (!mounted) return;
+    _panelEnabledSetter!(_settingsKey!(s));
+  }
+
+  @override
+  void dispose() {
+    if (_listeningSettings) {
+      HomeScreen.settingsChangeNotifier.removeListener(_onSettingsChanged);
+    }
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin 要求
+
+    if (!_listeningSettings && _panelEnabledSetter != null) {
+      _listeningSettings = true;
+      HomeScreen.settingsChangeNotifier.addListener(_onSettingsChanged);
+    }
+
     if (!panelEnabled) {
       return const SizedBox.shrink();
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(panelBorderRadius),
       child: Container(
-        padding: const EdgeInsets.all(16),
-        color: panelBg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            buildHeader(),
-            const SizedBox(height: 10),
-            buildContent(context),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 公共 header 组件，封装 hover 动画逻辑
-class _PanelHeader extends StatefulWidget {
-  const _PanelHeader({
-    required this.icon,
-    required this.title,
-    required this.titleColor,
-    required this.hoverBg,
-    required this.mutedText,
-    this.onTap,
-    this.actions = const [],
-  });
-
-  final Widget icon;
-  final String title;
-  final Color titleColor;
-  final Color hoverBg;
-  final Color mutedText;
-  final VoidCallback? onTap;
-  final List<Widget> actions;
-
-  @override
-  State<_PanelHeader> createState() => _PanelHeaderState();
-}
-
-class _PanelHeaderState extends State<_PanelHeader> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: widget.onTap != null
-          ? SystemMouseCursors.click
-          : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _hovered ? widget.hoverBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              widget.icon,
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: TextStyle(
-                    color: widget.titleColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              ...widget.actions,
-              if (widget.onTap != null)
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 150),
-                  opacity: _hovered ? 1.0 : 0.0,
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    color: widget.mutedText,
-                    size: 20,
-                  ),
-                ),
-            ],
-          ),
-        ),
+        padding: panelPadding,
+        decoration: panelDecoration ??
+            BoxDecoration(
+              color: panelBg,
+            ),
+        child: buildContent(context),
       ),
     );
   }

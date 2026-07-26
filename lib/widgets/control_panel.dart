@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../config/panel_theme.dart';
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import 'base_panel.dart';
 import 'tooltip_popup.dart';
 
@@ -35,6 +36,12 @@ class ControlPanel extends BasePanel {
   const ControlPanel({super.key});
 
   @override
+  PanelSize get panelSize => PanelSize.small;
+
+  @override
+  String get panelName => 'control';
+
+  @override
   State<ControlPanel> createState() => _ControlPanelState();
 }
 
@@ -46,27 +53,19 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
   bool _enableClipboard = false;
 
   @override
-  String get panelTitle => '控制面板';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/控制.svg');
-
-  @override
-  VoidCallback? get onHeaderTap => _openSettings;
-
-  @override
   bool get panelHovered => _panelHovered;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    MenuScreen.refreshNotifier.addListener(_onRefresh);
+    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showControlPanel);
   }
 
   @override
   void dispose() {
-    MenuScreen.refreshNotifier.removeListener(_onRefresh);
+    HomeScreen.refreshNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -90,7 +89,7 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     await SettingsService.save(settings);
     if (!mounted) return;
     setState(() => _enableClipboard = settings.enableClipboardMonitor);
-    MenuScreen.menuChannel.invokeMethod('toggle_clipboard_monitor');
+    HomeScreen.menuChannel.invokeMethod('toggle_clipboard_monitor');
   }
 
   Future<void> _toggleVibePanel() async {
@@ -99,7 +98,7 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     await SettingsService.save(settings);
     if (!mounted) return;
     setState(() => _showVibePanel = settings.showVibePanel);
-    MenuScreen.menuChannel.invokeMethod('toggle_vibe_panel');
+    HomeScreen.menuChannel.invokeMethod('toggle_vibe_panel');
   }
 
   /// 构建当前控制项列表（依赖运行时状态）
@@ -160,10 +159,6 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     );
   }
 
-  void _openSettings() {
-    MenuScreen.menuChannel.invokeMethod('open_settings');
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_panelEnabled) {
@@ -175,56 +170,24 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           color: panelBg,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              buildHeader(),
-              const SizedBox(height: 12),
-              _buildContent(),
-            ],
-          ),
+          child: _buildContent(),
         ),
       ),
     );
   }
 
   Widget _buildContent() {
-    final visibleItems = _panelHovered ? _items : _items.take(2).toList();
-    final rowCount = (visibleItems.length / 2).ceil();
-    final rows = <Widget>[];
-
-    for (var i = 0; i < rowCount; i++) {
-      final startIndex = i * 2;
-      final endIndex = (startIndex + 2).clamp(0, visibleItems.length);
-      final rowItems = visibleItems.sublist(startIndex, endIndex);
-
-      rows.add(_buildRow(rowItems));
-      if (i < rowCount - 1) {
-        rows.add(const SizedBox(height: 10));
-      }
-    }
-
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
-      child: Column(children: rows),
-    );
-  }
-
-  Widget _buildRow(List<_ControlSwitch> items) {
-    return Row(
-      children: [
-        Expanded(child: _buildSwitchItem(items[0])),
-        const SizedBox(width: 10),
-        if (items.length > 1)
-          Expanded(child: _buildSwitchItem(items[1]))
-        else
-          const Expanded(child: SizedBox()),
-      ],
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _items.map((item) => _buildSwitchItem(item)).toList(),
+      ),
     );
   }
 
@@ -258,7 +221,7 @@ class _ControlItemWidget extends StatefulWidget {
   State<_ControlItemWidget> createState() => _ControlItemWidgetState();
 }
 
-class _ControlItemWidgetState extends State<_ControlItemWidget> {
+class _ControlItemWidgetState extends State<_ControlItemWidget> with PanelThemeMixin {
   bool _hovered = false;
 
   @override
@@ -266,7 +229,7 @@ class _ControlItemWidgetState extends State<_ControlItemWidget> {
     final enabled = widget.item.value;
 
     return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.4,
+      opacity: enabled ? 1.0 : 0.5,
       duration: const Duration(milliseconds: 200),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -289,41 +252,57 @@ class _ControlItemWidgetState extends State<_ControlItemWidget> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            width: 100,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
-              color: _hovered ? widget.hoverBg : Colors.transparent,
+              color: _hovered ? widget.hoverBg : elementBg,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _hovered
+                    ? (enabled
+                        ? Colors.greenAccent.withOpacity(0.2)
+                        : Colors.white.withOpacity(0.06))
+                    : Colors.transparent,
+                width: 0.5,
+              ),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                AnimatedScale(
-                  scale: _hovered ? 1.1 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  child: Icon(
-                    widget.item.icon,
-                    color: widget.iconColor,
-                    size: 22,
-                  ),
+                Icon(
+                  widget.item.icon,
+                  color: enabled ? Colors.greenAccent : widget.iconColor,
+                  size: 20,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 150),
-                    style: TextStyle(
-                      color: widget.titleColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    child: Text(widget.item.title),
+                const SizedBox(height: 6),
+                Text(
+                  widget.item.title,
+                  style: TextStyle(
+                    color: enabled ? widget.titleColor : widget.iconColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
                 ),
+                const SizedBox(height: 4),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 8,
-                  height: 8,
+                  width: 6,
+                  height: 6,
                   decoration: BoxDecoration(
-                    color: enabled ? Colors.greenAccent : Colors.black38,
+                    color: enabled ? Colors.greenAccent : Colors.white24,
                     shape: BoxShape.circle,
+                    boxShadow: enabled
+                        ? [
+                            BoxShadow(
+                              color: Colors.greenAccent.withOpacity(0.4),
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : null,
                   ),
                 ),
               ],

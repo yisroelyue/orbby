@@ -68,6 +68,8 @@ class AppSettings {
     this.petStyle = 'colorful',
     this.menuHotkey = 'Alt+96',
     this.panelAppIds = const [],
+    this.panelOrder = const [],
+    this.hiddenPanels = const [],
     this.userName = '',
     this.userAvatarPath = '',
     this.menuBgImage = 'assets/png/menuBg/11826657.jpg',
@@ -110,6 +112,8 @@ class AppSettings {
   String petStyle;
   String menuHotkey;
   List<String> panelAppIds;
+  List<String> panelOrder;
+  List<String> hiddenPanels;
   String userName;
   String userAvatarPath;
   String menuBgImage;
@@ -200,6 +204,14 @@ class AppSettings {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      panelOrder: (json['panelOrder'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      hiddenPanels: (json['hiddenPanels'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       userName: json['userName'] as String? ?? '',
       userAvatarPath: json['userAvatarPath'] as String? ?? '',
       menuBgImage: json['menuBgImage'] as String? ?? 'assets/png/menuBg/11826657.jpg',
@@ -235,6 +247,8 @@ class AppSettings {
         'petStyle': petStyle,
         'menuHotkey': menuHotkey,
         'panelAppIds': panelAppIds,
+        'panelOrder': panelOrder,
+        'hiddenPanels': hiddenPanels,
         'userName': userName,
         'userAvatarPath': userAvatarPath,
         'menuBgImage': menuBgImage,

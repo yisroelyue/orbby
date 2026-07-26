@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 
 mixin PanelThemeMixin<T extends StatefulWidget> on State<T> {
   bool _isDark = true;
@@ -51,12 +51,12 @@ mixin PanelThemeMixin<T extends StatefulWidget> on State<T> {
   void initState() {
     super.initState();
     _loadTheme();
-    MenuScreen.refreshNotifier.addListener(_loadTheme);
+    HomeScreen.themeNotifier.addListener(_loadTheme);
   }
 
   @override
   void dispose() {
-    MenuScreen.refreshNotifier.removeListener(_loadTheme);
+    HomeScreen.themeNotifier.removeListener(_loadTheme);
     super.dispose();
   }
 

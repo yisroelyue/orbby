@@ -17,12 +17,11 @@ import 'core/sub_app_bootstrap.dart';
 import 'screens/about_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/favorites_edit_screen.dart';
-import 'screens/menu_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/sub_app_window_screen.dart';
 import 'screens/todo_edit_screen.dart';
 import 'screens/todo_item_popup.dart';
-import 'screens/agent_chat_popup.dart';
 import 'screens/clipboard_popup.dart';
 import 'services/log_service.dart';
 
@@ -44,7 +43,7 @@ Future<void> main(List<String> args) async {
   if (windowArguments['type'] == 'menu') {
     await Window.initialize();
     await _configureMenuWindow(windowController, windowArguments);
-    runApp(const MenuScreen());
+    runApp(const HomeScreen());
     return;
   }
   if (windowArguments['type'] == 'settings') {
@@ -68,12 +67,6 @@ Future<void> main(List<String> args) async {
     await Window.initialize();
     await _configureTodoItemPopupWindow(windowController, windowArguments);
     runApp(const TodoItemPopup());
-    return;
-  }
-  if (windowArguments['type'] == 'agent_chat_popup') {
-    await Window.initialize();
-    await _configureAgentChatPopupWindow(windowController, windowArguments);
-    runApp(const AgentChatPopup());
     return;
   }
   if (windowArguments['type'] == 'favorites_edit') {
@@ -281,16 +274,15 @@ Future<void> _configureMenuWindow(
         await _placeMenuWindow(_boundsFromArguments(args));
         return;
       case 'refresh_balance':
-        MenuScreen.triggerRefresh();
+      case 'refresh_panel_apps':
+        HomeScreen.triggerRefresh();
+        HomeScreen.triggerSettingsChange();
         return;
       case 'refresh_todos':
-        MenuScreen.triggerTodoRefresh();
+        HomeScreen.triggerTodoRefresh();
         return;
       case 'refresh_favorites':
-        MenuScreen.triggerFavoritesRefresh();
-        return;
-      case 'refresh_panel_apps':
-        MenuScreen.triggerRefresh();
+        HomeScreen.triggerFavoritesRefresh();
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -439,35 +431,6 @@ Future<void> _configureTodoItemPopupWindow(
       await windowManager.setSkipTaskbar(true);
       await windowManager.setTitle('编辑笔记');
       // Don't show yet — the popup screen will show itself after loading data.
-    },
-  );
-}
-
-Future<void> _configureAgentChatPopupWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  LogService.info('AgentChatPopup config | bounds: $bounds');
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(const Size(400, 500));
-      await windowManager.setMaximumSize(const Size(3840, 2160));
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setTitle('Agent 消息');
     },
   );
 }

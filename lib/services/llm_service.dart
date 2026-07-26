@@ -13,9 +13,13 @@ class LlmService {
   ///
   /// [prompt] 用户输入的内容
   /// [systemPrompt] 可选的系统提示词，用于约束输出格式
+  /// [timeout] 请求超时时间，默认 45 秒
+  /// [retries] 失败重试次数，默认 1（共请求 2 次）
   static Future<String> ask(
     String prompt, {
     String? systemPrompt,
+    Duration timeout = const Duration(seconds: 45),
+    int retries = 1,
   }) async {
     final trimmed = prompt.trim();
     if (trimmed.isEmpty) {
@@ -34,28 +38,51 @@ class LlmService {
         ? PlatformConfig.defaultChatModel(settings.platform)
         : settings.model;
 
-    debugPrint('━━━ LlmService 请求 ━━━');
-    debugPrint('平台: ${settings.platform}  模型: $model');
-
-    final client = LLMClient(
-      baseURL: chatUrl,
-      apiKey: settings.apiKey,
-      model: model,
-      verbose: kDebugMode,
-    );
-
     final messages = <Message>[
       if (systemPrompt != null)
         Message(role: 'system', content: systemPrompt),
       Message(role: 'user', content: trimmed),
     ];
 
-    final response = await client.chat(messages);
-    final content = response.content?.trim() ?? '';
-    if (content.isEmpty) {
-      throw LlmException('AI 返回为空');
+    LlmException? lastError;
+    for (int attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        debugPrint('━━━ LlmService 第 $attempt 次重试 ━━━');
+        // 重试前等待 1 秒，避免频繁请求
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      debugPrint('━━━ LlmService 请求 ━━━');
+      debugPrint('平台: ${settings.platform}  模型: $model');
+
+      final client = LLMClient(
+        baseURL: chatUrl,
+        apiKey: settings.apiKey,
+        model: model,
+        verbose: kDebugMode,
+      );
+
+      try {
+        final response = await client.chat(messages).timeout(
+          timeout,
+          onTimeout: () => throw LlmException('请求超时，请稍后重试'),
+        );
+        final content = response.content?.trim() ?? '';
+        if (content.isEmpty) {
+          lastError = LlmException('AI 返回为空');
+          continue;
+        }
+        return content;
+      } on LlmException catch (e) {
+        lastError = e;
+        // 超时或网络错误可以重试，其他错误直接抛出
+        if (!e.message.contains('超时') && !e.message.contains('网络')) {
+          rethrow;
+        }
+      }
     }
-    return content;
+
+    throw lastError ?? LlmException('请求失败');
   }
 }
 

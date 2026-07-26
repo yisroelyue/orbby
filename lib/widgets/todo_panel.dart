@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import '../services/todo_service.dart';
 import 'base_panel.dart';
 
 class TodoPanel extends BasePanel {
   const TodoPanel({super.key});
+
+  @override
+  String get panelName => 'todo';
 
   @override
   State<TodoPanel> createState() => _TodoPanelState();
@@ -22,15 +26,6 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   bool _panelHovered = false;
 
   @override
-  String get panelTitle => '我的笔记';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/笔记.svg');
-
-  @override
-  VoidCallback? get onHeaderTap => _openAllTodos;
-
-  @override
   bool get panelEnabled => _panelEnabled || _loading;
 
   @override
@@ -40,12 +35,13 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   void initState() {
     super.initState();
     _fetch(firstLoad: true);
-    MenuScreen.todoRefreshNotifier.addListener(_onRefresh);
+    HomeScreen.todoRefreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showTodoPanel);
   }
 
   @override
   void dispose() {
-    MenuScreen.todoRefreshNotifier.removeListener(_onRefresh);
+    HomeScreen.todoRefreshNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -75,7 +71,7 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   }
 
   void _openItemPopup(TodoItem item) {
-    MenuScreen.menuChannel.invokeMethod('open_todo_item_popup', {
+    HomeScreen.menuChannel.invokeMethod('open_todo_item_popup', {
       'id': item.id,
       'title': item.title,
       'important': item.important,
@@ -83,7 +79,7 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   }
 
   void _openAddPopup() {
-    MenuScreen.menuChannel.invokeMethod('open_todo_item_popup', {
+    HomeScreen.menuChannel.invokeMethod('open_todo_item_popup', {
       'id': '',
       'title': '',
     });
@@ -92,11 +88,11 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   Future<void> _toggleComplete(TodoItem item) async {
     await TodoService.toggle(item.id);
     _fetch();
-    MenuScreen.todoRefreshNotifier.value++;
+    HomeScreen.todoRefreshNotifier.value++;
   }
 
   void _openAllTodos() {
-    MenuScreen.menuChannel.invokeMethod('open_todo_editor', {
+    HomeScreen.menuChannel.invokeMethod('open_todo_editor', {
       'id': '',
       'title': '',
     });
@@ -106,33 +102,6 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   Widget buildContent(BuildContext context) {
     // 实际内容在 build() 中渲染（需要 MouseRegion 包裹）
     return const SizedBox.shrink();
-  }
-
-  @override
-  List<Widget> buildHeaderActions() {
-    return [
-      GestureDetector(
-        onTap: _openAddPopup,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _addHovered = true),
-          onExit: (_) => setState(() => _addHovered = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _addHovered ? elementBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              Icons.add,
-              color: _addHovered ? primaryText : mutedText,
-              size: 20,
-            ),
-          ),
-        ),
-      ),
-    ];
   }
 
   @override
@@ -152,7 +121,48 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              buildHeader(),
+              // 标题栏
+              GestureDetector(
+                onTap: _openAllTodos,
+                child: Row(
+                  children: [
+                    SvgPicture.asset('assets/svg/笔记.svg', width: 22, height: 22),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '我的笔记',
+                        style: TextStyle(
+                          color: primaryText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    // 添加按钮
+                    GestureDetector(
+                      onTap: _openAddPopup,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        onEnter: (_) => setState(() => _addHovered = true),
+                        onExit: (_) => setState(() => _addHovered = false),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: _addHovered ? elementBg : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.add,
+                            color: _addHovered ? primaryText : mutedText,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 10),
               if (_loading)
                 Padding(

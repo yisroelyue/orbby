@@ -12,16 +12,12 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/constants.dart';
-import '../config/platform.dart';
 import '../config/settings.dart';
 import '../core/sub_app_registry.dart';
 import '../screens/app_center_screen.dart';
 import '../screens/favorites_edit_screen.dart';
 import '../screens/todo_edit_screen.dart';
 import '../screens/todo_item_popup.dart';
-import '../screens/agent_chat_popup.dart';
-import '../services/agent_service.dart';
-import '../services/chat_storage_service.dart';
 import '../services/clipboard_service.dart';
 import '../services/favorites_service.dart';
 import '../widgets/pet_ball_round.dart';
@@ -35,7 +31,7 @@ class PetScreen extends StatefulWidget {
 }
 
 class _PetScreenState extends State<PetScreen> {
-  static const _menuWidth = 400.0;
+  static const _menuWidth = 600.0;
   static const _settingsWidth = 900.0;
   static const _settingsHeight = 640.0;
   static const _vibeWidth = 200.0;
@@ -50,8 +46,6 @@ class _PetScreenState extends State<PetScreen> {
   static const _subAppDefaultHeight = 600.0;
   static const _todoItemPopupWidth = 500.0;
   static const _todoItemPopupHeight = 300.0;
-  static const _agentChatPopupWidth = 1200.0;
-  static const _agentChatPopupHeight = 1000.0;
   static const _clipboardPopupWidth = 320.0;
   static const _clipboardPopupHeight = 400.0;
   static const _menuChannel = WindowMethodChannel(
@@ -77,14 +71,8 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _appCenterWindow;
   WindowController? _subAppWindow;
   WindowController? _todoItemPopupWindow;
-  WindowController? _agentChatPopupWindow;
   WindowController? _clipboardPopupWindow;
-  final _agentConversations = <String, List<Map<String, String>>>{};
-  String? _activeConversationId;
   bool _menuVisible = false;
-  bool _agentPopupVisible = false;
-  bool _agentPopupFocused = false;
-  bool _agentPopupMinimized = false;
 
   // 抽屉状态
   bool _drawerShown = false;
@@ -105,7 +93,6 @@ class _PetScreenState extends State<PetScreen> {
     _hotkeyChannel.setMethodCallHandler(_handleHotkeyEvent);
     TodoEditScreen.editChannel.setMethodCallHandler(_handleTodoEditEvent);
     TodoItemPopup.popupChannel.setMethodCallHandler(_handleTodoItemPopupEvent);
-    AgentChatPopup.popupChannel.setMethodCallHandler(_handleAgentChatPopupEvent);
     FavoritesEditScreen.editChannel.setMethodCallHandler(_handleFavoritesEditEvent);
     AppCenterScreen.panelChannel.setMethodCallHandler(_handleAppCenterEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -138,7 +125,7 @@ class _PetScreenState extends State<PetScreen> {
     super.dispose();
   }
 
-  // ─── 菜单事件（来自 MenuScreen） ───────────────────────────────────────────
+  // ─── 菜单事件（来自 HomeScreen） ───────────────────────────────────────────
 
   Future<void> _handleMenuEvent(MethodCall call) async {
     switch (call.method) {
@@ -233,374 +220,6 @@ class _PetScreenState extends State<PetScreen> {
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
-    }
-  }
-
-  // ─── Agent 弹窗事件 ────────────────────────────────────────────────────────
-
-  Future<void> _handleAgentChatPopupEvent(MethodCall call) async {
-    switch (call.method) {
-      case 'agent_regenerate':
-        await _regenerateAgentReply();
-        return;
-      case 'popup_clear_context':
-        if (_activeConversationId != null) {
-          _agentConversations[_activeConversationId!]?.clear();
-        }
-        if (_agentChatPopupWindow != null) {
-          try {
-            await _agentChatPopupWindow!.invokeMethod('clear_messages');
-          } catch (_) {}
-        }
-        return;
-      case 'popup_send_message':
-        final args = call.arguments as Map;
-        final text = args['text'] as String? ?? '';
-        final mode = args['mode'] as String? ?? 'accept';
-        if (text.isEmpty) return;
-        await _handlePopupSendMessage(text, mode);
-        return;
-      case 'popup_new_conversation':
-        await _createNewConversation();
-        return;
-      case 'popup_switch_conversation':
-        final args = call.arguments as Map;
-        final id = args['id'] as String? ?? '';
-        if (id.isNotEmpty) {
-          await _switchConversation(id);
-        }
-        return;
-      case 'popup_delete_conversation':
-        final args = call.arguments as Map;
-        final id = args['id'] as String? ?? '';
-        if (id.isNotEmpty) {
-          await _deleteConversation(id);
-        }
-        return;
-      case 'popup_clear_all_conversations':
-        await _clearAllConversations();
-        return;
-      case 'popup_focus_changed':
-        final args = call.arguments as Map;
-        _agentPopupFocused = args['focused'] as bool? ?? false;
-        return;
-      case 'popup_minimized':
-        final args = call.arguments as Map;
-        _agentPopupMinimized = args['minimized'] as bool? ?? false;
-        if (_agentPopupMinimized) {
-          _agentPopupFocused = false;
-        }
-        return;
-      case 'popup_close':
-        _hideAgentChatPopup();
-        return;
-      default:
-        throw MissingPluginException('Not implemented: ${call.method}');
-    }
-  }
-
-  // ─── 对话管理 ────────────────────────────────────────────────────────────
-
-  Future<void> _createNewConversation() async {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    _activeConversationId = id;
-    _agentConversations[id] = [];
-
-    // 通知 popup 新对话已创建
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('conversation_created', {
-          'id': id,
-          'title': '新对话',
-        });
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _switchConversation(String id) async {
-    _activeConversationId = id;
-    final messages = _agentConversations[id] ?? [];
-
-    // 从磁盘加载（如果内存中没有）
-    if (messages.isEmpty) {
-      final conv = await ChatStorageService.load(id);
-      if (conv != null) {
-        _agentConversations[id] = conv.messages;
-        // 通知 popup 加载对话消息
-        if (_agentChatPopupWindow != null) {
-          try {
-            await _agentChatPopupWindow!.invokeMethod('conversation_loaded', {
-              'messages': conv.messages,
-            });
-          } catch (_) {}
-        }
-        return;
-      }
-    }
-
-    // 通知 popup 加载对话消息
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('conversation_loaded', {
-          'messages': messages,
-        });
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _deleteConversation(String id) async {
-    _agentConversations.remove(id);
-    if (_activeConversationId == id) {
-      _activeConversationId = null;
-    }
-    await ChatStorageService.delete(id);
-
-    // 通知 popup 对话已删除
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('conversation_deleted', {
-          'id': id,
-        });
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _clearAllConversations() async {
-    _agentConversations.clear();
-    _activeConversationId = null;
-    await ChatStorageService.deleteAll();
-
-    // 通知 popup 所有对话已清除
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('all_conversations_cleared');
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _handlePopupSendMessage(String text, String mode) async {
-    // 如果没有活跃对话，自动创建一个
-    if (_activeConversationId == null) {
-      await _createNewConversation();
-    }
-
-    final convId = _activeConversationId!;
-    final messages = _agentConversations[convId] ?? [];
-
-    // 显示用户消息
-    messages.add({'role': 'user', 'content': text});
-    _agentConversations[convId] = messages;
-
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('add_message', {
-          'text': text,
-          'isUser': true,
-        });
-      } catch (_) {}
-    }
-
-    final history = messages.isNotEmpty
-        ? messages.sublist(0, messages.length - 1)
-        : <Map<String, String>>[];
-
-    final fullReply = StringBuffer();
-    final buffer = StringBuffer();
-    Timer? flushTimer;
-
-    try {
-      final stream = AgentService.chatStream(
-        text,
-        mode: mode,
-        history: history,
-      );
-
-      // 创建流式占位消息
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': '',
-            'isUser': false,
-            'streaming': true,
-          });
-        } catch (_) {}
-      }
-
-      // 每 80ms 批量发送积累的 token
-      flushTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
-        final chunk = buffer.toString();
-        if (chunk.isNotEmpty) {
-          buffer.clear();
-          if (_agentChatPopupWindow != null) {
-            _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
-              'text': chunk,
-            }).catchError((_) {});
-          }
-        }
-      });
-
-      await for (final token in stream) {
-        fullReply.write(token);
-        buffer.write(token);
-      }
-    } on AgentException catch (e) {
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('stream_error', {
-            'error': e.message,
-          });
-        } catch (_) {}
-      }
-      return;
-    } finally {
-      flushTimer?.cancel();
-      // 等待最后一次 timer 回调完成
-      await Future.delayed(const Duration(milliseconds: 120));
-      // 清空残留
-      final remaining = buffer.toString();
-      if (remaining.isNotEmpty && _agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
-            'text': remaining,
-          });
-        } catch (_) {}
-      }
-    }
-
-    // 写入历史
-    final reply = fullReply.toString();
-    if (reply.isNotEmpty) {
-      messages.add({'role': 'assistant', 'content': reply});
-      _agentConversations[convId] = messages;
-
-      // 持久化到磁盘
-      final conv = ChatConversation(
-        id: convId,
-        title: text.length > 20 ? '${text.substring(0, 20)}...' : text,
-        model: '',
-        mode: mode,
-        messages: messages,
-      );
-      await ChatStorageService.save(conv);
-
-      // 更新对话标题
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('update_conversation_title', {
-            'id': convId,
-            'title': conv.title,
-          });
-        } catch (_) {}
-      }
-    }
-
-    // 通知流结束
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('stream_end');
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _regenerateAgentReply() async {
-    if (_activeConversationId == null) return;
-
-    final convId = _activeConversationId!;
-    final messages = _agentConversations[convId] ?? [];
-
-    if (messages.isNotEmpty && messages.last['role'] == 'assistant') {
-      messages.removeLast();
-    }
-    final userIndex = messages.lastIndexWhere(
-      (m) => m['role'] == 'user',
-    );
-    if (userIndex == -1) return;
-    final userText = messages[userIndex]['content'] ?? '';
-
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('remove_last_message');
-      } catch (_) {}
-    }
-
-    final fullReply = StringBuffer();
-    final buffer = StringBuffer();
-    Timer? flushTimer;
-
-    try {
-      final stream = AgentService.chatStream(
-        userText,
-        history: messages.sublist(0, userIndex),
-      );
-
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('add_message', {
-            'text': '',
-            'isUser': false,
-            'streaming': true,
-          });
-        } catch (_) {}
-      }
-
-      flushTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
-        final chunk = buffer.toString();
-        if (chunk.isNotEmpty) {
-          buffer.clear();
-          if (_agentChatPopupWindow != null) {
-            _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
-              'text': chunk,
-            }).catchError((_) {});
-          }
-        }
-      });
-
-      await for (final token in stream) {
-        fullReply.write(token);
-        buffer.write(token);
-      }
-    } on AgentException catch (e) {
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('stream_error', {
-            'error': e.message,
-          });
-        } catch (_) {}
-      }
-      return;
-    } finally {
-      flushTimer?.cancel();
-      await Future.delayed(const Duration(milliseconds: 120));
-      final remaining = buffer.toString();
-      if (remaining.isNotEmpty && _agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('append_stream_chunk', {
-            'text': remaining,
-          });
-        } catch (_) {}
-      }
-    }
-
-    final reply = fullReply.toString();
-    if (reply.isNotEmpty) {
-      messages.add({'role': 'assistant', 'content': reply});
-      _agentConversations[convId] = messages;
-
-      // 持久化到磁盘
-      final conv = ChatConversation(
-        id: convId,
-        title: userText.length > 20 ? '${userText.substring(0, 20)}...' : userText,
-        model: '',
-        mode: 'accept',
-        messages: messages,
-      );
-      await ChatStorageService.save(conv);
-    }
-
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('stream_end');
-      } catch (_) {}
     }
   }
 
@@ -726,7 +345,7 @@ class _PetScreenState extends State<PetScreen> {
     _drawerAnimating = false;
   }
 
-  /// 打开 MenuScreen 窗口（右侧面板）
+  /// 打开 HomeScreen 窗口（右侧面板）
   Future<void> _showMenuWindow() async {
     _menuVisible = true;
 
@@ -768,7 +387,7 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
-  /// 切换 MenuScreen 显隐
+  /// 切换 HomeScreen 显隐
   Future<void> _toggleMenuWindow() async {
     if (_menuVisible) {
       _menuVisible = false;
@@ -777,98 +396,6 @@ class _PetScreenState extends State<PetScreen> {
       } catch (_) {}
     } else {
       await _showMenuWindow();
-    }
-  }
-
-  // ─── Agent 弹窗显隐 ────────────────────────────────────────────────────────
-
-  Future<void> _toggleAgentChatPopup() async {
-    if (!_agentPopupVisible || _agentPopupMinimized) {
-      // 未打开或已最小化 → 打开/恢复
-      if (_agentPopupMinimized) {
-        // 恢复最小化的窗口
-        if (_agentChatPopupWindow != null) {
-          try {
-            await _agentChatPopupWindow!.invokeMethod('restore_window');
-          } catch (_) {}
-        }
-        _agentPopupMinimized = false;
-      } else {
-        await _showAgentChatPopup();
-      }
-      _agentPopupFocused = true;
-    } else if (!_agentPopupFocused) {
-      // 已打开但未置顶 → 置顶
-      if (_agentChatPopupWindow != null) {
-        try {
-          await _agentChatPopupWindow!.invokeMethod('focus_window');
-        } catch (_) {}
-      }
-      _agentPopupFocused = true;
-    } else {
-      // 已打开且置顶 → 关闭（隐藏）
-      await _hideAgentChatPopup();
-    }
-  }
-
-  Future<void> _showAgentChatPopup() async {
-    _agentPopupVisible = true;
-
-    final display = await screenRetriever.getPrimaryDisplay();
-    final screenSize = display.visibleSize ?? display.size;
-    final left = (screenSize.width - _agentChatPopupWidth) / 2;
-    final top = (screenSize.height - _agentChatPopupHeight) / 2;
-
-    final settings = await SettingsService.load();
-    final popupTheme = settings.agentChatPopupTheme;
-    final model = settings.model.isEmpty
-        ? PlatformConfig.defaultChatModel(settings.platform)
-        : settings.model;
-
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.invokeMethod('set_data', {
-          'left': left,
-          'top': top,
-          'width': _agentChatPopupWidth,
-          'height': _agentChatPopupHeight,
-          'theme': popupTheme,
-          'model': model,
-        });
-        return;
-      } catch (_) {
-        _agentChatPopupWindow = null;
-      }
-    }
-
-    final createdWindow = await WindowController.create(
-      WindowConfiguration(
-        hiddenAtLaunch: true,
-        arguments: jsonEncode({
-          'type': 'agent_chat_popup',
-          'hidden': true,
-          'left': left,
-          'top': top,
-          'width': _agentChatPopupWidth,
-          'height': _agentChatPopupHeight,
-          'theme': popupTheme,
-          'model': model,
-        }),
-      ),
-    );
-    _agentChatPopupWindow = createdWindow;
-  }
-
-  Future<void> _hideAgentChatPopup() async {
-    _agentPopupVisible = false;
-    _agentPopupFocused = false;
-    _agentPopupMinimized = false;
-    if (_agentChatPopupWindow != null) {
-      try {
-        await _agentChatPopupWindow!.hide();
-      } catch (_) {
-        _agentChatPopupWindow = null;
-      }
     }
   }
 
@@ -1038,32 +565,6 @@ class _PetScreenState extends State<PetScreen> {
       );
     } catch (_) {}
 
-    // 预创建 agent 消息弹窗（居中）
-    try {
-      final display = await screenRetriever.getPrimaryDisplay();
-      final screenSize = display.visibleSize ?? display.size;
-      final left = (screenSize.width - _agentChatPopupWidth) / 2;
-      final top = (screenSize.height - _agentChatPopupHeight) / 2;
-      final settings = await SettingsService.load();
-      final model = settings.model.isEmpty
-          ? PlatformConfig.defaultChatModel(settings.platform)
-          : settings.model;
-      _agentChatPopupWindow = await WindowController.create(
-        WindowConfiguration(
-          hiddenAtLaunch: true,
-          arguments: jsonEncode({
-            'type': 'agent_chat_popup',
-            'hidden': true,
-            'left': left,
-            'top': top,
-            'width': _agentChatPopupWidth,
-            'height': _agentChatPopupHeight,
-            'model': model,
-          }),
-        ),
-      );
-    } catch (_) {}
-
     // 预创建剪贴板弹窗（位置在 _showClipboardPopup 中动态设置）
     try {
       _clipboardPopupWindow = await WindowController.create(
@@ -1162,7 +663,6 @@ class _PetScreenState extends State<PetScreen> {
         _showSettings();
         return;
       case 'toggle_agent':
-        _toggleAgentChatPopup();
         return;
       case 'show_clipboard':
         final settings = await SettingsService.load();
@@ -1417,7 +917,7 @@ class _PetScreenState extends State<PetScreen> {
     return _PetBody(
       petStyle: _petStyle,
       onToggleMenu: _toggleMenuWindow,
-      onToggleAgent: _toggleAgentChatPopup,
+      onToggleAgent: () {},
       onToggleSettings: _showSettings,
     );
   }

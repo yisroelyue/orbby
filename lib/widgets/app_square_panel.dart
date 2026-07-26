@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import 'base_panel.dart';
 
 class AppInfo {
@@ -58,6 +58,12 @@ class AppSquarePanel extends BasePanel {
   const AppSquarePanel({super.key});
 
   @override
+  PanelSize get panelSize => PanelSize.small;
+
+  @override
+  String get panelName => 'app_square';
+
+  @override
   State<AppSquarePanel> createState() => _AppSquarePanelState();
 }
 
@@ -69,15 +75,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   int? _hoveredIndex;
 
   @override
-  String get panelTitle => '应用中心';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/应用.svg');
-
-  @override
-  VoidCallback? get onHeaderTap => _openAppCenter;
-
-  @override
   bool get panelEnabled => _panelEnabled || _loading;
 
   @override
@@ -87,12 +84,13 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   void initState() {
     super.initState();
     _fetch();
-    MenuScreen.refreshNotifier.addListener(_onRefresh);
+    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showAppSquarePanel);
   }
 
   @override
   void dispose() {
-    MenuScreen.refreshNotifier.removeListener(_onRefresh);
+    HomeScreen.refreshNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -124,10 +122,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
     setState(() => _loading = false);
   }
 
-  void _openAppCenter() {
-    MenuScreen.menuChannel.invokeMethod('open_app_center');
-  }
-
   Future<void> _launchApp(AppInfo app) async {
     if (app.launchType == 'plugin' && app.subAppId != null) {
       await _launchPluginApp(app.subAppId!);
@@ -154,89 +148,71 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   }
 
   Future<void> _launchPluginApp(String subAppId) async {
-    MenuScreen.menuChannel.invokeMethod('launch_sub_app', {
+    HomeScreen.menuChannel.invokeMethod('launch_sub_app', {
       'subAppId': subAppId,
     });
   }
 
   @override
-  Widget buildContent(BuildContext context) {
-    // 实际内容在 build() 中渲染（需要 MouseRegion 包裹）
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildAppIcon(AppInfo app) {
-    if (app.icon.startsWith('assets/')) {
-      if (app.icon.endsWith('.svg')) {
-        return SvgPicture.asset(app.icon, width: 22, height: 22);
-      }
-      return Image.asset(
-        app.icon,
-        width: 22,
-        height: 22,
-        errorBuilder: (_, __, ___) =>
-            Icon(Icons.apps, color: secondaryText, size: 22),
-      );
-    }
-
-    final iconPath = AppConfig.resolvePath(app.icon);
-    final file = File(iconPath);
-    if (!file.existsSync()) {
-      return Icon(Icons.apps, color: secondaryText, size: 22);
-    }
-    if (app.icon.endsWith('.svg')) {
-      return SvgPicture.file(file, width: 22, height: 22);
-    }
-    return Image.file(
-      file,
-      width: 22,
-      height: 22,
-      errorBuilder: (_, __, ___) =>
-          Icon(Icons.apps, color: secondaryText, size: 22),
-    );
-  }
+  EdgeInsetsGeometry get panelPadding => const EdgeInsets.all(12);
 
   @override
-  Widget build(BuildContext context) {
+  Widget buildContent(BuildContext context) {
     if (!_panelEnabled && !_loading) {
       return const SizedBox.shrink();
     }
     return MouseRegion(
       onEnter: (_) => setState(() => _panelHovered = true),
       onExit: (_) => setState(() => _panelHovered = false),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          color: panelBg,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              buildHeader(),
-              const SizedBox(height: 10),
-              if (_loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: tertiaryText,
-                      ),
-                    ),
+      child: _loading
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: tertiaryText,
                   ),
-                )
-              else
-                _buildContent(),
-            ],
-          ),
-        ),
-      ),
+                ),
+              ),
+            )
+          : _buildContent(),
     );
   }
+
+  Widget _buildAppIcon(AppInfo app) {
+    if (app.icon.startsWith('assets/')) {
+      if (app.icon.endsWith('.svg')) {
+        return SvgPicture.asset(app.icon, width: 28, height: 28);
+      }
+      return Image.asset(
+        app.icon,
+        width: 28,
+        height: 28,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.apps_rounded, color: secondaryText, size: 28),
+      );
+    }
+
+    final iconPath = AppConfig.resolvePath(app.icon);
+    final file = File(iconPath);
+    if (!file.existsSync()) {
+      return Icon(Icons.apps_rounded, color: secondaryText, size: 28);
+    }
+    if (app.icon.endsWith('.svg')) {
+      return SvgPicture.file(file, width: 28, height: 28);
+    }
+    return Image.file(
+      file,
+      width: 28,
+      height: 28,
+      errorBuilder: (_, __, ___) =>
+          Icon(Icons.apps_rounded, color: secondaryText, size: 28),
+    );
+  }
+
 
   Widget _buildContent() {
     if (_apps.isEmpty) {
@@ -244,30 +220,36 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: Text(
-            '暂无应用，请编辑 apps_config.json 添加',
-            style: TextStyle(color: tertiaryText, fontSize: 13),
+            '暂无应用',
+            style: TextStyle(color: tertiaryText, fontSize: 12),
           ),
         ),
       );
     }
 
-    final visibleCount = _panelHovered ? _apps.length : (_apps.length > 4 ? 4 : _apps.length);
+    final visibleCount = _panelHovered ? _apps.length : (_apps.length > 6 ? 6 : _apps.length);
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 0.85,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 240),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: visibleCount,
+            itemBuilder: (_, index) => _buildAppTile(_apps[index], index),
+          ),
         ),
-        itemCount: visibleCount,
-        itemBuilder: (_, index) => _buildAppTile(_apps[index], index),
       ),
     );
   }
@@ -283,42 +265,43 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
-            color: isHovered ? hoverBg : Colors.transparent,
+            color: isHovered ? hoverBg : elementBg,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isHovered
+                  ? (isDark
+                      ? Colors.white.withOpacity(0.08)
+                      : Colors.black.withOpacity(0.06))
+                  : Colors.transparent,
+              width: 0.5,
+            ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: elementBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: app.type == 'system'
-                      ? _buildAppIcon(app)
-                      : Text(
-                          app.name.isNotEmpty ? app.name[0] : '?',
-                          style: TextStyle(
-                            color: secondaryText,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 4),
+              app.type == 'system'
+                  ? _buildAppIcon(app)
+                  : Text(
+                      app.name.isNotEmpty ? app.name[0] : '?',
+                      style: TextStyle(
+                        color: secondaryText,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+              const SizedBox(height: 6),
               Text(
                 app.name,
                 style: TextStyle(
-                  color: primaryText,
-                  fontSize: 12,
+                  color: isHovered ? primaryText : tertiaryText,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
                 overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                textAlign: TextAlign.center,
               ),
             ],
           ),

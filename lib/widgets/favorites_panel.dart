@@ -1,15 +1,22 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
 import '../models/favorite_item.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import '../services/favorites_service.dart';
 import 'base_panel.dart';
 
 class FavoritesPanel extends BasePanel {
   const FavoritesPanel({super.key});
+
+  @override
+  PanelSize get panelSize => PanelSize.small;
+
+  @override
+  String get panelName => 'favorites';
 
   @override
   State<FavoritesPanel> createState() => _FavoritesPanelState();
@@ -21,27 +28,19 @@ class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
   bool _loading = true;
 
   @override
-  String get panelTitle => '我的收藏';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.svg('assets/svg/收藏.svg');
-
-  @override
-  VoidCallback? get onHeaderTap => () => _openEditor();
-
-  @override
   bool get panelEnabled => _panelEnabled || _loading;
 
   @override
   void initState() {
     super.initState();
     _fetch();
-    MenuScreen.favoritesRefreshNotifier.addListener(_onRefresh);
+    HomeScreen.favoritesRefreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showFavoritesPanel);
   }
 
   @override
   void dispose() {
-    MenuScreen.favoritesRefreshNotifier.removeListener(_onRefresh);
+    HomeScreen.favoritesRefreshNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -67,56 +66,85 @@ class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
   }
 
   void _openEditor({String? folderId}) {
-    MenuScreen.menuChannel.invokeMethod('open_favorites_editor', {
+    HomeScreen.menuChannel.invokeMethod('open_favorites_editor', {
       'folderId': folderId ?? '',
     });
   }
 
   @override
   Widget buildContent(BuildContext context) {
-    if (_loading) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: tertiaryText,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 标题栏
+        GestureDetector(
+          onTap: () => _openEditor(),
+          child: Row(
+            children: [
+              SvgPicture.asset('assets/svg/收藏.svg', width: 22, height: 22),
+              const SizedBox(width: 8),
+              Text(
+                '我的收藏',
+                style: TextStyle(
+                  color: primaryText,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 内容区域
+        if (_loading) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: tertiaryText,
+                ),
+              ),
             ),
           ),
-        ),
-      );
-    }
-    if (_folders.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Center(
-          child: Text(
-            '拖拽文件到悬浮球即可收藏',
-            style: TextStyle(color: primaryText, fontSize: 13),
+        ] else if (_folders.isEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: Text(
+                '拖拽文件到悬浮球即可收藏',
+                style: TextStyle(color: primaryText, fontSize: 13),
+              ),
+            ),
           ),
-        ),
-      );
-    }
+        ] else ...[
+          Builder(
+            builder: (context) {
+              final displayFolders = _folders.take(4).toList();
+              final rowCount = (displayFolders.length / 2).ceil();
+              final gridHeight = (rowCount * 64.0).clamp(0.0, 180.0);
 
-    final displayFolders = _folders.take(4).toList();
-    final rowCount = (displayFolders.length / 4).ceil();
-    final gridHeight = (rowCount * 80.0).clamp(0.0, 180.0);
-
-    return SizedBox(
-      height: gridHeight,
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 2,
-            crossAxisSpacing: 6,
-            childAspectRatio: 0.9,
+              return SizedBox(
+                height: gridHeight,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 4,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 3.2,
+                  ),
+                  itemCount: displayFolders.length,
+                  itemBuilder: (_, index) => _buildFolderTile(displayFolders[index]),
+                ),
+              );
+            },
           ),
-          itemCount: displayFolders.length,
-          itemBuilder: (_, index) => _buildFolderTile(displayFolders[index]),
-        ),
+        ],
+      ],
     );
   }
 
@@ -179,43 +207,41 @@ class _FolderTileWidgetState extends State<_FolderTileWidget> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutCubic,
-          width: 64,
-          margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
           decoration: BoxDecoration(
             color: _hovered ? widget.hoverBg : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
             children: [
               AnimatedScale(
                 scale: _hovered ? 1.1 : 1.0,
                 duration: const Duration(milliseconds: 150),
                 child: Container(
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: widget.elementBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
                     Icons.folder_rounded,
                     color: Color(0xFFE8B830),
-                    size: 26,
+                    size: 20,
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                widget.folder.name,
-                style: TextStyle(
-                  color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
-                  fontSize: 13,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.folder.name,
+                  style: TextStyle(
+                    color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
               ),
             ],
           ),

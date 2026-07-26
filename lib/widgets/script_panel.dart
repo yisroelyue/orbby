@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import 'base_panel.dart';
 
 class ScriptPanel extends BasePanel {
   const ScriptPanel({super.key});
+
+  @override
+  PanelSize get panelSize => PanelSize.small;
+
+  @override
+  String get panelName => 'script';
 
   @override
   State<ScriptPanel> createState() => _ScriptPanelState();
@@ -16,24 +22,16 @@ class _ScriptPanelState extends BasePanelState<ScriptPanel> {
   bool _loading = true;
 
   @override
-  String get panelTitle => '脚本库';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.icon(Icons.code_rounded);
-
-  @override
-  VoidCallback? get onHeaderTap => null;
-
-  @override
   void initState() {
     super.initState();
     _fetch();
-    MenuScreen.refreshNotifier.addListener(_onRefresh);
+    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showScriptPanel);
   }
 
   @override
   void dispose() {
-    MenuScreen.refreshNotifier.removeListener(_onRefresh);
+    HomeScreen.refreshNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -54,35 +52,49 @@ class _ScriptPanelState extends BasePanelState<ScriptPanel> {
 
   @override
   Widget buildContent(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.construction_rounded,
-            color: mutedText,
-            size: 32,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '功能开发中...',
-            style: TextStyle(
-              color: mutedText,
-              fontSize: 13,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 标题栏
+        Row(
+          children: [
+            Icon(Icons.code_rounded, color: primaryText, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              '脚本库',
+              style: TextStyle(
+                color: primaryText,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // 内容区域
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.construction_rounded,
+                color: mutedText,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '功能开发中',
+                style: TextStyle(
+                  color: mutedText,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            '用于管理和运行 Python 脚本',
-            style: TextStyle(
-              color: mutedText.withValues(alpha: 0.6),
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -4,13 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/settings.dart';
-import '../screens/menu_screen.dart';
+import '../screens/home_screen.dart';
 import '../services/translate_service.dart';
 import 'base_panel.dart';
 import 'interactive_icon.dart';
 
 class TranslatePanel extends BasePanel {
   const TranslatePanel({super.key});
+
+  @override
+  PanelSize get panelSize => PanelSize.small;
+
+  @override
+  String get panelName => 'translate';
 
   @override
   State<TranslatePanel> createState() => _TranslatePanelState();
@@ -27,25 +33,17 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
   Timer? _clearTimer;
 
   @override
-  String get panelTitle => '翻译';
-
-  @override
-  PanelIcon get panelIcon => const PanelIcon.icon(Icons.translate_rounded);
-
-  @override
-  VoidCallback? get onHeaderTap => () {};
-
-  @override
   void initState() {
     super.initState();
     _fetch();
-    MenuScreen.refreshNotifier.addListener(_onRefresh);
+    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    registerPanelEnabled((v) => _panelEnabled = v, (s) => s.showTranslatePanel);
   }
 
   @override
   void dispose() {
     _clearTimer?.cancel();
-    MenuScreen.refreshNotifier.removeListener(_onRefresh);
+    HomeScreen.refreshNotifier.removeListener(_onRefresh);
     _inputController.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -116,6 +114,23 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // 标题栏
+        Row(
+          children: [
+            Icon(Icons.translate_rounded, color: primaryText, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              '翻译',
+              style: TextStyle(
+                color: primaryText,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // 内容区域
         _buildInputRow(),
         _buildAnswerArea(),
       ],
