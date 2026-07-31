@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/settings.dart';
-import '../screens/home_screen.dart';
 import '../services/translate_service.dart';
 import 'base_panel.dart';
 import 'interactive_icon.dart';
@@ -13,7 +11,7 @@ class TranslatePanel extends BasePanel {
   const TranslatePanel({super.key});
 
   @override
-  PanelSize get panelSize => PanelSize.small;
+  PanelSize get panelSize => PanelSize.full;
 
   @override
   String get panelName => 'translate';
@@ -23,32 +21,25 @@ class TranslatePanel extends BasePanel {
 }
 
 class _TranslatePanelState extends BasePanelState<TranslatePanel> {
-  bool _loading = true;
   bool _isTranslating = false;
   bool _isError = false;
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
   String _resultText = '';
   Timer? _clearTimer;
+  TranslateLang _selectedLang = TranslateLang.zhEn;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
-    HomeScreen.refreshNotifier.addListener(_onRefresh);
   }
 
   @override
   void dispose() {
     _clearTimer?.cancel();
-    HomeScreen.refreshNotifier.removeListener(_onRefresh);
     _inputController.dispose();
     _inputFocus.dispose();
     super.dispose();
-  }
-
-  void _onRefresh() {
-    _fetch();
   }
 
   void _startClearTimer() {
@@ -70,7 +61,10 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
     _clearTimer?.cancel();
     setState(() => _isTranslating = true);
     try {
-      final result = await TranslateService.translate(text);
+      final result = await TranslateService.translate(
+        text,
+        lang: _selectedLang,
+      );
       if (!mounted) return;
       setState(() {
         _resultText = result;
@@ -95,34 +89,16 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
     }
   }
 
-  Future<void> _fetch() async {
-    setState(() => _loading = false);
-  }
-
   @override
-  Widget buildContent(BuildContext context) {
+Widget buildContent(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 标题栏
-        Row(
-          children: [
-            Icon(Icons.translate_rounded, color: primaryText, size: 22),
-            const SizedBox(width: 8),
-            Text(
-              '翻译',
-              style: TextStyle(
-                color: primaryText,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // 内容区域
+        // 标题 + 输入框同一行
         _buildInputRow(),
+        const SizedBox(height: 8),
+        _buildLangSelector(),
         _buildAnswerArea(),
       ],
     );
@@ -134,15 +110,17 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
         color: hoverBg,
         borderRadius: BorderRadius.circular(10),
       ),
-      padding: const EdgeInsets.only(left: 12, right: 4, top: 2, bottom: 2),
+      padding: const EdgeInsets.only(left: 8, right: 4, top: 2, bottom: 2),
       child: Row(
         children: [
+          Icon(Icons.translate_rounded, color: primaryText, size: 20),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _inputController,
               focusNode: _inputFocus,
               cursorColor: primaryText,
-              style: TextStyle(color: primaryText, fontSize: 12,fontWeight: FontWeight.w600),
+              style: TextStyle(color: primaryText, fontSize: 12, fontWeight: FontWeight.w600),
               maxLines: 1,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) {
@@ -150,7 +128,7 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
               },
               decoration: InputDecoration(
                 hintText: '粘贴要翻译的文本...',
-                hintStyle: TextStyle(color: hintColor,fontWeight: FontWeight.w600),
+                hintStyle: TextStyle(color: hintColor, fontSize: 14, fontWeight: FontWeight.w600),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
@@ -182,52 +160,98 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
     );
   }
 
+  Widget _buildLangSelector() {
+    return SizedBox(
+      height: 28,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: TranslateLang.values.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final lang = TranslateLang.values[index];
+          final isSelected = lang == _selectedLang;
+          return GestureDetector(
+            onTap: () {
+              if (isSelected) return;
+              setState(() {
+                _selectedLang = lang;
+                _resultText = '';
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: isSelected ? accentColor : hoverBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected ? accentColor : Colors.transparent,
+                  width: 1,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  lang.label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : secondaryText,
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildAnswerArea() {
     if (_resultText.isEmpty) {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 8),
       child: Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _isError ? '错误' : '翻译结果',
-                style: TextStyle(
-                  color: _isError ? Colors.redAccent : tertiaryText,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _isError ? '错误' : '翻译结果',
+                  style: TextStyle(
+                    color: _isError ? Colors.redAccent : tertiaryText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              InteractiveIcon(
-                size: 24,
-                onTap: () => setState(() => _resultText = ''),
-                child: Icon(Icons.close, color: mutedText, size: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            _resultText,
-            style: TextStyle(
-              color: _isError ? Colors.redAccent : primaryText,
-              fontSize: 13,
-              height: 1.5,
+                InteractiveIcon(
+                  size: 24,
+                  onTap: () => setState(() => _resultText = ''),
+                  child: Icon(Icons.close, color: mutedText, size: 16),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            SelectableText(
+              _resultText,
+              style: TextStyle(
+                color: _isError ? Colors.redAccent : primaryText,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

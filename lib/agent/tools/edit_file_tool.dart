@@ -7,24 +7,23 @@ import '../types.dart';
 
 final editFileTool = ToolDefinition(
   name: 'edit_file',
-  description: '编辑已有文件的内容。支持三种模式：\n'
+  description:
+      '编辑已有文件的内容。支持三种模式：\n'
       '- replace: 将文件中的 old_string 替换为 new_string（默认模式，old_string 必须完全匹配）\n'
       '- append: 在文件末尾追加 new_string 内容\n'
       '- prepend: 在文件开头插入 new_string 内容',
   parameters: {
     'type': 'object',
     'properties': {
-      'path': {
-        'type': 'string',
-        'description': '要编辑的文件的完整路径',
-      },
+      'path': {'type': 'string', 'description': '要编辑的文件的完整路径'},
       'old_string': {
         'type': 'string',
         'description': '要被替换的原始字符串（仅 replace 模式需要，必须与文件中的内容完全一致）',
       },
       'new_string': {
         'type': 'string',
-        'description': '要写入的新字符串。replace 模式下替换 old_string，append/prepend 模式下直接插入。',
+        'description':
+            '要写入的新字符串。replace 模式下替换 old_string，append/prepend 模式下直接插入。',
       },
       'mode': {
         'type': 'string',

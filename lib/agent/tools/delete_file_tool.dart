@@ -10,10 +10,7 @@ final deleteFileTool = ToolDefinition(
   parameters: {
     'type': 'object',
     'properties': {
-      'path': {
-        'type': 'string',
-        'description': '要删除的文件或目录的完整路径',
-      },
+      'path': {'type': 'string', 'description': '要删除的文件或目录的完整路径'},
       'recursive': {
         'type': 'boolean',
         'description': '删除目录时是否递归删除其所有内容。默认为 false，即只删除空目录。',

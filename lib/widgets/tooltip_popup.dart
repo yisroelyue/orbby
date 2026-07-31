@@ -83,23 +83,20 @@ class _TooltipContentState extends State<_TooltipContent>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _opacity;
-  late Animation<Offset> _slide;
+  late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 250),
       vsync: this,
     );
     _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, -0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
     _controller.forward();
   }
@@ -113,36 +110,45 @@ class _TooltipContentState extends State<_TooltipContent>
   @override
   Widget build(BuildContext context) {
     final bgColor =
-        widget.isDark ? const Color(0xFF3A3A3A) : const Color(0xFFFFFFFF);
+        widget.isDark ? const Color(0xFF2A2D3E) : const Color(0xFFFFFFFF);
     final textColor =
-        widget.isDark ? Colors.white : const Color(0xFF333333);
+        widget.isDark ? Colors.white : const Color(0xFF1A1A2E);
     final descColor =
-        widget.isDark ? Colors.white70 : const Color(0xFF666666);
+        widget.isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF555555);
     final borderColor =
-        widget.isDark ? Colors.white12 : Colors.black12;
+        widget.isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08);
+    final accentColor =
+        widget.isDark ? const Color(0xFF6C63FF) : const Color(0xFF5B5FC7);
+    final dividerColor =
+        widget.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06);
 
     return Positioned(
-      left: widget.position.dx - 100,
-      top: widget.position.dy - 120,
+      left: widget.position.dx - 110,
+      top: widget.position.dy - 130,
       child: IgnorePointer(
         child: FadeTransition(
           opacity: _opacity,
-          child: SlideTransition(
-            position: _slide,
+          child: ScaleTransition(
+            scale: _scale,
+            alignment: Alignment.bottomCenter,
             child: Material(
               color: Colors.transparent,
               child: Container(
-                width: 200,
-                padding: const EdgeInsets.all(12),
+                width: 220,
                 decoration: BoxDecoration(
                   color: bgColor,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: borderColor, width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
@@ -150,33 +156,77 @@ class _TooltipContentState extends State<_TooltipContent>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '💡 ${widget.title}',
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    // 标题栏
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: accentColor,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              widget.title,
+                              style: TextStyle(
+                                color: textColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    if (widget.descriptionSpans != null)
-                      RichText(
-                        text: TextSpan(
-                          children: widget.descriptionSpans,
-                          style: TextStyle(
-                            color: descColor,
-                            fontSize: 12,
+                    // 分割线
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              dividerColor,
+                              dividerColor,
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.2, 0.8, 1.0],
                           ),
                         ),
-                      )
-                    else if (widget.description != null)
-                      Text(
-                        '· ${widget.description}',
-                        style: TextStyle(
-                          color: descColor,
-                          fontSize: 12,
-                        ),
                       ),
+                    ),
+                    // 描述内容
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                      child: widget.descriptionSpans != null
+                          ? RichText(
+                              text: TextSpan(
+                                children: widget.descriptionSpans,
+                                style: TextStyle(
+                                  color: descColor,
+                                  fontSize: 12,
+                                  height: 1.6,
+                                ),
+                              ),
+                            )
+                          : widget.description != null
+                              ? Text(
+                                  widget.description!,
+                                  style: TextStyle(
+                                    color: descColor,
+                                    fontSize: 12,
+                                    height: 1.6,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),

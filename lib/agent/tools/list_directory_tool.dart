@@ -115,20 +115,24 @@ _TreeNode? _getTree(String dirPath, int depth, int maxDepth, int maxPerLevel) {
       );
       if (child != null) node.children.add(child);
     } else if (item.type == 'dir') {
-      node.children.add(_TreeNode(
-        name: item.name,
-        path: '$dirPath${Platform.pathSeparator}${item.name}',
-        type: 'dir',
-      ));
+      node.children.add(
+        _TreeNode(
+          name: item.name,
+          path: '$dirPath${Platform.pathSeparator}${item.name}',
+          type: 'dir',
+        ),
+      );
     } else {
       // 文件在所有深度都列出，每层最多 15 个文件
       final fileCount = node.children.where((c) => c.type == 'file').length;
       if (fileCount < 15) {
-        node.children.add(_TreeNode(
-          name: item.name,
-          path: '$dirPath${Platform.pathSeparator}${item.name}',
-          type: 'file',
-        ));
+        node.children.add(
+          _TreeNode(
+            name: item.name,
+            path: '$dirPath${Platform.pathSeparator}${item.name}',
+            type: 'file',
+          ),
+        );
       }
     }
   }
@@ -137,7 +141,12 @@ _TreeNode? _getTree(String dirPath, int depth, int maxDepth, int maxPerLevel) {
 }
 
 /// 将树结构格式化为文本输出
-String _formatTree(_TreeNode node, String indent, bool isLast, String rootLabel) {
+String _formatTree(
+  _TreeNode node,
+  String indent,
+  bool isLast,
+  String rootLabel,
+) {
   final buffer = StringBuffer();
 
   if (rootLabel.isNotEmpty) {
@@ -150,7 +159,9 @@ String _formatTree(_TreeNode node, String indent, bool isLast, String rootLabel)
   }
 
   if (node.children.isNotEmpty) {
-    final newIndent = rootLabel.isNotEmpty ? indent : indent + (isLast ? '    ' : '│   ');
+    final newIndent = rootLabel.isNotEmpty
+        ? indent
+        : indent + (isLast ? '    ' : '│   ');
     for (int i = 0; i < node.children.length; i++) {
       final childIsLast = i == node.children.length - 1;
       buffer.write(_formatTree(node.children[i], newIndent, childIsLast, ''));
@@ -162,14 +173,16 @@ String _formatTree(_TreeNode node, String indent, bool isLast, String rootLabel)
 
 final listDirectoryTool = ToolDefinition(
   name: 'list_directory',
-  description: '列出目录结构，以树形展示文件和子目录。可以查看指定路径的目录树，也可以查看系统常用目录（桌面、文档、下载、用户主目录）。\n'
+  description:
+      '列出目录结构，以树形展示文件和子目录。可以查看指定路径的目录树，也可以查看系统常用目录（桌面、文档、下载、用户主目录）。\n'
       'depth 控制查看深度（默认 2 层），每层最多显示 30 个条目。适合用于了解目录层级结构，而非列出所有文件。',
   parameters: {
     'type': 'object',
     'properties': {
       'path': {
         'type': 'string',
-        'description': '要查看的目录路径。如果不填，则显示系统常用目录概览（用户主目录、桌面、文档、下载等）。可以填入具体路径来查看该目录的子树。',
+        'description':
+            '要查看的目录路径。如果不填，则显示系统常用目录概览（用户主目录、桌面、文档、下载等）。可以填入具体路径来查看该目录的子树。',
       },
       'depth': {
         'type': 'integer',
@@ -189,8 +202,14 @@ final listDirectoryTool = ToolDefinition(
       final sections = [
         {'key': '用户主目录', 'path': _homeDir()},
         {'key': '桌面', 'path': _desktopDir()},
-        {'key': '文档', 'path': '${_homeDir()}${Platform.pathSeparator}Documents'},
-        {'key': '下载', 'path': '${_homeDir()}${Platform.pathSeparator}Downloads'},
+        {
+          'key': '文档',
+          'path': '${_homeDir()}${Platform.pathSeparator}Documents',
+        },
+        {
+          'key': '下载',
+          'path': '${_homeDir()}${Platform.pathSeparator}Downloads',
+        },
       ];
 
       final buffer = StringBuffer();
@@ -199,7 +218,9 @@ final listDirectoryTool = ToolDefinition(
       for (final section in sections) {
         final dirPath = section['path'] as String;
         final dir = Directory(dirPath);
-        buffer.writeln('【${section['key']}】${dir.existsSync() ? '' : ' (不存在)'}');
+        buffer.writeln(
+          '【${section['key']}】${dir.existsSync() ? '' : ' (不存在)'}',
+        );
         buffer.writeln('路径: $dirPath');
 
         if (dir.existsSync()) {
@@ -224,7 +245,9 @@ final listDirectoryTool = ToolDefinition(
                     .where((i) => i.type == 'dir')
                     .map((i) => i.name)
                     .join(', ');
-                buffer.writeln('  $drive ${dirNames.isNotEmpty ? '→ $dirNames' : '(空或无法访问)'}');
+                buffer.writeln(
+                  '  $drive ${dirNames.isNotEmpty ? '→ $dirNames' : '(空或无法访问)'}',
+                );
               }
             } catch (_) {
               // skip

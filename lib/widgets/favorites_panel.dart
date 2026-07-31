@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/settings.dart';
 import '../models/favorite_item.dart';
 import '../screens/home_screen.dart';
-import '../services/favorites_service.dart';
+import '../services/panel_cache.dart';
+import '../services/panel_data_service.dart';
 import 'base_panel.dart';
 
 class FavoritesPanel extends BasePanel {
@@ -24,33 +24,51 @@ class FavoritesPanel extends BasePanel {
 
 class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
   List<FavoriteFolder> _folders = [];
+  int _totalCount = 0;
+  int _uncategorizedCount = 0;
   bool _loading = true;
+
+  // 文件夹颜色列表
+  static const List<Color> _folderColors = [
+    Color(0xFFE8B830), // 金色
+    Color(0xFF4CAF50), // 绿色
+    Color(0xFF2196F3), // 蓝色
+    Color(0xFFFF7043), // 橙色
+    Color(0xFF9C27B0), // 紫色
+    Color(0xFF00BCD4), // 青色
+    Color(0xFFFF5252), // 红色
+    Color(0xFF7C4DFF), // 深紫色
+  ];
 
   @override
   void initState() {
     super.initState();
-    _fetch();
-    HomeScreen.favoritesRefreshNotifier.addListener(_onRefresh);
+    _loadFromCache();
+    PanelCache.addListener(_onCacheChanged);
+    if (!PanelCache.has('favorites_data')) {
+      setState(() => _loading = true);
+      PanelDataService.refreshFavorites();
+    }
   }
 
   @override
   void dispose() {
-    HomeScreen.favoritesRefreshNotifier.removeListener(_onRefresh);
+    PanelCache.removeListener(_onCacheChanged);
     super.dispose();
   }
 
-  void _onRefresh() {
-    _fetch();
-  }
+  void _onCacheChanged() => _loadFromCache();
 
-  Future<void> _fetch() async {
-    setState(() => _loading = true);
-    final folders = await FavoritesService.loadFolders();
-    if (!mounted) return;
-    setState(() {
-      _folders = folders;
-      _loading = false;
-    });
+  void _loadFromCache() {
+    final cached = PanelCache.get<Map<String, dynamic>>('favorites_data');
+    if (cached != null && mounted) {
+      setState(() {
+        _folders = (cached['folders'] as List<FavoriteFolder>?) ?? [];
+        _totalCount = (cached['allItems'] as List?)?.length ?? 0;
+        _uncategorizedCount = cached['uncategorizedCount'] as int? ?? 0;
+        _loading = false;
+      });
+    }
   }
 
   void _openEditor({String? folderId}) {
@@ -61,78 +79,64 @@ class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
 
   @override
   Widget buildContent(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 标题栏
-        GestureDetector(
-          onTap: () => _openEditor(),
-          child: Row(
-            children: [
-              SvgPicture.asset('assets/svg/收藏.svg', width: 22, height: 22),
-              const SizedBox(width: 8),
-              Text(
-                '我的收藏',
-                style: TextStyle(
-                  color: primaryText,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 顶部：标题 + icon + 数量
+            _buildHeaderTile(),
+            const SizedBox(height: 12),
+            // 内容区域
+            if (_loading) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: tertiaryText,
+                    ),
+                  ),
                 ),
+              ),
+            ] else if (_folders.isEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(
+                  '拖拽文件到悬浮球即可收藏',
+                  style: TextStyle(color: primaryText, fontSize: 13),
+                ),
+              ),
+            ] else ...[
+              // 文件夹网格 - 每行两个
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 3.0,
+                ),
+                itemCount: _folders.length + (_uncategorizedCount > 0 ? 1 : 0),
+                itemBuilder: (_, index) {
+                  if (index < _folders.length) {
+                    final color = _folderColors[index % _folderColors.length];
+                    return _buildFolderTile(_folders[index], color);
+                  }
+                  // 未分类目录
+                  return _buildUncategorizedTile();
+                },
               ),
             ],
-          ),
+          ],
         ),
-        const SizedBox(height: 10),
-        // 内容区域
-        if (_loading) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: tertiaryText,
-                ),
-              ),
-            ),
-          ),
-        ] else if (_folders.isEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Center(
-              child: Text(
-                '拖拽文件到悬浮球即可收藏',
-                style: TextStyle(color: primaryText, fontSize: 13),
-              ),
-            ),
-          ),
-        ] else ...[
-          Builder(
-            builder: (context) {
-              final displayFolders = _folders.take(4).toList();
-              final rowCount = (displayFolders.length / 2).ceil();
-              final gridHeight = (rowCount * 64.0).clamp(0.0, 180.0);
-
-              return SizedBox(
-                height: gridHeight,
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 4,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 3.2,
-                  ),
-                  itemCount: displayFolders.length,
-                  itemBuilder: (_, index) => _buildFolderTile(displayFolders[index]),
-                ),
-              );
-            },
-          ),
-        ],
-      ],
+      ),
     );
   }
 
@@ -147,14 +151,127 @@ class _FavoritesPanelState extends BasePanelState<FavoritesPanel> {
     }
   }
 
-  Widget _buildFolderTile(FavoriteFolder folder) {
+  Future<void> _openUncategorized() async {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
+    final folderPath = '$home\\.orbby\\favorites';
+    final dir = Directory(folderPath);
+    if (await dir.exists()) {
+      await Process.start('explorer', [folderPath]);
+    }
+  }
+
+  Widget _buildFolderTile(FavoriteFolder folder, Color color) {
     return _FolderTileWidget(
       folder: folder,
       isDark: isDark,
       elementBg: elementBg,
       hoverBg: hoverBg,
+      folderColor: color,
       onOpen: () => _openFolder(folder),
       onEdit: () => _openEditor(folderId: folder.id),
+    );
+  }
+
+  Widget _buildUncategorizedTile() {
+    return _UncategorizedTileWidget(
+      count: _uncategorizedCount,
+      isDark: isDark,
+      elementBg: elementBg,
+      hoverBg: hoverBg,
+      onOpen: _openUncategorized,
+      onEdit: () => _openEditor(),
+    );
+  }
+
+  Widget _buildHeaderTile() {
+    return _HeaderTileWidget(
+      totalCount: _totalCount,
+      isDark: isDark,
+      hoverBg: hoverBg,
+      onOpen: () => _openEditor(),
+    );
+  }
+}
+
+class _HeaderTileWidget extends StatefulWidget {
+  const _HeaderTileWidget({
+    required this.totalCount,
+    required this.isDark,
+    required this.hoverBg,
+    required this.onOpen,
+  });
+
+  final int totalCount;
+  final bool isDark;
+  final Color hoverBg;
+  final VoidCallback onOpen;
+
+  @override
+  State<_HeaderTileWidget> createState() => _HeaderTileWidgetState();
+}
+
+class _HeaderTileWidgetState extends State<_HeaderTileWidget> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'favorites',
+                style: TextStyle(
+                  color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  AnimatedScale(
+                    scale: _hovered ? 1.1 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: SvgPicture.asset(
+                      'assets/svg/收藏.svg',
+                      width: 40,
+                      height: 40,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '+${widget.totalCount}',
+                    style: TextStyle(
+                      color: widget.isDark ? Colors.white : const Color(0xFF333333),
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -165,6 +282,7 @@ class _FolderTileWidget extends StatefulWidget {
     required this.isDark,
     required this.elementBg,
     required this.hoverBg,
+    required this.folderColor,
     required this.onOpen,
     required this.onEdit,
   });
@@ -173,6 +291,7 @@ class _FolderTileWidget extends StatefulWidget {
   final bool isDark;
   final Color elementBg;
   final Color hoverBg;
+  final Color folderColor;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
 
@@ -195,7 +314,7 @@ class _FolderTileWidgetState extends State<_FolderTileWidget> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
           decoration: BoxDecoration(
             color: _hovered ? widget.hoverBg : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -212,17 +331,97 @@ class _FolderTileWidgetState extends State<_FolderTileWidget> {
                     color: widget.elementBg,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.folder_rounded,
-                    color: Color(0xFFE8B830),
+                    color: widget.folderColor,
                     size: 20,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   widget.folder.name,
+                  style: TextStyle(
+                    color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UncategorizedTileWidget extends StatefulWidget {
+  const _UncategorizedTileWidget({
+    required this.count,
+    required this.isDark,
+    required this.elementBg,
+    required this.hoverBg,
+    required this.onOpen,
+    required this.onEdit,
+  });
+
+  final int count;
+  final bool isDark;
+  final Color elementBg;
+  final Color hoverBg;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+
+  @override
+  State<_UncategorizedTileWidget> createState() => _UncategorizedTileWidgetState();
+}
+
+class _UncategorizedTileWidgetState extends State<_UncategorizedTileWidget> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        onSecondaryTap: widget.onEdit,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              AnimatedScale(
+                scale: _hovered ? 1.1 : 1.0,
+                duration: const Duration(milliseconds: 150),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: widget.elementBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.folder_open_rounded,
+                    color: const Color(0xFF9E9E9E),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '未分类 (${widget.count})',
                   style: TextStyle(
                     color: widget.isDark ? Colors.white60 : const Color(0xFF888888),
                     fontSize: 13,

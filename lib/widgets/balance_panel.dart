@@ -1,15 +1,19 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../config/platform.dart';
 import '../config/settings.dart';
-import '../screens/home_screen.dart';
 import '../services/balance_service.dart';
 import '../services/panel_cache.dart';
+import '../services/panel_data_service.dart';
 import 'base_panel.dart';
 import 'interactive_icon.dart';
 
 class BalancePanel extends BasePanel {
   const BalancePanel({super.key});
+
+  @override
+  PanelSize get panelSize => PanelSize.small;
 
   @override
   String get panelName => 'balance';
@@ -25,45 +29,37 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
   bool _notConfigured = false;
   bool _connected = false;
   bool _loading = true;
-  bool _initialTestDone = false;
 
   @override
   void initState() {
     super.initState();
-
-    // 先从缓存恢复数据
-    final cachedBalance = PanelCache.get<BalanceInfo>('balance_info');
-    final cachedConnected = PanelCache.get<bool>('balance_connected') ?? false;
-    if (cachedBalance != null) {
-      _balance = cachedBalance;
-      _loading = false;
-      _connected = cachedConnected;
-    }
-
-    HomeScreen.refreshNotifier.addListener(_onRefresh);
-
-    if (cachedBalance != null) {
-      // 有缓存只读设置，不做连通性测试
-      _loadSettings();
-    } else {
-      // 无缓存才做连通性测试（会内部读取设置）
-      _initialTestDone = true;
-      _testConnectivity();
+    _loadSettings();
+    _loadFromCache();
+    PanelCache.addListener(_onCacheChanged);
+    if (!PanelCache.has('balance_info')) {
+      PanelDataService.refreshBalance();
     }
   }
 
   @override
   void dispose() {
-    HomeScreen.refreshNotifier.removeListener(_onRefresh);
+    PanelCache.removeListener(_onCacheChanged);
     super.dispose();
   }
 
-  void _onRefresh() {
-    if (_balance != null) {
-      // 有缓存只刷新设置，不做连通性测试
-      _loadSettings();
-    } else {
-      _testConnectivity();
+  void _onCacheChanged() => _loadFromCache();
+
+  void _loadFromCache() {
+    final balance = PanelCache.get<BalanceInfo>('balance_info');
+    final connected = PanelCache.get<bool>('balance_connected') ?? false;
+    if (mounted) {
+      setState(() {
+        if (balance != null) {
+          _balance = balance;
+          _loading = false;
+        }
+        _connected = connected;
+      });
     }
   }
 
@@ -74,54 +70,8 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
       _platform = settings.platform;
       _enableBalance = settings.enableBalance;
       _notConfigured = settings.apiKey.isEmpty;
-      // 有缓存时不显示 loading
       if (_balance != null) _loading = false;
     });
-  }
-
-  Future<void> _testConnectivity() async {
-    setState(() {
-      _loading = true;
-      _connected = false;
-    });
-
-    final settings = await SettingsService.load();
-    _platform = settings.platform;
-    _enableBalance = settings.enableBalance;
-    if (settings.apiKey.isEmpty) {
-      if (!mounted) return;
-      PanelCache.set('balance_connected', false);
-      setState(() {
-        _notConfigured = true;
-        _loading = false;
-      });
-      return;
-    }
-
-    final ok = await BalanceService.testConnectivity();
-    if (!mounted) return;
-    _connected = ok;
-    PanelCache.set('balance_connected', ok);
-
-    if (_enableBalance && ok) {
-      try {
-        final balance = await BalanceService.fetchBalance();
-        PanelCache.set('balance_info', balance);
-        if (!mounted) return;
-        setState(() {
-          _balance = balance;
-          _loading = false;
-        });
-      } catch (e) {
-        debugPrint('余额获取失败: $e');
-        if (!mounted) return;
-        setState(() => _loading = false);
-      }
-    } else {
-      setState(() => _loading = false);
-      BalanceInfo balanceInfo = BalanceInfo(isAvailable: true, totalBalance: 0, grantedBalance: 0, toppedUpBalance: 0, currency: "0");
-      PanelCache.set('balance_info',balanceInfo);
-    }
   }
 
   @override
@@ -144,9 +94,8 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
-        // 标题栏
+        // 标题栏（保持原造型）
         _BalanceHeader(
           icon: _loading
               ? SizedBox(
@@ -171,186 +120,225 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
           actions: [
             InteractiveIcon(
               size: 32,
-              onTap: _testConnectivity,
+              onTap: () => PanelDataService.refreshBalance(),
               child: Icon(Icons.refresh_rounded, color: tertiaryText, size: 20),
             ),
           ],
         ),
-        const SizedBox(height: 10),
         // 内容区域
-        if (_loading) ...[
-          Text('检测中...', style: TextStyle(color: mutedText, fontSize: 14)),
-        ] else if (_notConfigured) ...[
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '请先配置 API Key',
-                style: TextStyle(color: mutedText, fontSize: 13),
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: _testConnectivity,
-                child: Text(
-                  '点击重试',
-                  style: TextStyle(color: tertiaryText, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ] else if (!_connected) ...[
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '连接失败，请检查配置',
-                style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: _testConnectivity,
-                child: Text(
-                  '点击重试',
-                  style: TextStyle(color: tertiaryText, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ] else if (_enableBalance && _balance != null) ...[
-          Builder(
-            builder: (context) {
-              final b = _balance!;
-              final symbol = b.currency == 'USD' ? '\$' : '¥';
-              // TODO: 替换为真实用量数据
-              const usedPercent = 0.37;
-              final accent = isDark
-                  ? const Color(0xFF00E5FF)
-                  : const Color(0xFF2979FF);
-              final trackColor = isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.black.withOpacity(0.05);
+        Expanded(
+          child: _loading
+              ? Center(
+                  child: Text('检测中...', style: TextStyle(color: mutedText, fontSize: 14)),
+                )
+              : _notConfigured
+                  ? _buildErrorContent('请先配置 API Key')
+                  : !_connected
+                      ? _buildErrorContent('连接失败，请检查配置')
+                      : _enableBalance && _balance != null
+                          ? _buildBalanceContent()
+                          : _buildEmptyContent(),
+        ),
+      ],
+    );
+  }
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  children: [
-                    // 余额数值
-                    Text(
-                      '$symbol ${b.totalBalance.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        color: primaryText,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // 用量进度条 + 百分比
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${(usedPercent * 100).toStringAsFixed(0)}% 已使用',
-                            style: TextStyle(
-                              color: tertiaryText,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: SizedBox(
-                              height: 6,
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    width: double.infinity,
-                                    color: trackColor,
-                                  ),
-                                  FractionallySizedBox(
-                                    widthFactor: usedPercent,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            accent.withOpacity(0.6),
-                                            accent,
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+  Widget _buildErrorContent(String message) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message,
+            style: TextStyle(color: mutedText, fontSize: 14),
           ),
-        ] else ...[
-          Builder(
-            builder: (context) {
-              final symbol = _balance?.currency == 'USD' ? '\$' : '¥';
-              final accent = isDark
-                  ? const Color(0xFF00E5FF)
-                  : const Color(0xFF2979FF);
-              final trackColor = isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.black.withOpacity(0.05);
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  children: [
-                    // 余额数值
-                    Text(
-                      '$symbol 0.00',
-                      style: TextStyle(
-                        color: primaryText,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // 用量进度条 + 百分比
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '0% 已使用',
-                            style: TextStyle(
-                              color: tertiaryText,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: SizedBox(
-                              height: 6,
-                              child: Container(
-                                width: double.infinity,
-                                color: trackColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => PanelDataService.refreshBalance(),
+            child: Text(
+              '点击重试',
+              style: TextStyle(color: tertiaryText, fontSize: 13),
+            ),
           ),
         ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyContent() {
+    final symbol = _balance?.currency == 'USD' ? '\$' : '¥';
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // 余额显示
+          Text(
+            '$symbol 0.00',
+            style: TextStyle(
+              color: primaryText,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 柱状图
+          Expanded(
+            child: _buildBarChart([]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceContent() {
+    final b = _balance!;
+    final symbol = b.currency == 'USD' ? '\$' : '¥';
+    final accent = isDark ? const Color(0xFF00E5FF) : const Color(0xFF2979FF);
+
+    // 模拟最近7天的使用数据（TODO: 替换为真实数据）
+    final usageData = [
+      _DailyUsage(day: '一', amount: 0.15),
+      _DailyUsage(day: '二', amount: 0.23),
+      _DailyUsage(day: '三', amount: 0.18),
+      _DailyUsage(day: '四', amount: 0.31),
+      _DailyUsage(day: '五', amount: 0.27),
+      _DailyUsage(day: '六', amount: 0.12),
+      _DailyUsage(day: '日', amount: 0.08),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // 余额显示
+          Text(
+            '$symbol${b.totalBalance.toStringAsFixed(2)}',
+            style: TextStyle(
+              color: primaryText,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '当前余额',
+            style: TextStyle(
+              color: tertiaryText,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 柱状图
+          Expanded(
+            child: _buildBarChart(usageData, accent: accent),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBarChart(List<_DailyUsage> data, {Color? accent}) {
+    final chartColor = accent ?? (isDark ? const Color(0xFF00E5FF) : const Color(0xFF2979FF));
+    final gridColor = isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08);
+
+    if (data.isEmpty) {
+      return Center(
+        child: Text(
+          '暂无使用数据',
+          style: TextStyle(color: tertiaryText, fontSize: 12),
+        ),
+      );
+    }
+
+    final maxY = data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: maxY * 1.2,
+        minY: 0,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => Colors.black87,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              return BarTooltipItem(
+                '${data[group.x].day}  ¥${rod.toY.toStringAsFixed(2)}',
+                TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                if (value.toInt() >= 0 && value.toInt() < data.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      data[value.toInt()].day,
+                      style: TextStyle(
+                        color: tertiaryText,
+                        fontSize: 11,
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 3,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: gridColor,
+              strokeWidth: 1,
+            );
+          },
+        ),
+        barGroups: data.asMap().entries.map((entry) {
+          final index = entry.key;
+          final usage = entry.value;
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: usage.amount,
+                color: chartColor,
+                width: 16,
+                borderRadius: BorderRadius.circular(4),
+                backDrawRodData: BackgroundBarChartRodData(
+                  show: true,
+                  toY: maxY * 1.2,
+                  color: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.03),
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -393,6 +381,8 @@ class _BalanceHeader extends StatelessWidget {
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           Container(
@@ -414,4 +404,12 @@ class _BalanceHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 每日使用量数据
+class _DailyUsage {
+  final String day;
+  final double amount;
+
+  const _DailyUsage({required this.day, required this.amount});
 }

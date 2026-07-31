@@ -15,6 +15,10 @@ abstract class BasePanel extends StatefulWidget {
   /// 子类可覆写，默认 full
   PanelSize get panelSize => PanelSize.full;
 
+  /// 是否参与轮播组
+  /// 子类可覆写，默认 false
+  bool get isCarousel => false;
+
   /// 面板唯一标识，子类必须覆写
   String get panelName;
 
@@ -34,8 +38,8 @@ abstract class BasePanelState<T extends BasePanel> extends State<T>
   /// 子类可覆写以支持 hover 展开逻辑
   bool get panelHovered => false;
 
-  /// 面板外层圆角
-  static const double panelBorderRadius = 16;
+  /// 面板外层圆角，子类可覆写
+  double get panelBorderRadius => 22;
 
   /// 面板自定义装饰，子类可覆写以自定义背景样式
   /// 返回 null 时使用默认的 panelBg 纯色背景

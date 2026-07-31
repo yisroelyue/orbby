@@ -16,10 +16,7 @@ final createFileTool = ToolDefinition(
         'type': 'string',
         'description': '要创建的文件的完整路径，例如 C:\\Users\\username\\Desktop\\hello.txt',
       },
-      'content': {
-        'type': 'string',
-        'description': '要写入文件的内容',
-      },
+      'content': {'type': 'string', 'description': '要写入文件的内容'},
       'overwrite': {
         'type': 'boolean',
         'description': '是否覆盖已存在的文件，默认为 false。设为 true 才会覆盖已有文件。',

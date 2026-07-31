@@ -43,6 +43,8 @@ dependencies:
   path_provider: ^2.1.5
   desktop_multi_window: ^0.3.0
   flutter_svg: ^2.0.17
+  url_launcher: ^6.3.1
+  http: ^1.2.0
   flutter_acrylic: ^1.1.4
   file_picker: ^8.1.7
   ffi: ^2.1.0
@@ -51,6 +53,15 @@ dependencies:
     path: plugins/image_processer
   orbby_plugin_screen_record:
     path: plugins/screen_record
+  orbby_plugin_json_viewer:
+    path: plugins/json_viewer
+  fl_chart:
+    git:
+      url: https://github.com/imaNNeo/fl_chart.git
+      ref: 1.2.0
+  crypto: ^3.0.6
+  dart_jsonwebtoken: ^3.4.1
+  cryptography: ^2.9.0
 
 dependency_overrides:
   desktop_multi_window:
@@ -85,6 +96,7 @@ flutter:
     - assets/png/agentHint/
     - assets/png/plugins/
     - assets/svg/
+    - assets/svg/home-tab/
     - assets/scripts/
     - assets/logo_out.ico
 

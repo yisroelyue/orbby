@@ -158,7 +158,7 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
         backgroundColor: Colors.transparent,
         body: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFFF5F5F5),
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
@@ -191,7 +191,7 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
                   Text(
                     _isCreate ? '添加笔记' : '编辑笔记',
                     style: const TextStyle(
-                      color: Color(0xFF1A1A2E),
+                      color: Color(0xFF333333),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -208,7 +208,7 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
                   _buildIconBtn(
                     icon: Icons.close_rounded,
                     onTap: _cancel,
-                    color: Colors.grey.shade400,
+                    color: Colors.black,
                   ),
                 ],
               ),
@@ -217,35 +217,56 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
               Expanded(
                 child: Focus(
                   onKeyEvent: _handleKeyEvent,
-                  child: TextField(
-                    controller: _controller,
-                    autofocus: true,
-                    maxLines: null,
-                    expands: true,
-                    keyboardType: TextInputType.multiline,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(
-                      color: Color(0xFF1A1A2E),
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: const Color(0xFFF5F6FA),
-                      hintText: '输入笔记内容...',
-                      hintStyle: TextStyle(color: Colors.grey.shade400),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: Colors.grey.shade300,
-                          width: 1.5,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Stack(
+                      children: [
+                        // 横格线背景
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _NotepadLinesPainter(
+                              lineColor: const Color(0xFFE8E8E8),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                height: 1.5,
+                              ),
+                              topPadding: 12,
+                            ),
+                          ),
                         ),
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
+                        // 输入框
+                        TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          maxLines: null,
+                          expands: true,
+                          keyboardType: TextInputType.multiline,
+                          textAlignVertical: TextAlignVertical.top,
+                          style: const TextStyle(
+                            color: Color(0xFF333333),
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.transparent,
+                            hintText: '输入笔记内容...',
+                            hintStyle: TextStyle(color: Colors.grey.shade400),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                                width: 1.5,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.all(12),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -258,20 +279,20 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
                     _buildBtn(
                       _important ? '取消标记' : '标记重要',
                       _markImportant,
-                      accent: true,
+                      icon: Icons.access_time_filled_rounded,
                     ),
                     const SizedBox(width: 8),
                     _buildBtn(
                       '删除',
                       _delete,
-                      destructive: true,
+                      icon: Icons.delete_outline_rounded,
                     ),
                   ],
                   const Spacer(),
                   _buildBtn(
                     '保存',
                     _save,
-                    primary: true,
+                    icon: Icons.check_rounded,
                   ),
                 ],
               ),
@@ -305,40 +326,61 @@ class _TodoItemPopupState extends State<TodoItemPopup> {
   Widget _buildBtn(
     String label,
     VoidCallback onTap, {
-    bool primary = false,
-    bool destructive = false,
-    bool accent = false,
+    IconData? icon,
   }) {
-    final bgColor = primary
-        ? const Color(0xFF5B6EF5)
-        : destructive
-            ? const Color(0xFFE53935)
-            : accent
-                ? const Color(0xFFF5A623)
-                : Colors.grey.shade100;
-
-    final fgColor = primary || destructive || accent
-        ? Colors.white
-        : const Color(0xFF1A1A2E);
-
     return SizedBox(
       height: 34,
-      child: TextButton(
+      child: TextButton.icon(
         onPressed: onTap,
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          foregroundColor: fgColor,
-          backgroundColor: bgColor,
+          foregroundColor: Colors.white,
+          backgroundColor: const Color(0xFF5B6EF5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 13,
-            fontWeight: (destructive || accent) ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        child: Text(label),
+        icon: icon != null ? Icon(icon, size: 16) : const SizedBox.shrink(),
+        label: Text(label),
       ),
     );
   }
+}
+
+// 笔记本横格线画笔
+class _NotepadLinesPainter extends CustomPainter {
+  final Color lineColor;
+  final TextStyle textStyle;
+  final double topPadding;
+
+  _NotepadLinesPainter({
+    required this.lineColor,
+    required this.textStyle,
+    required this.topPadding,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 0.5;
+
+    final lineHeight = (textStyle.fontSize ?? 14) * (textStyle.height ?? 1.5);
+    double y = topPadding + lineHeight;
+    while (y < size.height) {
+      canvas.drawLine(
+        Offset(12, y),
+        Offset(size.width - 12, y),
+        paint,
+      );
+      y += lineHeight;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

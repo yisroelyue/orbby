@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../config/panel_theme.dart';
 import '../config/settings.dart';
 import '../screens/home_screen.dart';
+import '../services/notification_service.dart';
 import 'base_panel.dart';
 import 'tooltip_popup.dart';
 
@@ -12,7 +12,6 @@ class _ControlSwitch {
     required this.id,
     required this.title,
     required this.icon,
-    this.description,
     this.descriptionSpans,
     this.value = true,
     this.onToggle,
@@ -21,7 +20,6 @@ class _ControlSwitch {
   final String id;
   final String title;
   final IconData icon;
-  final String? description;
   final List<InlineSpan>? descriptionSpans;
 
   /// 当前开关状态
@@ -50,6 +48,7 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
   bool _panelHovered = false;
   bool _showVibePanel = true;
   bool _enableClipboard = false;
+  bool _enableNotification = true;
 
   @override
   bool get panelHovered => _panelHovered;
@@ -58,12 +57,12 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
   void initState() {
     super.initState();
     _loadSettings();
-    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    HomeScreen.settingsChangeNotifier.addListener(_onRefresh);
   }
 
   @override
   void dispose() {
-    HomeScreen.refreshNotifier.removeListener(_onRefresh);
+    HomeScreen.settingsChangeNotifier.removeListener(_onRefresh);
     super.dispose();
   }
 
@@ -96,6 +95,11 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     if (!mounted) return;
     setState(() => _showVibePanel = settings.showVibePanel);
     HomeScreen.menuChannel.invokeMethod('toggle_vibe_panel');
+  }
+
+  void _toggleNotification() {
+    setState(() => _enableNotification = !_enableNotification);
+    NotificationService.instance.enabled = _enableNotification;
   }
 
   /// 构建当前控制项列表（依赖运行时状态）
@@ -137,6 +141,46 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
       value: _showVibePanel,
       onToggle: _toggleVibePanel,
     ),
+    _ControlSwitch(
+      id: 'notification',
+      title: '通知推送',
+      icon: Icons.notifications_rounded,
+      descriptionSpans: [
+        const TextSpan(text: '开启后接收系统通知\n'),
+        const TextSpan(text: '包括 '),
+        TextSpan(
+          text: '任务完成',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: '、'),
+        TextSpan(
+          text: '消息提醒',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: ' 等'),
+      ],
+      value: _enableNotification,
+      onToggle: _toggleNotification,
+    ),
+    _ControlSwitch(
+      id: 'placeholder2',
+      title: '自动同步',
+      icon: Icons.sync_rounded,
+      descriptionSpans: [
+        const TextSpan(text: '自动同步数据到云端\n'),
+        const TextSpan(text: '支持 '),
+        TextSpan(
+          text: '实时备份',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const TextSpan(text: ' 和 '),
+        TextSpan(
+          text: '跨设备同步',
+          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+      ],
+      value: false,
+    ),
   ];
 
   @override
@@ -145,52 +189,42 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     return const SizedBox.shrink();
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _panelHovered = true),
+      onExit: (_) => setState(() => _panelHovered = false),
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (int i = 0; i < _items.length; i++) ...[
+                if (i > 0) const SizedBox(height: 6),
+                _buildSwitchItem(_items[i]),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showTooltip(BuildContext context, _ControlSwitch item, Offset position) {
     TooltipPopup.show(
       context: context,
       title: item.title,
-      description: item.description,
       descriptionSpans: item.descriptionSpans,
       position: position,
       isDark: isDark,
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _panelHovered = true),
-      onExit: (_) => setState(() => _panelHovered = false),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          color: panelBg,
-          child: _buildContent(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: _items.map((item) => _buildSwitchItem(item)).toList(),
-      ),
-    );
-  }
-
   Widget _buildSwitchItem(_ControlSwitch item) {
     return _ControlItemWidget(
       item: item,
-      iconColor: secondaryText,
-      titleColor: primaryText,
-      hoverBg: hoverBg,
       onShowTooltip: (position) => _showTooltip(context, item, position),
     );
   }
@@ -199,108 +233,94 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
 class _ControlItemWidget extends StatefulWidget {
   const _ControlItemWidget({
     required this.item,
-    required this.iconColor,
-    required this.titleColor,
-    required this.hoverBg,
     required this.onShowTooltip,
   });
 
   final _ControlSwitch item;
-  final Color iconColor;
-  final Color titleColor;
-  final Color hoverBg;
-  final ValueChanged<Offset> onShowTooltip;
+  final Function(Offset) onShowTooltip;
 
   @override
   State<_ControlItemWidget> createState() => _ControlItemWidgetState();
 }
 
-class _ControlItemWidgetState extends State<_ControlItemWidget> with PanelThemeMixin {
-  bool _hovered = false;
-
+class _ControlItemWidgetState extends State<_ControlItemWidget> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.item.value;
 
-    return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.5,
-      duration: const Duration(milliseconds: 200),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) {
-          setState(() => _hovered = true);
-          final renderBox = context.findRenderObject() as RenderBox?;
-          if (renderBox != null && renderBox.attached) {
-            final position = renderBox.localToGlobal(
-              Offset(renderBox.size.width / 2, 0),
-            );
-            widget.onShowTooltip(position);
-          }
-        },
-        onExit: (_) {
-          setState(() => _hovered = false);
-          TooltipPopup.hide();
-        },
-        child: GestureDetector(
-          onTap: widget.item.onToggle,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            width: 100,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            decoration: BoxDecoration(
-              color: _hovered ? widget.hoverBg : elementBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _hovered
-                    ? (enabled
-                        ? Colors.greenAccent.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.06))
-                    : Colors.transparent,
-                width: 0.5,
-              ),
+    return MouseRegion(
+      onHover: (event) {
+        widget.onShowTooltip(event.position);
+      },
+      onExit: (_) {
+        TooltipPopup.hide();
+      },
+      child: GestureDetector(
+        onTap: widget.item.onToggle,
+        child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 15,
+              spreadRadius: 2,
+              offset: const Offset(0, 6),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  widget.item.icon,
-                  color: enabled ? Colors.greenAccent : widget.iconColor,
-                  size: 20,
-                ),
-                const SizedBox(height: 6),
-                Text(
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 30,
+              spreadRadius: 4,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Row(
+            children: [
+              Icon(
+                widget.item.icon,
+                color: enabled ? Colors.greenAccent : Colors.white54,
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
                   widget.item.title,
                   style: TextStyle(
-                    color: enabled ? widget.titleColor : widget.iconColor,
-                    fontSize: 11,
+                    color: enabled ? Colors.white : Colors.white54,
+                    fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 4),
-                AnimatedContainer(
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 40,
+                height: 22,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(11),
+                  color: enabled
+                      ? Colors.greenAccent.withOpacity(0.9)
+                      : Colors.white.withOpacity(0.15),
+                ),
+                child: AnimatedAlign(
                   duration: const Duration(milliseconds: 200),
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: enabled ? Colors.greenAccent : Colors.white24,
-                    shape: BoxShape.circle,
-                    boxShadow: enabled
-                        ? [
-                            BoxShadow(
-                              color: Colors.greenAccent.withOpacity(0.4),
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : null,
+                  alignment: enabled ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: enabled ? Colors.white : Colors.white54,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

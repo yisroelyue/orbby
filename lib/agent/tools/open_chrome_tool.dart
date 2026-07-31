@@ -6,8 +6,10 @@ import '../types.dart';
 
 /// Windows 下 Chrome 常见安装路径
 List<String> _chromePathsWin() {
-  final programFiles = Platform.environment['PROGRAMFILES'] ?? 'C:\\Program Files';
-  final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+  final programFiles =
+      Platform.environment['PROGRAMFILES'] ?? 'C:\\Program Files';
+  final programFilesX86 =
+      Platform.environment['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
   final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
 
   return [
@@ -55,7 +57,8 @@ String _findChrome() {
 
 final openChromeTool = ToolDefinition(
   name: 'open_chrome',
-  description: '打开谷歌浏览器并访问指定网址或搜索关键词。'
+  description:
+      '打开谷歌浏览器并访问指定网址或搜索关键词。'
       '可以传入 url 直接打开网页，也可以传入 search 关键词进行谷歌搜索，或者同时传入 url 在新标签页打开。'
       '支持用 new_window 参数控制是否打开新窗口（默认在当前窗口新标签页打开）。',
   parameters: {
@@ -63,11 +66,13 @@ final openChromeTool = ToolDefinition(
     'properties': {
       'url': {
         'type': 'string',
-        'description': '要打开的网页链接，例如 https://www.google.com。如果只传 search 不传 url，会自动打开谷歌搜索。',
+        'description':
+            '要打开的网页链接，例如 https://www.google.com。如果只传 search 不传 url，会自动打开谷歌搜索。',
       },
       'search': {
         'type': 'string',
-        'description': '要在谷歌搜索的关键词。会自动拼接为 https://www.google.com/search?q=关键词。如果同时传了 url，会忽略此参数。',
+        'description':
+            '要在谷歌搜索的关键词。会自动拼接为 https://www.google.com/search?q=关键词。如果同时传了 url，会忽略此参数。',
       },
       'new_window': {
         'type': 'boolean',
@@ -96,7 +101,8 @@ final openChromeTool = ToolDefinition(
       actionDesc = '打开链接: $targetUrl';
     } else {
       // 谷歌搜索
-      targetUrl = 'https://www.google.com/search?q=${Uri.encodeComponent(search!)}';
+      targetUrl =
+          'https://www.google.com/search?q=${Uri.encodeComponent(search!)}';
       actionDesc = '搜索: $search';
     }
 
@@ -107,17 +113,18 @@ final openChromeTool = ToolDefinition(
 
     try {
       if (Platform.isWindows) {
-        await Process.start(
-          'cmd',
-          ['/c', 'start', '', '"$chromePath"$newWindowFlag', '"$targetUrl"'],
-          mode: ProcessStartMode.detached,
-        );
+        await Process.start('cmd', [
+          '/c',
+          'start',
+          '',
+          '"$chromePath"$newWindowFlag',
+          '"$targetUrl"',
+        ], mode: ProcessStartMode.detached);
       } else {
-        await Process.start(
-          chromePath,
-          [if (newWindow) '--new-window', targetUrl],
-          mode: ProcessStartMode.detached,
-        );
+        await Process.start(chromePath, [
+          if (newWindow) '--new-window',
+          targetUrl,
+        ], mode: ProcessStartMode.detached);
       }
       return '已在 Chrome 中$actionDesc';
     } catch (e) {

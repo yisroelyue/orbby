@@ -1,77 +1,92 @@
-// 工具注册中心
-// 从 orbby-agent/src/tools/registry.ts 迁移
-// Flutter 不支持动态 import，改为静态注册模式
+import 'dart:io';
 
 import 'types.dart';
+import 'tool_policy.dart';
+import 'tools/create_file_tool.dart';
+import 'tools/read_file_tool.dart';
+import 'tools/edit_file_tool.dart';
+import 'tools/delete_file_tool.dart';
+import 'tools/list_directory_tool.dart';
+import 'tools/search_files_tool.dart';
+import 'tools/execute_command_tool.dart';
+import 'tools/open_chrome_tool.dart';
+import 'tools/news_search_tool.dart';
 
 class ToolRegistry {
-  /// name -> tool 定义
   final Map<String, ToolDefinition> _tools = {};
+  final ToolPolicy policy;
 
-  /// 获取所有已注册工具
+  ToolRegistry({ToolPolicy? policy})
+    : policy = policy ?? ToolPolicy(workspaceRoot: Directory.current.path);
   Map<String, ToolDefinition> get tools => Map.unmodifiable(_tools);
 
-  /// 注册单个工具
-  void register(ToolDefinition tool) {
-    _tools[tool.name] = tool;
-  }
-
-  /// 批量注册工具
+  void register(ToolDefinition tool) => _tools[tool.name] = tool;
   void registerAll(List<ToolDefinition> tools) {
     for (final tool in tools) {
-      _tools[tool.name] = tool;
+      register(tool);
     }
   }
 
-  /// 返回给 LLM 的工具定义列表
-  List<ToolCallDefinition> getToolDefinitions() {
-    return _tools.values
-        .map((t) => ToolCallDefinition(
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            ))
-        .toList();
-  }
+  void initBuiltinTools() => registerAll([
+    createFileTool,
+    readFileTool,
+    editFileTool,
+    deleteFileTool,
+    listDirectoryTool,
+    searchFilesTool,
+    executeCommandTool,
+    openChromeTool,
+    newsSearchTool,
+  ]);
 
-  /// 获取轻量工具索引，只包含名称和描述，不包含参数 schema
-  /// 用于延迟加载工具，避免每次请求发送所有完整定义
+  List<ToolCallDefinition> getToolDefinitions() => _tools.values
+      .map(
+        (t) => ToolCallDefinition(
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        ),
+      )
+      .toList();
+
   List<ToolIndex> getToolIndex({List<String>? excludeNames}) {
-    final excluded = excludeNames != null ? Set.from(excludeNames) : <String>{};
+    final excluded = excludeNames != null
+        ? Set<String>.from(excludeNames)
+        : <String>{};
     return _tools.values
-        .where((tool) => !excluded.contains(tool.name))
-        .map((tool) => ToolIndex(
-              name: tool.name,
-              description: tool.description,
-            ))
+        .where((t) => !excluded.contains(t.name))
+        .map((t) => ToolIndex(name: t.name, description: t.description))
         .toList();
   }
 
-  /// 按工具名称获取定义
   List<ToolCallDefinition> getToolDefinitionsByNames(List<String> names) {
-    final wanted = Set.from(names);
+    final wanted = Set<String>.from(names);
     return _tools.values
-        .where((tool) => wanted.contains(tool.name))
-        .map((t) => ToolCallDefinition(
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            ))
+        .where((t) => wanted.contains(t.name))
+        .map(
+          (t) => ToolCallDefinition(
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          ),
+        )
         .toList();
   }
 
-  /// 执行指定工具
-  Future<String> executeTool(String name, Map<String, dynamic> args) async {
+  Future<ToolResult> executeTool(String name, Map<String, dynamic> args) async {
     final tool = _tools[name];
-    if (tool == null) {
-      return '错误：未找到工具 "$name"';
-    }
-
+    if (tool == null)
+      return ToolResult.error('Tool not found: $name', code: 'tool_not_found');
+    final denied = policy.validate(name, args);
+    if (denied != null) return ToolResult.error(denied, code: 'policy_denied');
     try {
-      final result = await tool.execute(args);
-      return result;
-    } catch (err) {
-      return '工具 "$name" 执行失败: $err';
+      return ToolResult.ok(await tool.execute(args));
+    } catch (error) {
+      return ToolResult.error(
+        'Tool $name failed: $error',
+        code: 'tool_exception',
+        retryable: true,
+      );
     }
   }
 }

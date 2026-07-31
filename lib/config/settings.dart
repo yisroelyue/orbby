@@ -29,12 +29,12 @@ class PlatformApiConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'apiKey': apiKey,
-        'balanceUrl': balanceUrl,
-        'chatUrl': chatUrl,
-        'model': model,
-        'enableBalance': enableBalance,
-      };
+    'apiKey': apiKey,
+    'balanceUrl': balanceUrl,
+    'chatUrl': chatUrl,
+    'model': model,
+    'enableBalance': enableBalance,
+  };
 }
 
 class AppSettings {
@@ -49,6 +49,7 @@ class AppSettings {
     this.language = 'zh',
     this.showVibePanel = true,
     this.enableClipboardMonitor = false,
+    this.llmLogEnabled = false,
     this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
     this.agentChatPopupTheme = 'light',
@@ -59,19 +60,34 @@ class AppSettings {
     this.hiddenPanels = const [],
     this.userName = '',
     this.userAvatarPath = '',
-    this.menuBgImage = 'assets/png/menuBg/11826657.jpg',
+    this.menuBgImage = '',
+    this.menuBgFilePath = '',
+    this.menuWindowLeft = -1,
+    this.menuWindowTop = -1,
+    this.menuWindowHeight = -1,
+    this.weatherApiId = '',
+    this.weatherApiKey = '',
+    this.weatherApiHost = 'devapi.qweather.com',
+    this.weatherCity = '上海',
+    this.weatherLastFetchDate = '',
+    this.dailyQuoteType = '',
+    this.dailyQuoteCountry = '',
+    this.balanceRefreshInterval = 0,
+    this.photoWallSwitchInterval = 30,
     Map<String, PlatformApiConfig>? apiConfigs,
-  }) : apiConfigs = apiConfigs ?? {
-          'deepseek': PlatformApiConfig(
-            apiKey: apiKey,
-            balanceUrl: balanceUrl.isEmpty
-                ? PlatformConfig.defaultBalanceUrl('deepseek')
-                : balanceUrl,
-            chatUrl: chatUrl.isEmpty
-                ? PlatformConfig.defaultChatUrl('deepseek')
-                : chatUrl,
-          ),
-        };
+  }) : apiConfigs =
+           apiConfigs ??
+           {
+             'deepseek': PlatformApiConfig(
+               apiKey: apiKey,
+               balanceUrl: balanceUrl.isEmpty
+                   ? PlatformConfig.defaultBalanceUrl('deepseek')
+                   : balanceUrl,
+               chatUrl: chatUrl.isEmpty
+                   ? PlatformConfig.defaultChatUrl('deepseek')
+                   : chatUrl,
+             ),
+           };
 
   String platform;
   String currencySymbol;
@@ -80,6 +96,7 @@ class AppSettings {
   String language;
   bool showVibePanel;
   bool enableClipboardMonitor;
+  bool llmLogEnabled;
   double menuAutoHideDelay;
   String appTheme;
   String agentChatPopupTheme;
@@ -91,17 +108,29 @@ class AppSettings {
   String userName;
   String userAvatarPath;
   String menuBgImage;
+  String menuBgFilePath;
+  double menuWindowLeft;
+  double menuWindowTop;
+  double menuWindowHeight;
+  String weatherApiId;
+  String weatherApiKey;
+  String weatherApiHost;
+  String weatherCity;
+  String weatherLastFetchDate; // 格式: "2026-07-29"
+  String dailyQuoteType; // 每日一言类型：'' | '诗词' | '名言' | '歌词' | '歇后语' | '俚语' | '短笑话'
+  String dailyQuoteCountry; // 每日一言国家：'' | '中国' | '外国'
+  int balanceRefreshInterval; // 余额刷新频率（秒）：0=每天, 21600=6小时, 10800=3小时
+  int photoWallSwitchInterval; // 照片墙切换频率（秒）：10, 30, 60, 600, 3600
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
-  PlatformApiConfig get currentApi =>
-      apiConfigs.putIfAbsent(
-        platform,
-        () => PlatformApiConfig(
-          balanceUrl: PlatformConfig.defaultBalanceUrl(platform),
-          chatUrl: PlatformConfig.defaultChatUrl(platform),
-        ),
-      );
+  PlatformApiConfig get currentApi => apiConfigs.putIfAbsent(
+    platform,
+    () => PlatformApiConfig(
+      balanceUrl: PlatformConfig.defaultBalanceUrl(platform),
+      chatUrl: PlatformConfig.defaultChatUrl(platform),
+    ),
+  );
 
   String get apiKey => currentApi.apiKey;
   set apiKey(String v) => currentApi.apiKey = v;
@@ -126,7 +155,8 @@ class AppSettings {
     final rawConfigs = json['apiConfigs'] as Map<String, dynamic>?;
     if (rawConfigs != null) {
       configs = rawConfigs.map(
-        (k, v) => MapEntry(k, PlatformApiConfig.fromJson(v as Map<String, dynamic>)),
+        (k, v) =>
+            MapEntry(k, PlatformApiConfig.fromJson(v as Map<String, dynamic>)),
       );
     } else {
       // 兼容旧格式：顶层 apiKey/balanceUrl/chatUrl → 当前平台
@@ -156,58 +186,90 @@ class AppSettings {
       language: json['language'] as String? ?? 'zh',
       showVibePanel: json['showVibePanel'] as bool? ?? true,
       enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
+      llmLogEnabled: json['llmLogEnabled'] as bool? ?? false,
       menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
       agentChatPopupTheme: json['agentChatPopupTheme'] as String? ?? 'light',
       petStyle: json['petStyle'] as String? ?? 'colorful',
       menuHotkey: json['menuHotkey'] as String? ?? 'Alt+96',
-      panelAppIds: (json['panelAppIds'] as List<dynamic>?)
+      panelAppIds:
+          (json['panelAppIds'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
-      panelOrder: (json['panelOrder'] as List<dynamic>?)
+      panelOrder:
+          (json['panelOrder'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
-      hiddenPanels: (json['hiddenPanels'] as List<dynamic>?)
+      hiddenPanels:
+          (json['hiddenPanels'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
       userName: json['userName'] as String? ?? '',
       userAvatarPath: json['userAvatarPath'] as String? ?? '',
-      menuBgImage: json['menuBgImage'] as String? ?? 'assets/png/menuBg/11826657.jpg',
+      menuBgImage: json['menuBgImage'] as String? ?? '',
+      menuBgFilePath: json['menuBgFilePath'] as String? ?? '',
+      menuWindowLeft: (json['menuWindowLeft'] as num?)?.toDouble() ?? -1,
+      menuWindowTop: (json['menuWindowTop'] as num?)?.toDouble() ?? -1,
+      menuWindowHeight: (json['menuWindowHeight'] as num?)?.toDouble() ?? -1,
+      weatherApiId: json['weatherApiId'] as String? ?? '',
+      weatherApiKey: json['weatherApiKey'] as String? ?? '',
+      weatherApiHost: json['weatherApiHost'] as String? ?? 'devapi.qweather.com',
+      weatherCity: json['weatherCity'] as String? ?? '上海',
+      weatherLastFetchDate: json['weatherLastFetchDate'] as String? ?? '',
+      dailyQuoteType: json['dailyQuoteType'] as String? ?? '',
+      dailyQuoteCountry: json['dailyQuoteCountry'] as String? ?? '',
+      balanceRefreshInterval: json['balanceRefreshInterval'] as int? ?? 0,
+      photoWallSwitchInterval: json['photoWallSwitchInterval'] as int? ?? 30,
       apiConfigs: configs,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'platform': platform,
-        'apiConfigs': apiConfigs.map((k, v) => MapEntry(k, v.toJson())),
-        'currencySymbol': currencySymbol,
-        'refreshInterval': refreshInterval,
-        'autoStart': autoStart,
-        'language': language,
-        'showVibePanel': showVibePanel,
-        'enableClipboardMonitor': enableClipboardMonitor,
-        'menuAutoHideDelay': menuAutoHideDelay,
-        'appTheme': appTheme,
-        'agentChatPopupTheme': agentChatPopupTheme,
-        'petStyle': petStyle,
-        'menuHotkey': menuHotkey,
-        'panelAppIds': panelAppIds,
-        'panelOrder': panelOrder,
-        'hiddenPanels': hiddenPanels,
-        'userName': userName,
-        'userAvatarPath': userAvatarPath,
-        'menuBgImage': menuBgImage,
-      };
+    'platform': platform,
+    'apiConfigs': apiConfigs.map((k, v) => MapEntry(k, v.toJson())),
+    'currencySymbol': currencySymbol,
+    'refreshInterval': refreshInterval,
+    'autoStart': autoStart,
+    'language': language,
+    'showVibePanel': showVibePanel,
+    'enableClipboardMonitor': enableClipboardMonitor,
+    'llmLogEnabled': llmLogEnabled,
+    'menuAutoHideDelay': menuAutoHideDelay,
+    'appTheme': appTheme,
+    'agentChatPopupTheme': agentChatPopupTheme,
+    'petStyle': petStyle,
+    'menuHotkey': menuHotkey,
+    'panelAppIds': panelAppIds,
+    'panelOrder': panelOrder,
+    'hiddenPanels': hiddenPanels,
+    'userName': userName,
+    'userAvatarPath': userAvatarPath,
+    'menuBgImage': menuBgImage,
+    'menuBgFilePath': menuBgFilePath,
+    'menuWindowLeft': menuWindowLeft,
+    'menuWindowTop': menuWindowTop,
+    'menuWindowHeight': menuWindowHeight,
+    'weatherApiId': weatherApiId,
+    'weatherApiKey': weatherApiKey,
+    'weatherApiHost': weatherApiHost,
+    'weatherCity': weatherCity,
+    'weatherLastFetchDate': weatherLastFetchDate,
+    'dailyQuoteType': dailyQuoteType,
+    'dailyQuoteCountry': dailyQuoteCountry,
+    'balanceRefreshInterval': balanceRefreshInterval,
+    'photoWallSwitchInterval': photoWallSwitchInterval,
+  };
 }
 
 class SettingsService {
   SettingsService._();
 
   static Future<File> _file() async {
-    final home = Platform.environment['USERPROFILE'] ??
+    final home =
+        Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
     final dir = Directory('$home/.orbby');
@@ -235,13 +297,25 @@ class SettingsService {
     );
   }
 
-  /// 头像存储路径（~/.orbby/user/user_avatar_<timestamp>.png）
+  /// 头像存储路径（~/.orbby/user/user_avatar_`<timestamp>`.png）
   static Future<String> avatarFilePath() async {
-    final home = Platform.environment['USERPROFILE'] ??
+    final home =
+        Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
     final dir = Directory('$home/.orbby/user');
     if (!await dir.exists()) await dir.create(recursive: true);
     return '${dir.path}/user_avatar_${DateTime.now().millisecondsSinceEpoch}.png';
+  }
+
+  /// 菜单背景图存储路径（~/.orbby/user/menu_bg_`<timestamp>`.`<ext>`）
+  static Future<String> menuBgFilePath(String extension) async {
+    final home =
+        Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dir = Directory('$home/.orbby/user');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return '${dir.path}/menu_bg_${DateTime.now().millisecondsSinceEpoch}.$extension';
   }
 }

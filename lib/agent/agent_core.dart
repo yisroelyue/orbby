@@ -16,7 +16,6 @@ import 'types.dart';
 class Agent {
   final Conversation conversation;
   final LLMClient llm;
-  final LLMClient compactLLM;
   final ToolRegistry registry;
   final int maxIterations;
 
@@ -34,17 +33,18 @@ class Agent {
 
   Agent({
     required this.llm,
-    required this.compactLLM,
     required this.registry,
     ConversationOptions? conversationOptions,
     String? systemPrompt,
     this.maxIterations = 10,
     List<String>? coreToolNames,
-  })  : conversation = Conversation(
-          options: conversationOptions,
-          systemPrompt: systemPrompt,
-        ),
-        coreToolNames = coreToolNames ?? ['search_files', 'read_file', 'edit_file', 'execute_command'];
+  }) : conversation = Conversation(
+         options: conversationOptions,
+         systemPrompt: systemPrompt,
+       ),
+       coreToolNames =
+           coreToolNames ??
+           ['search_files', 'read_file', 'edit_file', 'execute_command'];
 
   /// 初始化 Agent（构建工具索引和 search_tools 定义）
   void init() {
@@ -53,13 +53,16 @@ class Agent {
 
     // 构建工具索引文本
     final indexText = toolIndex.isNotEmpty
-        ? toolIndex.map((tool) => '- ${tool.name}: ${tool.description}').join('\n')
+        ? toolIndex
+              .map((tool) => '- ${tool.name}: ${tool.description}')
+              .join('\n')
         : '(暂无其他工具)';
 
     // 构建 search_tools 虚拟工具定义
     toolSearchDefinition = ToolCallDefinition(
       name: toolSearchName,
-      description: '搜索并加载未直接提供的工具。只有当当前已提供的工具无法完成任务时才调用。'
+      description:
+          '搜索并加载未直接提供的工具。只有当当前已提供的工具无法完成任务时才调用。'
           '请根据用户任务填写 query；搜索成功后，匹配工具的完整参数定义会在下一轮请求中提供。'
           '\n可延迟加载工具索引：\n$indexText',
       parameters: {
@@ -129,7 +132,8 @@ class Agent {
 
     if (existingSummary.isNotEmpty) {
       // 增量更新
-      userPrompt = '''请将以下新对话合并到已有的上下文摘要中。
+      userPrompt =
+          '''请将以下新对话合并到已有的上下文摘要中。
 
 ## 已有摘要
 $existingSummary
@@ -148,7 +152,8 @@ $serializedConversation''';
 
     // 如果有文件操作数据，追加到用户提示末尾
     if (fileOps.isNotEmpty &&
-        (fileOps['readFiles']?.isNotEmpty == true || fileOps['modifiedFiles']?.isNotEmpty == true)) {
+        (fileOps['readFiles']?.isNotEmpty == true ||
+            fileOps['modifiedFiles']?.isNotEmpty == true)) {
       userPrompt += '\n\n## 文件操作数据\n';
       if (fileOps['readFiles']?.isNotEmpty == true) {
         userPrompt += '读取的文件：\n';
@@ -165,49 +170,16 @@ $serializedConversation''';
     }
 
     try {
-      // 优先使用轻量压缩模型（便宜快速）
-      final result = await compactLLM.chat([
+      final result = await llm.chat([
         Message(role: 'system', content: systemPrompt),
         Message(role: 'user', content: userPrompt),
       ]);
       return result.content ?? '';
     } catch (err) {
       // 轻量模型失败，回退到主力模型
-      debugPrint('[Agent] 压缩模型调用失败 ($err)，回退到主力模型...');
-      try {
-        final result = await llm.chat([
-          Message(role: 'system', content: systemPrompt),
-          Message(role: 'user', content: userPrompt),
-        ]);
-        return result.content ?? '';
-      } catch (_) {
-        // 主力模型也失败，返回已有摘要
-        return existingSummary;
-      }
+      debugPrint('[Agent] 摘要生成失败 ($err)，返回已有摘要');
+      return existingSummary;
     }
-  }
-
-  /// 检测任务类型，返回策略提示（零额外 API 调用）
-  String? detectTaskHint(String input) {
-    final searchKeywords = ['查看', '查找', '搜索', '找', '找找', '有没有', '有哪些',
-      '多少', '列出', '扫描', 'scan', 'find', 'search', 'list', '看看', '在哪'];
-    final createKeywords = ['创建', '新建', '生成', '写出', '写入', 'create', 'make', 'generate'];
-    final editKeywords = ['修改', '改', '编辑', '替换', '更新', '修复', 'fix', 'update', 'change', 'edit'];
-
-    final isSearch = searchKeywords.any((k) => input.contains(k));
-    final isCreate = createKeywords.any((k) => input.contains(k));
-    final isEdit = editKeywords.any((k) => input.contains(k));
-
-    if (isSearch && !isCreate && !isEdit) {
-      return '[策略提示] 这是一个搜索/查找任务。优先使用 search_files 工具进行模式匹配（如 search_files(pattern="**/pom.xml")），而不是逐层扫描目录。确认结果后直接输出，不要过度搜索。';
-    }
-    if (isCreate) {
-      return '[策略提示] 这是一个创建任务。确认目标路径后在单个 ReAct 轮次内完成，用 create_file 直接创建。';
-    }
-    if (isEdit) {
-      return '[策略提示] 这是一个编辑任务。先用 search_files 或 list_directory 定位目标文件，然后用 read_file 查看内容，最后用 edit_file 修改。';
-    }
-    return null;
   }
 
   /// 处理用户输入，返回 Agent 回复
@@ -234,16 +206,18 @@ $serializedConversation''';
       return handleStats();
     }
 
-    // 轻量策略提示
-    final hint = detectTaskHint(userInput);
-
     // 添加用户消息
-    conversation.addUserMessage(hint != null ? '$hint\n\n---\n用户请求: $userInput' : userInput);
+    conversation.addUserMessage(userInput);
 
     // 添加用户消息后检查 token 是否超限
     await conversation.maybeCompact(
       (oldMessages, existingSummary, serializedConversation, fileOps) =>
-          generateSummary(oldMessages, existingSummary, serializedConversation, fileOps),
+          generateSummary(
+            oldMessages,
+            existingSummary,
+            serializedConversation,
+            fileOps,
+          ),
       requestTokens: conversation.totalTokens(),
       reason: 'before_request',
     );
@@ -259,7 +233,12 @@ $serializedConversation''';
 
       await conversation.maybeCompact(
         (oldMessages, existingSummary, serializedConversation, fileOps) =>
-            generateSummary(oldMessages, existingSummary, serializedConversation, fileOps),
+            generateSummary(
+              oldMessages,
+              existingSummary,
+              serializedConversation,
+              fileOps,
+            ),
         requestTokens: conversation.estimateRequestTokens(tools),
         reason: 'before_request',
       );
@@ -272,100 +251,55 @@ $serializedConversation''';
       final messages = conversation.getMessages();
 
       // 调用 LLM（流式）
-      var isToolCall = false;
-      var contentBuffer = '';
-
       final response = await llm.chatStream(
         messages,
         tools: tools,
-        onToken: (token) {
-          contentBuffer += token;
-          // 检测工具调用标记（OpenAI格式或DeepSeek格式）
-          if (!isToolCall &&
-              (contentBuffer.contains('tool_calls') ||
-                  contentBuffer.contains(':invoke') ||
-                  contentBuffer.contains('<execute_tool>'))) {
-            isToolCall = true;
-            return;
-          }
-          // 如果是工具调用，不发送任何token
-          if (isToolCall) return;
-          onToken?.call(token);
-        },
+        onToken: onToken,
       );
 
-      // 情况 1：纯文本回复（任务完成）
-      if (response.content != null && response.toolCalls == null && !isToolCall) {
+      // 纯文本回复（任务完成）
+      if (response.toolCalls == null || response.toolCalls!.isEmpty) {
         conversation.addAssistantMessage(response);
-        return response.content!;
+        return response.content ?? '抱歉，我没有理解你的意思，可以换个方式再说一次吗？';
       }
 
-      // 情况 2：有工具调用（OpenAI格式）
-      if (response.toolCalls != null && response.toolCalls!.isNotEmpty) {
-        conversation.addAssistantMessage(response);
+      // 有工具调用：执行并将结果喂回 LLM
+      conversation.addAssistantMessage(response);
 
-        for (final toolCall in response.toolCalls!) {
-          debugPrint('  调用工具: ${toolCall.name}(${jsonEncode(toolCall.arguments)})');
-
-          String result;
-          if (toolCall.name == toolSearchName) {
-            result = _loadToolsForQuery(toolCall.arguments, loadedToolNames);
-            tools = _getActiveToolDefinitions(loadedToolNames);
-          } else {
-            result = await registry.executeTool(toolCall.name, toolCall.arguments);
-          }
-
-          debugPrint('  工具结果: $result');
-          conversation.addToolResult(toolCall.id, result);
-        }
-
-        // 工具执行后检查 token 是否超限
-        await conversation.maybeCompact(
-          (oldMessages, existingSummary, serializedConversation, fileOps) =>
-              generateSummary(oldMessages, existingSummary, serializedConversation, fileOps),
-          requestTokens: conversation.estimateRequestTokens(tools),
-          reason: 'after_tool_result',
+      for (final toolCall in response.toolCalls!) {
+        debugPrint(
+          '  调用工具: ${toolCall.name}(${jsonEncode(toolCall.arguments)})',
         );
 
-        continue;
-      }
-
-      // 情况 3：DeepSeek 格式的工具调用 <execute_tool>
-      if (isToolCall && contentBuffer.contains('<execute_tool>')) {
-        final toolMatch = RegExp(r'<execute_tool>\s*<tool_name>(.*?)</tool_name>').firstMatch(contentBuffer);
-        if (toolMatch != null) {
-          final toolName = toolMatch.group(1)!.trim();
-          debugPrint('  调用工具: $toolName');
-
-          // 将助手消息添加到对话（包含工具调用标记）
-          conversation.addAssistantMessage(LLMResponse(content: contentBuffer));
-
-          String result;
-          if (toolName == toolSearchName) {
-            result = _loadToolsForQuery({}, loadedToolNames);
-            tools = _getActiveToolDefinitions(loadedToolNames);
-          } else {
-            result = await registry.executeTool(toolName, {});
-          }
-
-          debugPrint('  工具结果: $result');
-          conversation.addToolResult(toolName, result);
-
-          // 工具执行后检查 token 是否超限
-          await conversation.maybeCompact(
-            (oldMessages, existingSummary, serializedConversation, fileOps) =>
-                generateSummary(oldMessages, existingSummary, serializedConversation, fileOps),
-            requestTokens: conversation.estimateRequestTokens(tools),
-            reason: 'after_tool_result',
-          );
-
-          continue;
+        String result;
+        if (toolCall.name == toolSearchName) {
+          result = _loadToolsForQuery(toolCall.arguments, loadedToolNames);
+          tools = _getActiveToolDefinitions(loadedToolNames);
+        } else {
+          result = (await registry.executeTool(
+            toolCall.name,
+            toolCall.arguments,
+          )).output;
         }
+
+        debugPrint('  工具结果: $result');
+        conversation.addToolResult(toolCall.id, result);
       }
 
-      // 情况 4：既没有内容也没有工具调用（异常情况）
-      debugPrint('[Agent] LLM 返回了空的响应');
-      return '抱歉，我没有理解你的意思，可以换个方式再说一次吗？';
+      // 工具执行后检查 token 是否超限
+      await conversation.maybeCompact(
+        (oldMessages, existingSummary, serializedConversation, fileOps) =>
+            generateSummary(
+              oldMessages,
+              existingSummary,
+              serializedConversation,
+              fileOps,
+            ),
+        requestTokens: conversation.estimateRequestTokens(tools),
+        reason: 'after_tool_result',
+      );
+
+      continue;
     }
 
     // 达到最大循环次数
@@ -373,8 +307,12 @@ $serializedConversation''';
   }
 
   /// 获取当前活跃的工具定义
-  List<ToolCallDefinition> _getActiveToolDefinitions(Set<String> loadedToolNames) {
-    final definitions = registry.getToolDefinitionsByNames(loadedToolNames.toList());
+  List<ToolCallDefinition> _getActiveToolDefinitions(
+    Set<String> loadedToolNames,
+  ) {
+    final definitions = registry.getToolDefinitionsByNames(
+      loadedToolNames.toList(),
+    );
     if (toolSearchDefinition != null && toolIndex.isNotEmpty) {
       definitions.add(toolSearchDefinition!);
     }
@@ -382,7 +320,10 @@ $serializedConversation''';
   }
 
   /// 延迟加载工具
-  String _loadToolsForQuery(Map<String, dynamic> args, Set<String> loadedToolNames) {
+  String _loadToolsForQuery(
+    Map<String, dynamic> args,
+    Set<String> loadedToolNames,
+  ) {
     final query = (args['query'] as String?)?.trim().toLowerCase() ?? '';
     if (query.isEmpty) {
       return '工具搜索失败：query 不能为空。可搜索的工具：\n'
@@ -390,25 +331,34 @@ $serializedConversation''';
     }
 
     // 分词（支持中文二元组）
-    final terms = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).expand((term) {
-      final chinese = RegExp(r'[一-鿿]').allMatches(term).map((m) => m.group(0)!).toList();
-      if (chinese.length < 2) return [term];
-      final chunks = <String>[];
-      for (var i = 0; i < chinese.length - 1; i++) {
-        chunks.add(chinese.sublist(i, i + 2).join());
-      }
-      return [term, ...chunks];
-    }).toList();
+    final terms = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).expand(
+      (term) {
+        final chinese = RegExp(
+          r'[一-鿿]',
+        ).allMatches(term).map((m) => m.group(0)!).toList();
+        if (chinese.length < 2) return [term];
+        final chunks = <String>[];
+        for (var i = 0; i < chinese.length - 1; i++) {
+          chunks.add(chinese.sublist(i, i + 2).join());
+        }
+        return [term, ...chunks];
+      },
+    ).toList();
 
     // 搜索匹配
-    final matches = toolIndex.map((tool) {
-      final text = '${tool.name} ${tool.description}'.toLowerCase();
-      final score = terms.fold(0, (total, term) => total + (text.contains(term) ? 1 : 0));
-      return (tool: tool, score: score);
-    })
-        .where((item) => item.score > 0)
-        .toList()
-      ..sort((a, b) => b.score.compareTo(a.score));
+    final matches =
+        toolIndex
+            .map((tool) {
+              final text = '${tool.name} ${tool.description}'.toLowerCase();
+              final score = terms.fold(
+                0,
+                (total, term) => total + (text.contains(term) ? 1 : 0),
+              );
+              return (tool: tool, score: score);
+            })
+            .where((item) => item.score > 0)
+            .toList()
+          ..sort((a, b) => b.score.compareTo(a.score));
 
     final topMatches = matches.take(3).map((item) => item.tool).toList();
 
@@ -429,7 +379,12 @@ $serializedConversation''';
     final beforeTokens = conversation.totalTokens();
     final wasCompacted = await conversation.maybeCompact(
       (oldMessages, existingSummary, serializedConversation, fileOps) =>
-          generateSummary(oldMessages, existingSummary, serializedConversation, fileOps),
+          generateSummary(
+            oldMessages,
+            existingSummary,
+            serializedConversation,
+            fileOps,
+          ),
       force: true,
       reason: 'manual',
     );
@@ -457,7 +412,6 @@ $serializedConversation''';
       '当前摘要长度: ${stats.summaryChars} 字符',
       '保留最近回合: ${stats.keepRecentTurns}',
       '主力模型: ${llm.model}',
-      '压缩模型: ${compactLLM.model}',
     ].join('\n');
   }
 }

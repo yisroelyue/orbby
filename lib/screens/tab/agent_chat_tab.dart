@@ -230,7 +230,7 @@ class _AgentChatTabState extends State<AgentChatTab> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: isHovered
-                ? _chipActiveBg.withValues(alpha: 0.3)
+                ? _chipActiveBg.withValues(alpha: 0.2)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -354,10 +354,13 @@ class _AgentChatTabState extends State<AgentChatTab> {
                   padding: EdgeInsets.only(right: 8),
                   child: TypingIndicator(),
                 )
-              : IconButton(
-                  icon: Icon(Icons.send_rounded,
-                      size: 18, color: _chipActiveText),
-                  onPressed: _sendMessage,
+              : Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    icon: SvgPicture.asset('assets/svg/发送.svg',
+                        width: 24, height: 24),
+                    onPressed: _sendMessage,
+                  ),
                 ),
         ),
       ),
@@ -369,22 +372,22 @@ class _AgentChatTabState extends State<AgentChatTab> {
       onKeyEvent: _handleKeyEvent,
       child: TextField(
         controller: _inputController,
-        minLines: 1,
+        minLines: 2,
         maxLines: 4,
         enabled: !_isSending,
         style: TextStyle(color: _inputText, fontSize: 14),
         decoration: InputDecoration(
           hintText: _isSending ? '' : '描述你的需求或想法',
-          hintStyle: TextStyle(color: _inputHint),
+          hintStyle: TextStyle(color: _inputHint, fontSize: 15),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 8,
+            horizontal: 16,
+            vertical: 20,
           ),
           filled: true,
           fillColor: _inputBg,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
           ),
           suffixIcon: _isSending
@@ -392,10 +395,13 @@ class _AgentChatTabState extends State<AgentChatTab> {
                   padding: EdgeInsets.only(right: 8),
                   child: TypingIndicator(),
                 )
-              : IconButton(
-                  icon: Icon(Icons.send_rounded,
-                      size: 18, color: _chipActiveText),
-                  onPressed: _sendMessage,
+              : Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    icon: SvgPicture.asset('assets/svg/发送.svg',
+                        width: 24, height: 24),
+                    onPressed: _sendMessage,
+                  ),
                 ),
         ),
       ),

@@ -11,6 +11,16 @@
       "type": "system"
     },
     {
+      "id": "markdown_viewer",
+      "name": "Markdown 查看器",
+      "launchType": "plugin",
+      "subAppId": "markdown_viewer",
+      "executable": null,
+      "icon": "assets/svg/markdown.svg",
+      "description": "编辑与预览 Markdown 报文",
+      "type": "system"
+    },
+    {
       "id": "screen_record",
       "name": "屏幕录制",
       "launchType": "plugin",
@@ -18,6 +28,16 @@
       "executable": null,
       "icon": "assets/png/录制.png",
       "description": "录制全屏视频",
+      "type": "system"
+    },
+    {
+      "id": "json_viewer",
+      "name": "JSON 查看器",
+      "launchType": "plugin",
+      "subAppId": "json_viewer",
+      "executable": null,
+      "icon": "assets/svg/JSON查看.svg",
+      "description": "编辑、格式化、树形预览 JSON 数据",
       "type": "system"
     }
   ]

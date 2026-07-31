@@ -20,10 +20,7 @@ final executeCommandTool = ToolDefinition(
         'type': 'string',
         'description': '要执行的命令，例如 "git status"、"npm test"、"dir C:\\Users"',
       },
-      'cwd': {
-        'type': 'string',
-        'description': '命令执行的工作目录。不填则使用当前工作目录。',
-      },
+      'cwd': {'type': 'string', 'description': '命令执行的工作目录。不填则使用当前工作目录。'},
     },
     'required': ['command'],
   },
@@ -59,22 +56,27 @@ final executeCommandTool = ToolDefinition(
       );
 
       // 设置超时
-      final stdoutFuture = process.stdout.transform(const SystemEncoding().decoder).join();
-      final stderrFuture = process.stderr.transform(const SystemEncoding().decoder).join();
+      final stdoutFuture = process.stdout
+          .transform(const SystemEncoding().decoder)
+          .join();
+      final stderrFuture = process.stderr
+          .transform(const SystemEncoding().decoder)
+          .join();
       final exitCodeFuture = process.exitCode;
 
       // 等待完成，带超时
-      final results = await Future.wait([
-        stdoutFuture,
-        stderrFuture,
-        exitCodeFuture,
-      ]).timeout(
-        Duration(milliseconds: _defaultTimeout),
-        onTimeout: () {
-          process.kill(ProcessSignal.sigterm);
-          return ['', '命令执行超时 (${_defaultTimeout / 1000} 秒)', -1];
-        },
-      );
+      final results =
+          await Future.wait([
+            stdoutFuture,
+            stderrFuture,
+            exitCodeFuture,
+          ]).timeout(
+            Duration(milliseconds: _defaultTimeout),
+            onTimeout: () {
+              process.kill(ProcessSignal.sigterm);
+              return ['', '命令执行超时 (${_defaultTimeout / 1000} 秒)', -1];
+            },
+          );
 
       final stdout = (results[0] as String).trim();
       final stderr = (results[1] as String).trim();

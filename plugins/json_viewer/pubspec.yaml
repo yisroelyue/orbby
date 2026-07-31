@@ -1,0 +1,21 @@
+name: orbby_plugin_json_viewer
+description: "Orbby JSON 查看器 - 支持编辑、格式化、树形预览 JSON 数据"
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.1
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: ^8.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # 纯 Dart 包，无 plugin 块

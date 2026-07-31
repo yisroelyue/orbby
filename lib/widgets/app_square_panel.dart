@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/settings.dart';
 import '../screens/home_screen.dart';
+import '../services/panel_cache.dart';
+import '../services/panel_data_service.dart';
 import 'base_panel.dart';
 
 class AppInfo {
@@ -58,7 +59,7 @@ class AppSquarePanel extends BasePanel {
   const AppSquarePanel({super.key});
 
   @override
-  PanelSize get panelSize => PanelSize.small;
+  PanelSize get panelSize => PanelSize.full;
 
   @override
   String get panelName => 'app_square';
@@ -72,6 +73,7 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   bool _panelHovered = false;
   List<AppInfo> _apps = [];
   int? _hoveredIndex;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   bool get panelHovered => _panelHovered;
@@ -79,41 +81,31 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   @override
   void initState() {
     super.initState();
-    _fetch();
-    HomeScreen.refreshNotifier.addListener(_onRefresh);
+    _loadFromCache();
+    PanelCache.addListener(_onCacheChanged);
+    if (!PanelCache.has('app_square_apps')) {
+      setState(() => _loading = true);
+      PanelDataService.refreshApps();
+    }
   }
 
   @override
   void dispose() {
-    HomeScreen.refreshNotifier.removeListener(_onRefresh);
+    PanelCache.removeListener(_onCacheChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onRefresh() {
-    _fetch();
-  }
+  void _onCacheChanged() => _loadFromCache();
 
-  Future<void> _fetch() async {
-    setState(() => _loading = true);
-
-    final settings = await SettingsService.load();
-
-    final custom = AppConfig.loadCustomApps();
-    final system = AppConfig.loadSystemApps();
-    final allApps = [...custom, ...system];
-
-    if (settings.panelAppIds.isNotEmpty) {
-      _apps = settings.panelAppIds
-          .map((id) => allApps.where((a) => a.id == id))
-          .expand((m) => m)
-          .take(8)
-          .toList();
-    } else {
-      _apps = allApps.take(8).toList();
+  void _loadFromCache() {
+    final cached = PanelCache.get<List<AppInfo>>('app_square_apps');
+    if (cached != null && mounted) {
+      setState(() {
+        _apps = cached;
+        _loading = false;
+      });
     }
-
-    if (!mounted) return;
-    setState(() => _loading = false);
   }
 
   Future<void> _launchApp(AppInfo app) async {
@@ -148,188 +140,193 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   }
 
   @override
-  EdgeInsetsGeometry get panelPadding => const EdgeInsets.all(12);
+  EdgeInsetsGeometry get panelPadding => const EdgeInsets.symmetric(horizontal: 12, vertical: 10);
+
+  @override
+  double get panelBorderRadius => 8;
+
+  @override
+  BoxDecoration? get panelDecoration => BoxDecoration(
+        color: isDark ? Colors.black.withValues(alpha: 0.0) : Colors.white.withValues(alpha: 0.0),
+      );
 
   @override
   Widget buildContent(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _panelHovered = true),
-      onExit: (_) => setState(() => _panelHovered = false),
-      child: _loading
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: tertiaryText,
-                  ),
-                ),
-              ),
-            )
-          : _buildContent(),
-    );
-  }
-
-  Widget _buildAppIcon(AppInfo app) {
-    if (app.icon.startsWith('assets/')) {
-      if (app.icon.endsWith('.svg')) {
-        return SvgPicture.asset(app.icon, width: 28, height: 28);
-      }
-      return Image.asset(
-        app.icon,
-        width: 28,
-        height: 28,
-        errorBuilder: (_, __, ___) =>
-            Icon(Icons.apps_rounded, color: secondaryText, size: 28),
+    if (_loading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: tertiaryText,
+            ),
+          ),
+        ),
       );
     }
 
+    if (_apps.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: Text(
+            '暂无应用',
+            style: TextStyle(color: tertiaryText, fontSize: 12),
+          ),
+        ),
+      );
+    }
+
+    return _buildHorizontalList();
+  }
+
+  Widget _buildAppIcon(AppInfo app, {double size = 28}) {
+    // 资源图标
+    if (app.icon.startsWith('assets/')) {
+      if (app.icon.endsWith('.svg')) {
+        return SvgPicture.asset(app.icon, width: size, height: size);
+      }
+      return Image.asset(
+        app.icon,
+        width: size,
+        height: size,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.apps_rounded, color: secondaryText, size: size),
+      );
+    }
+
+    // 文件图标
     final iconPath = AppConfig.resolvePath(app.icon);
     final file = File(iconPath);
     if (!file.existsSync()) {
-      return Icon(Icons.apps_rounded, color: secondaryText, size: 28);
+      return Icon(Icons.apps_rounded, color: secondaryText, size: size);
     }
     if (app.icon.endsWith('.svg')) {
-      return SvgPicture.file(file, width: 28, height: 28);
+      return SvgPicture.file(file, width: size, height: size);
     }
     return Image.file(
       file,
-      width: 28,
-      height: 28,
+      width: size,
+      height: size,
       errorBuilder: (_, __, ___) =>
-          Icon(Icons.apps_rounded, color: secondaryText, size: 28),
+          Icon(Icons.apps_rounded, color: secondaryText, size: size),
     );
   }
 
+  Widget _buildHorizontalList() {
+    return SizedBox(
+      height: 56,
+      child: Listener(
+        onPointerSignal: (event) {
+          try {
+            final delta = (event as dynamic).scrollDelta as Offset;
+            _scrollController.jumpTo(
+              (_scrollController.offset + delta.dy)
+                  .clamp(0.0, _scrollController.position.maxScrollExtent),
+            );
+          } catch (_) {
+            // 非滚轮事件，忽略
+          }
+        },
+        child: ListView.separated(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          itemCount: _apps.length + 1, // +1 for app center button
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return _buildAppCenterButton();
+            }
+            return _buildAppCard(_apps[index - 1], index - 1);
+          },
+        ),
+      ),
+    );
+  }
 
-  Widget _buildContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 标题栏
-        GestureDetector(
+  Widget _buildAppCenterButton() {
+    final isHovered = _hoveredIndex == -1;
+    return Tooltip(
+      message: '应用中心',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hoveredIndex = -1),
+        onExit: (_) => setState(() => _hoveredIndex = null),
+        child: GestureDetector(
           onTap: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
-          child: Row(
-            children: [
-              SvgPicture.asset('assets/svg/应用.svg', width: 22, height: 22),
-              const SizedBox(width: 8),
-              Text(
-                '应用中心',
-                style: TextStyle(
-                  color: primaryText,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            width: 56,
+            height: 56,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isHovered ? hoverBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isHovered ? borderColor : Colors.transparent,
+                width: 1,
               ),
-            ],
+            ),
+            child: SvgPicture.asset(
+              'assets/svg/应用.svg',
+              width: 36,
+              height: 36,
+            ),
           ),
         ),
-        const SizedBox(height: 10),
-        // 内容区域
-        if (_loading) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: tertiaryText,
-                ),
-              ),
-            ),
-          ),
-        ] else if (_apps.isEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: Text(
-                '暂无应用',
-                style: TextStyle(color: tertiaryText, fontSize: 12),
-              ),
-            ),
-          ),
-        ] else ...[
-          Builder(
-            builder: (context) {
-              final visibleCount = _panelHovered ? _apps.length : (_apps.length > 6 ? 6 : _apps.length);
-              return AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 240),
-                    child: GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.0,
-                      ),
-                      itemCount: visibleCount,
-                      itemBuilder: (_, index) => _buildAppTile(_apps[index], index),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ],
+      ),
     );
   }
 
-  Widget _buildAppTile(AppInfo app, int index) {
+  Widget _buildAppCard(AppInfo app, int index) {
     final isHovered = _hoveredIndex == index;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hoveredIndex = index),
-      onExit: (_) => setState(() => _hoveredIndex = null),
-      child: GestureDetector(
-        onTap: () => _launchApp(app),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-          decoration: BoxDecoration(
-            color: isHovered ? hoverBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              app.type == 'system'
-                  ? _buildAppIcon(app)
-                  : Text(
-                      app.name.isNotEmpty ? app.name[0] : '?',
-                      style: TextStyle(
-                        color: secondaryText,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+    final hasIcon = app.icon.isNotEmpty && app.icon != 'assets/svg/应用.svg';
+    return Tooltip(
+      message: app.name,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hoveredIndex = index),
+        onExit: (_) => setState(() => _hoveredIndex = null),
+        child: GestureDetector(
+          onTap: () => _launchApp(app),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            width: 56,
+            height: 56,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isHovered ? hoverBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isHovered ? borderColor : Colors.transparent,
+                width: 1,
+              ),
+            ),
+            child: hasIcon
+                ? _buildAppIcon(app, size: 36)
+                : Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: secondaryText.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        app.name.isNotEmpty ? app.name[0] : '?',
+                        style: TextStyle(
+                          color: secondaryText,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-              const SizedBox(height: 6),
-              Text(
-                app.name,
-                style: TextStyle(
-                  color: isHovered ? primaryText : tertiaryText,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-              ),
-            ],
+                  ),
           ),
         ),
       ),
@@ -385,6 +382,16 @@ class AppConfig {
       "type": "system"
     },
     {
+      "id": "markdown_viewer",
+      "name": "Markdown 查看器",
+      "launchType": "plugin",
+      "subAppId": "markdown_viewer",
+      "executable": null,
+      "icon": "assets/svg/markdown.svg",
+      "description": "编辑与预览 Markdown 报文",
+      "type": "system"
+    },
+    {
       "id": "screen_record",
       "name": "屏幕录制",
       "launchType": "plugin",
@@ -392,6 +399,16 @@ class AppConfig {
       "executable": null,
       "icon": "assets/png/录制.png",
       "description": "录制全屏视频",
+      "type": "system"
+    },
+    {
+      "id": "json_viewer",
+      "name": "JSON 查看器",
+      "launchType": "plugin",
+      "subAppId": "json_viewer",
+      "executable": null,
+      "icon": "assets/svg/JSON查看.svg",
+      "description": "编辑、格式化、树形预览 JSON 数据",
       "type": "system"
     }
   ]

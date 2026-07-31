@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   orbby_plugin_screen_record
   screen_retriever_windows
   system_tray
+  url_launcher_windows
   window_manager
 )
 

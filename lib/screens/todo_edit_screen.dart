@@ -359,10 +359,27 @@ class _TodoEditScreenState extends State<TodoEditScreen>
         ),
       );
     }
+    final widgets = <Widget>[];
+    for (int i = 0; i < items.length; i++) {
+      if (i > 0) {
+        widgets.add(_buildNotebookLine());
+      }
+      widgets.add(_buildTodoItem(items[i]));
+    }
     return ListView(
       primary: true,
       padding: EdgeInsets.zero,
-      children: items.map(_buildTodoItem).toList(),
+      children: widgets,
+    );
+  }
+
+  Widget _buildNotebookLine() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Container(
+        height: 1,
+        color: const Color(0xFFE8E8E8),
+      ),
     );
   }
 

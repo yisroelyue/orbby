@@ -4,9 +4,11 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
+import '../services/panel_data_service.dart';
 import '../widgets/frosted_panel.dart';
 import '../widgets/interactive_icon.dart';
 import 'tab/agent_chat_tab.dart';
@@ -44,15 +46,20 @@ class HomeScreen extends StatefulWidget {
     mode: ChannelMode.unidirectional,
   );
 
-  static final refreshNotifier = ValueNotifier<int>(0);
-  static void triggerRefresh() => refreshNotifier.value++;
+  /// 面板数据刷新（统一通过 PanelDataService）
+  static void triggerRefresh() {
+    PanelDataService.refreshBalance();
+    PanelDataService.refreshWeather();
+    PanelDataService.refreshPhotoWall();
+    PanelDataService.refreshApps();
+  }
 
   /// 主题变更通知器，仅用于通知主题颜色变化
   static final themeNotifier = ValueNotifier<int>(0);
   static void triggerThemeChange() => themeNotifier.value++;
 
-  static final todoRefreshNotifier = ValueNotifier<int>(0);
-  static void triggerTodoRefresh() => todoRefreshNotifier.value++;
+  static void triggerTodoRefresh() => PanelDataService.refreshTodo();
+  static void triggerScheduleRefresh() => PanelDataService.refreshSchedule();
 
   /// 面板顺序变更通知器
   static final panelOrderNotifier = ValueNotifier<int>(0);
@@ -66,15 +73,19 @@ class HomeScreen extends StatefulWidget {
   static final settingsChangeNotifier = ValueNotifier<int>(0);
   static void triggerSettingsChange() => settingsChangeNotifier.value++;
 
-  static final favoritesRefreshNotifier = ValueNotifier<int>(0);
-  static void triggerFavoritesRefresh() => favoritesRefreshNotifier.value++;
+  static void triggerFavoritesRefresh() => PanelDataService.refreshFavorites();
+  static void triggerScriptRefresh() => PanelDataService.refreshScripts();
+
+  /// Tab 切换通知器，value 为目标 tab 索引
+  static final tabSwitchNotifier = ValueNotifier<int>(-1);
+  static void triggerTabSwitch(int index) => tabSwitchNotifier.value = index;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Color _menuBgColor = const Color(0xFFA1A1A1);
+  Color _menuBgColor = const Color(0xFF9E9E9E);
   bool _isDark = true;
   String _userName = '';
   String _userAvatarPath = '';
@@ -84,15 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // ---- Tab 定义 ----
   late final List<HomeTab> _tabs;
 
-  static const _settingsChannel = WindowMethodChannel(
-    'orbby_settings_events',
-    mode: ChannelMode.unidirectional,
-  );
-
   @override
   void initState() {
     super.initState();
-    _settingsChannel.setMethodCallHandler(_onSettingsSaved);
     _tabs = [
       HomeTab(
         icon: Icons.dashboard_rounded,
@@ -111,27 +116,28 @@ class _HomeScreenState extends State<HomeScreen> {
     HomeScreen.themeNotifier.addListener(_onSettingsChanged);
     HomeScreen.settingsChangeNotifier.addListener(_onSettingsChanged);
     HomeScreen.editModeNotifier.addListener(_onEditModeChanged);
+    HomeScreen.tabSwitchNotifier.addListener(_onTabSwitch);
   }
 
   @override
   void dispose() {
-    _settingsChannel.setMethodCallHandler(null);
     HomeScreen.themeNotifier.removeListener(_onSettingsChanged);
     HomeScreen.settingsChangeNotifier.removeListener(_onSettingsChanged);
     HomeScreen.editModeNotifier.removeListener(_onEditModeChanged);
+    HomeScreen.tabSwitchNotifier.removeListener(_onTabSwitch);
     super.dispose();
-  }
-
-  Future<void> _onSettingsSaved(MethodCall call) async {
-    if (call.method == 'settings_saved') {
-      HomeScreen.triggerSettingsChange();
-      _loadSettings();
-    }
   }
 
   void _onSettingsChanged() => _loadSettings();
 
   void _onEditModeChanged() => setState(() {});
+
+  void _onTabSwitch() {
+    final index = HomeScreen.tabSwitchNotifier.value;
+    if (index >= 0 && index < _tabs.length) {
+      setState(() => _currentTab = index);
+    }
+  }
 
   Future<void> _toggleTheme() async {
     final s = await SettingsService.load();
@@ -147,8 +153,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _isDark = s.appTheme == 'dark';
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
-      _menuBgImage = s.menuBgImage;
-      _menuBgColor = _isDark ? const Color(0xFF454545) : const Color(0xFFDCE3E3);
+      // menuBgImage 存储的是用户选择的背景（可以是 asset 路径或文件路径）
+      // 如果 menuBgImage 是文件路径但文件不存在，则显示无背景
+      if (s.menuBgImage.isEmpty ||
+          s.menuBgImage.startsWith('assets/') ||
+          (s.menuBgImage.isNotEmpty && File(s.menuBgImage).existsSync())) {
+        _menuBgImage = s.menuBgImage;
+      } else {
+        _menuBgImage = '';
+      }
+      _menuBgColor = _isDark ? const Color(0xFF454545) : const Color(0xEFE1E1E1);
     });
   }
 
@@ -160,43 +174,57 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'Microsoft YaHei'),
+      theme: ThemeData(
+        fontFamily: 'Microsoft YaHei',
+        scaffoldBackgroundColor: Colors.grey,
+      ),
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: FrostedPanel(
-              color: _menuBgColor,
-              child: Stack(
-                children: [
-                  if (_menuBgImage.isNotEmpty)
-                    Positioned.fill(
-                      child: Image.asset(
-                        _menuBgImage,
-                        key: ValueKey(_menuBgImage),
-                        fit: BoxFit.fitHeight,
-                        alignment: Alignment.center,
+        body: DragToResizeArea(
+          enableResizeEdges: [ResizeEdge.top, ResizeEdge.bottom],
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: FrostedPanel(
+                color: _menuBgColor,
+                child: Stack(
+                  children: [
+                    if (_menuBgImage.isNotEmpty)
+                      Positioned.fill(
+                        child: _menuBgImage.startsWith('assets/')
+                            ? Image.asset(
+                                _menuBgImage,
+                                key: ValueKey(_menuBgImage),
+                                fit: BoxFit.fitHeight,
+                                alignment: Alignment.center,
+                              )
+                            : Image.file(
+                                File(_menuBgImage),
+                                key: ValueKey(_menuBgImage),
+                                fit: BoxFit.fitHeight,
+                                alignment: Alignment.center,
+                                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 24, top: 12, bottom: 12, right: 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                DragToMoveArea(child: _buildTopRow()),
+                                Expanded(child: _buildTabContent()),
+                              ],
+                            ),
+                          ),
+                          _buildTabBar(),
+                        ],
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 24, top: 12, bottom: 12, right: 0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            children: [
-                              _buildTopRow(),
-                              Expanded(child: _buildTabContent()),
-                            ],
-                          ),
-                        ),
-                        _buildTabBar(),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -275,16 +303,6 @@ class _HomeScreenState extends State<HomeScreen> {
               _isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
               color: topIconColor,
               size: 20,
-            ),
-          ),
-          const SizedBox(width: 6),
-          InteractiveIcon(
-            onTap: () => HomeScreen.menuChannel.invokeMethod('open_settings'),
-            child: SvgPicture.asset(
-              'assets/svg/设置.svg',
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(topIconColor, BlendMode.srcIn),
             ),
           ),
           const SizedBox(width: 6),

@@ -13,11 +13,15 @@ class LlmService {
   ///
   /// [prompt] 用户输入的内容
   /// [systemPrompt] 可选的系统提示词，用于约束输出格式
+  /// [responseFormat] 响应格式，例如 `{'type': 'json_object'}` 强制返回 JSON
+  /// [searchEnable] 启用联网搜索（DeepSeek 等平台支持）
   /// [timeout] 请求超时时间，默认 45 秒
   /// [retries] 失败重试次数，默认 1（共请求 2 次）
   static Future<String> ask(
     String prompt, {
     String? systemPrompt,
+    Map<String, dynamic>? responseFormat,
+    bool? searchEnable,
     Duration timeout = const Duration(seconds: 45),
     int retries = 1,
   }) async {
@@ -34,13 +38,12 @@ class LlmService {
     final chatUrl = settings.chatUrl.isEmpty
         ? PlatformConfig.defaultChatUrl(settings.platform)
         : settings.chatUrl.trim();
-    final model = settings.model.isEmpty
+    final useModel = settings.model.isEmpty
         ? PlatformConfig.defaultChatModel(settings.platform)
         : settings.model;
 
     final messages = <Message>[
-      if (systemPrompt != null)
-        Message(role: 'system', content: systemPrompt),
+      if (systemPrompt != null) Message(role: 'system', content: systemPrompt),
       Message(role: 'user', content: trimmed),
     ];
 
@@ -53,20 +56,26 @@ class LlmService {
       }
 
       debugPrint('━━━ LlmService 请求 ━━━');
-      debugPrint('平台: ${settings.platform}  模型: $model');
+      debugPrint('平台: ${settings.platform}  模型: $useModel');
 
       final client = LLMClient(
         baseURL: chatUrl,
         apiKey: settings.apiKey,
-        model: model,
-        verbose: kDebugMode,
+        model: useModel,
+        verbose: settings.llmLogEnabled,
       );
 
       try {
-        final response = await client.chat(messages).timeout(
-          timeout,
-          onTimeout: () => throw LlmException('请求超时，请稍后重试'),
-        );
+        final response = await client
+            .chat(
+              messages,
+              responseFormat: responseFormat,
+              searchEnable: searchEnable,
+            )
+            .timeout(
+              timeout,
+              onTimeout: () => throw LlmException('请求超时，请稍后重试'),
+            );
         final content = response.content?.trim() ?? '';
         if (content.isEmpty) {
           lastError = LlmException('AI 返回为空');

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/settings.dart';
 import '../screens/home_screen.dart';
+import '../services/panel_cache.dart';
+import '../services/panel_data_service.dart';
 import '../services/todo_service.dart';
 import 'base_panel.dart';
 
@@ -21,41 +22,41 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   List<TodoItem> _importantTodos = [];
   bool _loading = true;
   bool _addHovered = false;
+  bool _titleHovered = false;
   String? _hoveredId;
-  bool _panelHovered = false;
 
-  @override
-  bool get panelHovered => _panelHovered;
+  static const Color _notebookBg = Color(0xFFFFF8DC); // 浅黄色背景
+  static const Color _darkText = Color(0xFF333333); // 深色文字（用于浅色背景）
 
   @override
   void initState() {
     super.initState();
-    _fetch(firstLoad: true);
-    HomeScreen.todoRefreshNotifier.addListener(_onRefresh);
+    _loadFromCache();
+    PanelCache.addListener(_onCacheChanged);
+    if (!PanelCache.has('todo_items')) {
+      setState(() => _loading = true);
+      PanelDataService.refreshTodo();
+    }
   }
 
   @override
   void dispose() {
-    HomeScreen.todoRefreshNotifier.removeListener(_onRefresh);
+    PanelCache.removeListener(_onCacheChanged);
     super.dispose();
   }
 
-  void _onRefresh() {
-    _fetch();
-  }
+  void _onCacheChanged() => _loadFromCache();
 
-  Future<void> _fetch({bool firstLoad = false}) async {
-    if (firstLoad) {
-      setState(() => _loading = true);
+  void _loadFromCache() {
+    final cached = PanelCache.get<List<TodoItem>>('todo_items');
+    if (cached != null && mounted) {
+      final uncompleted = cached.where((t) => !t.completed).toList();
+      setState(() {
+        _normalTodos = uncompleted.where((t) => !t.important).toList();
+        _importantTodos = uncompleted.where((t) => t.important).toList();
+        _loading = false;
+      });
     }
-    final todos = await TodoService.loadAll();
-    if (!mounted) return;
-    setState(() {
-      final uncompleted = todos.where((t) => !t.completed).toList();
-      _normalTodos = uncompleted.where((t) => !t.important).toList();
-      _importantTodos = uncompleted.where((t) => t.important).toList();
-      _loading = false;
-    });
   }
 
   void _openItemPopup(TodoItem item) {
@@ -75,8 +76,7 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
 
   Future<void> _toggleComplete(TodoItem item) async {
     await TodoService.toggle(item.id);
-    _fetch();
-    HomeScreen.todoRefreshNotifier.value++;
+    PanelDataService.refreshTodo();
   }
 
   void _openAllTodos() {
@@ -94,79 +94,94 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _panelHovered = true),
-      onExit: (_) => setState(() => _panelHovered = false),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(BasePanelState.panelBorderRadius),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          color: panelBg,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 标题栏
-              GestureDetector(
-                onTap: _openAllTodos,
-                child: Row(
-                  children: [
-                    SvgPicture.asset('assets/svg/笔记.svg', width: 22, height: 22),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '我的笔记',
-                        style: TextStyle(
-                          color: primaryText,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    // 添加按钮
-                    GestureDetector(
-                      onTap: _openAddPopup,
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        onEnter: (_) => setState(() => _addHovered = true),
-                        onExit: (_) => setState(() => _addHovered = false),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: _addHovered ? elementBg : Colors.transparent,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.add,
-                            color: _addHovered ? primaryText : mutedText,
-                            size: 20,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(panelBorderRadius),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _notebookBg,
+          borderRadius: BorderRadius.circular(panelBorderRadius),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 标题栏
+            GestureDetector(
+              onTap: _openAllTodos,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => setState(() => _titleHovered = true),
+                onExit: (_) => setState(() => _titleHovered = false),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  margin: const EdgeInsets.only(left: 6),
+                  decoration: BoxDecoration(
+                    color: _titleHovered
+                        ? _darkText.withValues(alpha: 0.06)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      SvgPicture.asset('assets/svg/笔记.svg', width: 22, height: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '我的笔记',
+                          style: TextStyle(
+                            color: _darkText,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      // 添加按钮
+                      GestureDetector(
+                        onTap: _openAddPopup,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          onEnter: (_) => setState(() => _addHovered = true),
+                          onExit: (_) => setState(() => _addHovered = false),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: _addHovered ? elementBg : Colors.transparent,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(
+                              Icons.add,
+                              color: _addHovered ? _darkText : _darkText.withValues(alpha: 0.5),
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
-              if (_loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: tertiaryText,
-                      ),
+            ),
+            const SizedBox(height: 10),
+            if (_loading)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: tertiaryText,
                     ),
                   ),
-                )
-              else
-                _buildTodoList(),
-            ],
-          ),
+                ),
+              )
+            else
+              _buildTodoList(),
+          ],
         ),
       ),
     );
@@ -180,44 +195,47 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
         child: Center(
           child: Text(
             '暂无笔记，添加一个吧',
-            style: TextStyle(color: primaryText, fontSize: 13),
+            style: TextStyle(color: _darkText, fontSize: 13),
           ),
         ),
       );
     }
-    final showAll = _panelHovered;
-    final normalVisible = showAll
-        ? _normalTodos.length
-        : (_normalTodos.length > 3 ? 3 : _normalTodos.length);
-    final importantVisible = showAll ? _importantTodos.length : 0;
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...List.generate(
-            normalVisible,
-            (i) => _buildTodoItem(_normalTodos[i]),
-          ),
-          if (importantVisible > 0 && normalVisible > 0)
-            _buildDivider(),
-          ...List.generate(
-            importantVisible,
-            (i) => _buildTodoItem(_importantTodos[i]),
-          ),
-        ],
+    return SizedBox(
+      height: 200,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ..._buildTodoListWithDividers(_normalTodos),
+            if (_importantTodos.isNotEmpty && _normalTodos.isNotEmpty)
+              _buildNotebookLine(),
+            ..._buildTodoListWithDividers(_importantTodos),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDivider() {
+  List<Widget> _buildTodoListWithDividers(List<TodoItem> items) {
+    final widgets = <Widget>[];
+    for (int i = 0; i < items.length; i++) {
+      if (i > 0) {
+        widgets.add(_buildNotebookLine());
+      }
+      widgets.add(_buildTodoItem(items[i]));
+    }
+    return widgets;
+  }
+
+  Widget _buildNotebookLine() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Divider(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Container(
         height: 1,
-        color: elementBg,
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDE6D0),
+        ),
       ),
     );
   }
@@ -244,11 +262,9 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: Icon(
-                    Icons.star_rounded,
+                    Icons.access_time_filled_rounded,
                     size: 14,
-                    color: isHovered
-                        ? Colors.amberAccent
-                        : Colors.amberAccent.withValues(alpha: 0.7),
+                    color: const Color(0xFF4C4C4C),
                   ),
                 )
               else
@@ -257,14 +273,14 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
                   height: 5,
                   margin: const EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
-                    color: isHovered ? primaryText : mutedText,
+                    color: isHovered ? _darkText : _darkText.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                 ),
               Expanded(
                 child: Text(
                   item.title,
-                  style: TextStyle(color: primaryText, fontSize: 14),
+                  style: TextStyle(color: _darkText, fontSize: 14),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -277,7 +293,7 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
                     child: Icon(
                       Icons.check_rounded,
                       size: 18,
-                      color: isHovered ? Colors.greenAccent : mutedText,
+                      color: isHovered ? Colors.greenAccent : _darkText.withValues(alpha: 0.5),
                     ),
                   ),
                 ),

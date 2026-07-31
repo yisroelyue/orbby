@@ -5,5 +5,6 @@ export 'agent_core.dart';
 export 'conversation.dart';
 export 'llm_client.dart';
 export 'tool_registry.dart';
-export 'tools/builtin_tools.dart';
+export 'tool_policy.dart';
+
 export 'types.dart';

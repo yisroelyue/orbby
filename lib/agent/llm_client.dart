@@ -8,25 +8,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../config/platform.dart';
 import 'types.dart';
 
-/// LLM 客户端配置
-class LLMClientOptions {
-  final String? baseURL;
-  final String? apiKey;
-  final String? model;
-  final int maxRetries;
-  final bool verbose;
-
-  const LLMClientOptions({
-    this.baseURL,
-    this.apiKey,
-    this.model,
-    this.maxRetries = 2,
-    this.verbose = false,
-  });
-}
+enum LLMProvider { openAICompatible, anthropic }
 
 /// LLM 客户端
 class LLMClient {
@@ -36,70 +20,73 @@ class LLMClient {
   int maxRetries;
   bool verbose;
 
+  /// 日志中隐藏 tools 字段（工具定义列表很长，影响可读性）
+  bool hideToolsInLog;
+  final LLMProvider provider;
+
   LLMClient({
     required this.baseURL,
     required this.apiKey,
     required this.model,
     this.maxRetries = 2,
     this.verbose = false,
+    this.hideToolsInLog = true,
+    this.provider = LLMProvider.openAICompatible,
   });
 
-  /// 从设置创建客户端
-  static Future<LLMClient> fromSettings({
-    String? compactModel,
-    bool verbose = false,
-  }) async {
-    // 延迟导入避免循环依赖
-    final settings = await _loadSettings();
-    final platform = settings['platform'] as String;
-    final chatUrl = (settings['chatUrl'] as String?)?.isNotEmpty == true
-        ? settings['chatUrl'] as String
-        : PlatformConfig.defaultChatUrl(platform);
-    final model = (settings['model'] as String?)?.isNotEmpty == true
-        ? settings['model'] as String
-        : PlatformConfig.defaultChatModel(platform);
-    final apiKey = settings['apiKey'] as String;
-
-    return LLMClient(
-      baseURL: chatUrl,
-      apiKey: apiKey,
-      model: compactModel ?? model,
-      verbose: verbose,
-    );
-  }
-
-  /// 加载设置
-  static Future<Map<String, dynamic>> _loadSettings() async {
-    // 这里需要导入 SettingsService，但为了避免循环依赖，我们直接返回配置
-    // 实际使用时应该通过依赖注入传入
-    throw UnimplementedError('请使用 fromSettings 工厂方法或直接传入参数');
-  }
-
   /// 发送对话请求到 LLM（非流式）
+  ///
+  /// [responseFormat] 请求响应格式，例如 `{'type': 'json_object'}` 强制返回 JSON。
+  /// 对 Anthropic 平台无效（会自动在 system prompt 中追加 JSON 指令）。
+  /// [searchEnable] 启用联网搜索（DeepSeek 等平台支持）。
   Future<LLMResponse> chat(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
+    bool? searchEnable,
   }) async {
-    final isAnthropic = PlatformConfig.isAnthropicPlatform(_detectPlatform());
+    final isAnthropic = provider == LLMProvider.anthropic;
 
     if (isAnthropic) {
-      return _callAnthropic(messages, tools: tools);
+      return _callAnthropic(
+        messages,
+        tools: tools,
+        responseFormat: responseFormat,
+      );
     }
-    return _callCompatible(messages, tools: tools);
+    return _callCompatible(
+      messages,
+      tools: tools,
+      responseFormat: responseFormat,
+      searchEnable: searchEnable,
+    );
   }
 
   /// 流式发送对话请求到 LLM
   Future<LLMResponse> chatStream(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
+    bool? searchEnable,
     void Function(String token)? onToken,
   }) async {
-    final isAnthropic = PlatformConfig.isAnthropicPlatform(_detectPlatform());
+    final isAnthropic = provider == LLMProvider.anthropic;
 
     if (isAnthropic) {
-      return _callAnthropicStream(messages, tools: tools, onToken: onToken);
+      return _callAnthropicStream(
+        messages,
+        tools: tools,
+        responseFormat: responseFormat,
+        onToken: onToken,
+      );
     }
-    return _callCompatibleStream(messages, tools: tools, onToken: onToken);
+    return _callCompatibleStream(
+      messages,
+      tools: tools,
+      responseFormat: responseFormat,
+      searchEnable: searchEnable,
+      onToken: onToken,
+    );
   }
 
   /// 检测当前平台
@@ -116,16 +103,58 @@ class LLMClient {
     return 'deepseek'; // 默认
   }
 
+  bool _isRetryable(Object error) {
+    final message = '$error'.toLowerCase();
+    if (message.contains('(400)') ||
+        message.contains('(401)') ||
+        message.contains('(403)') ||
+        message.contains('(404)') ||
+        message.contains('(422)'))
+      return false;
+    return message.contains('timeout') ||
+        message.contains('connection') ||
+        message.contains('(408)') ||
+        message.contains('(429)') ||
+        RegExp(r'\(5\d\d\)').hasMatch(message);
+  }
+
+  /// 格式化请求体用于日志输出
+  String _formatBodyForLog(Map<String, dynamic> body) {
+    if (!hideToolsInLog) {
+      return const JsonEncoder.withIndent('  ').convert(body);
+    }
+    final logBody = Map<String, dynamic>.from(body);
+    if (logBody['tools'] is List) {
+      final tools = logBody['tools'] as List;
+      final names = tools
+          .map((t) => t['function']?['name'] ?? t['name'] ?? '?')
+          .toList();
+      logBody['tools'] = '[${names.length} 个工具: ${names.join(', ')}]';
+    }
+    logBody.remove('tool_choice');
+    return const JsonEncoder.withIndent('  ').convert(logBody);
+  }
+
   /// OpenAI 兼容 API（非流式）
   Future<LLMResponse> _callCompatible(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
+    bool? searchEnable,
   }) async {
     final body = <String, dynamic>{
       'model': model,
       'messages': messages.map((m) => m.toJson()).toList(),
       'temperature': 0.1,
     };
+
+    if (responseFormat != null) {
+      body['response_format'] = responseFormat;
+    }
+
+    if (searchEnable == true) {
+      body['search_enable'] = true;
+    }
 
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools.map((t) => t.toJson()).toList();
@@ -136,13 +165,14 @@ class LLMClient {
     if (verbose) {
       debugPrint('━━━ LLM 请求 ━━━');
       debugPrint('URL: $url');
-      debugPrint(const JsonEncoder.withIndent('  ').convert(body));
+      debugPrint(_formatBodyForLog(body));
     }
 
     Exception? lastError;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 10);
         try {
           final request = await client.postUrl(Uri.parse(url));
           request.headers.contentType = ContentType.json;
@@ -152,9 +182,9 @@ class LLMClient {
           request.add(bytes);
 
           final response = await request.close().timeout(
-                const Duration(seconds: 60),
-                onTimeout: () => throw TimeoutException('请求超时'),
-              );
+            const Duration(seconds: 60),
+            onTimeout: () => throw TimeoutException('请求超时'),
+          );
 
           final raw = await response.transform(utf8.decoder).join();
 
@@ -174,16 +204,28 @@ class LLMClient {
           }
 
           final message = choices.first['message'] as Map<String, dynamic>;
+          var toolCalls = _parseToolCalls(message['tool_calls']);
+
+          // 兜底：解析 DeepSeek <execute_tool> 文本格式
+          final textContent = message['content'] as String?;
+          if (toolCalls == null &&
+              textContent != null &&
+              textContent.contains('<execute_tool>')) {
+            toolCalls = _parseExecuteToolTags(textContent);
+          }
+
           final result = LLMResponse(
             role: message['role'] as String? ?? 'assistant',
-            content: message['content'] as String?,
-            toolCalls: _parseToolCalls(message['tool_calls']),
+            content: (toolCalls != null) ? null : textContent,
+            toolCalls: toolCalls,
           );
 
           // 打印 token 使用情况
           if (verbose && json['usage'] != null) {
             final usage = json['usage'] as Map<String, dynamic>;
-            debugPrint('  Token: prompt=${usage['prompt_tokens']}, completion=${usage['completion_tokens']}, total=${usage['total_tokens']}');
+            debugPrint(
+              '  Token: prompt=${usage['prompt_tokens']}, completion=${usage['completion_tokens']}, total=${usage['total_tokens']}',
+            );
           }
 
           return result;
@@ -192,7 +234,7 @@ class LLMClient {
         }
       } catch (e) {
         lastError = e is Exception ? e : Exception('$e');
-        if (attempt < maxRetries) {
+        if (attempt < maxRetries && _isRetryable(e)) {
           await Future.delayed(Duration(seconds: attempt + 1));
         }
       }
@@ -204,6 +246,8 @@ class LLMClient {
   Future<LLMResponse> _callCompatibleStream(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
+    bool? searchEnable,
     void Function(String token)? onToken,
   }) async {
     final body = <String, dynamic>{
@@ -212,6 +256,14 @@ class LLMClient {
       'temperature': 0.1,
       'stream': true,
     };
+
+    if (responseFormat != null) {
+      body['response_format'] = responseFormat;
+    }
+
+    if (searchEnable == true) {
+      body['search_enable'] = true;
+    }
 
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools.map((t) => t.toJson()).toList();
@@ -222,13 +274,14 @@ class LLMClient {
     if (verbose) {
       debugPrint('━━━ LLM 流式请求 ━━━');
       debugPrint('URL: $url');
-      debugPrint(const JsonEncoder.withIndent('  ').convert(body));
+      debugPrint(_formatBodyForLog(body));
     }
 
     Exception? lastError;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 10);
         try {
           final request = await client.postUrl(Uri.parse(url));
           request.headers.contentType = ContentType.json;
@@ -238,9 +291,9 @@ class LLMClient {
           request.add(bytes);
 
           final response = await request.close().timeout(
-                const Duration(seconds: 120),
-                onTimeout: () => throw TimeoutException('请求超时'),
-              );
+            const Duration(seconds: 120),
+            onTimeout: () => throw TimeoutException('请求超时'),
+          );
 
           if (response.statusCode != 200) {
             final raw = await response.transform(utf8.decoder).join();
@@ -307,18 +360,33 @@ class LLMClient {
           }
 
           // 构建返回值
+          var finalToolCalls = _buildToolCalls(toolCalls);
+
+          // 兜底：如果结构化 tool_calls 为空，但 content 中包含
+          // <execute_tool> 标签（DeepSeek 某些模型的文本格式工具调用），
+          // 尝试从文本中解析工具调用。
+          if (finalToolCalls == null && content.contains('<execute_tool>')) {
+            finalToolCalls = _parseExecuteToolTags(content);
+            if (finalToolCalls != null) {
+              // 工具调用已从文本中解析，清除 content 避免被当作普通回复
+              content = '';
+            }
+          }
+
           return LLMResponse(
             role: 'assistant',
             content: content.isEmpty ? null : content,
-            reasoningContent: reasoningContent.isEmpty ? null : reasoningContent,
-            toolCalls: _buildToolCalls(toolCalls),
+            reasoningContent: reasoningContent.isEmpty
+                ? null
+                : reasoningContent,
+            toolCalls: finalToolCalls,
           );
         } finally {
           client.close();
         }
       } catch (e) {
         lastError = e is Exception ? e : Exception('$e');
-        if (attempt < maxRetries) {
+        if (attempt < maxRetries && _isRetryable(e)) {
           await Future.delayed(Duration(seconds: attempt + 1));
         }
       }
@@ -330,6 +398,7 @@ class LLMClient {
   Future<LLMResponse> _callAnthropic(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
   }) async {
     // Anthropic 格式：system 放在顶层，messages 不包含 system
     final systemMessage = messages.where((m) => m.role == 'system').firstOrNull;
@@ -338,35 +407,46 @@ class LLMClient {
         .map((m) => m.toJson())
         .toList();
 
+    // 如果请求 JSON 格式，在 system prompt 中追加指令
+    var systemContent = systemMessage?.content ?? '';
+    if (responseFormat != null && responseFormat['type'] == 'json_object') {
+      systemContent += '\n\n请严格以 JSON 格式输出，不要包含任何额外文字或 Markdown 标记。';
+    }
+
     final body = <String, dynamic>{
       'model': model,
       'max_tokens': 4096,
       'messages': userMessages,
     };
 
-    if (systemMessage != null) {
-      body['system'] = systemMessage.content;
+    if (systemContent.isNotEmpty) {
+      body['system'] = systemContent;
     }
 
     if (tools != null && tools.isNotEmpty) {
-      body['tools'] = tools.map((t) => {
-        'name': t.name,
-        'description': t.description,
-        'input_schema': t.parameters,
-      }).toList();
+      body['tools'] = tools
+          .map(
+            (t) => {
+              'name': t.name,
+              'description': t.description,
+              'input_schema': t.parameters,
+            },
+          )
+          .toList();
     }
 
     final url = baseURL;
     if (verbose) {
       debugPrint('━━━ Anthropic 请求 ━━━');
       debugPrint('URL: $url');
-      debugPrint(const JsonEncoder.withIndent('  ').convert(body));
+      debugPrint(_formatBodyForLog(body));
     }
 
     Exception? lastError;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 10);
         try {
           final request = await client.postUrl(Uri.parse(url));
           request.headers.contentType = ContentType.json;
@@ -377,14 +457,16 @@ class LLMClient {
           request.add(bytes);
 
           final response = await request.close().timeout(
-                const Duration(seconds: 60),
-                onTimeout: () => throw TimeoutException('请求超时'),
-              );
+            const Duration(seconds: 60),
+            onTimeout: () => throw TimeoutException('请求超时'),
+          );
 
           final raw = await response.transform(utf8.decoder).join();
 
           if (response.statusCode != 200) {
-            throw HttpException('Anthropic API 错误 (${response.statusCode}): $raw');
+            throw HttpException(
+              'Anthropic API 错误 (${response.statusCode}): $raw',
+            );
           }
 
           if (verbose) {
@@ -407,11 +489,13 @@ class LLMClient {
             if (type == 'text') {
               textContent += block['text'] as String? ?? '';
             } else if (type == 'tool_use') {
-              toolCalls.add(ToolCall(
-                id: block['id'] as String,
-                name: block['name'] as String,
-                arguments: Map<String, dynamic>.from(block['input'] as Map),
-              ));
+              toolCalls.add(
+                ToolCall(
+                  id: block['id'] as String,
+                  name: block['name'] as String,
+                  arguments: Map<String, dynamic>.from(block['input'] as Map),
+                ),
+              );
             }
           }
 
@@ -425,7 +509,7 @@ class LLMClient {
         }
       } catch (e) {
         lastError = e is Exception ? e : Exception('$e');
-        if (attempt < maxRetries) {
+        if (attempt < maxRetries && _isRetryable(e)) {
           await Future.delayed(Duration(seconds: attempt + 1));
         }
       }
@@ -437,6 +521,7 @@ class LLMClient {
   Future<LLMResponse> _callAnthropicStream(
     List<Message> messages, {
     List<ToolCallDefinition>? tools,
+    Map<String, dynamic>? responseFormat,
     void Function(String token)? onToken,
   }) async {
     // Anthropic 格式：system 放在顶层，messages 不包含 system
@@ -446,6 +531,12 @@ class LLMClient {
         .map((m) => m.toJson())
         .toList();
 
+    // 如果请求 JSON 格式，在 system prompt 中追加指令
+    var systemContent = systemMessage?.content ?? '';
+    if (responseFormat != null && responseFormat['type'] == 'json_object') {
+      systemContent += '\n\n请严格以 JSON 格式输出，不要包含任何额外文字或 Markdown 标记。';
+    }
+
     final body = <String, dynamic>{
       'model': model,
       'max_tokens': 4096,
@@ -453,29 +544,34 @@ class LLMClient {
       'stream': true,
     };
 
-    if (systemMessage != null) {
-      body['system'] = systemMessage.content;
+    if (systemContent.isNotEmpty) {
+      body['system'] = systemContent;
     }
 
     if (tools != null && tools.isNotEmpty) {
-      body['tools'] = tools.map((t) => {
-        'name': t.name,
-        'description': t.description,
-        'input_schema': t.parameters,
-      }).toList();
+      body['tools'] = tools
+          .map(
+            (t) => {
+              'name': t.name,
+              'description': t.description,
+              'input_schema': t.parameters,
+            },
+          )
+          .toList();
     }
 
     final url = baseURL;
     if (verbose) {
       debugPrint('━━━ Anthropic 流式请求 ━━━');
       debugPrint('URL: $url');
-      debugPrint(const JsonEncoder.withIndent('  ').convert(body));
+      debugPrint(_formatBodyForLog(body));
     }
 
     Exception? lastError;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 10);
         try {
           final request = await client.postUrl(Uri.parse(url));
           request.headers.contentType = ContentType.json;
@@ -486,18 +582,20 @@ class LLMClient {
           request.add(bytes);
 
           final response = await request.close().timeout(
-                const Duration(seconds: 120),
-                onTimeout: () => throw TimeoutException('请求超时'),
-              );
+            const Duration(seconds: 120),
+            onTimeout: () => throw TimeoutException('请求超时'),
+          );
 
           if (response.statusCode != 200) {
             final raw = await response.transform(utf8.decoder).join();
-            throw HttpException('Anthropic API 错误 (${response.statusCode}): $raw');
+            throw HttpException(
+              'Anthropic API 错误 (${response.statusCode}): $raw',
+            );
           }
 
           // 解析 SSE 流
           var content = '';
-          final toolCalls = <ToolCall>[];
+          final toolUseBlocks = <int, _AnthropicToolCallBuilder>{};
 
           final lines = response
               .transform(utf8.decoder)
@@ -512,19 +610,52 @@ class LLMClient {
               final json = jsonDecode(data) as Map<String, dynamic>;
               final type = json['type'] as String?;
 
-              if (type == 'content_block_delta') {
+              if (type == 'content_block_start') {
+                final block = json['content_block'] as Map<String, dynamic>?;
+                if (block != null && block['type'] == 'tool_use') {
+                  final idx = json['index'] as int? ?? 0;
+                  toolUseBlocks[idx] = _AnthropicToolCallBuilder(
+                    id: block['id'] as String? ?? '',
+                    name: block['name'] as String? ?? '',
+                  );
+                }
+              } else if (type == 'content_block_delta') {
+                final idx = json['index'] as int? ?? 0;
                 final delta = json['delta'] as Map<String, dynamic>?;
                 if (delta != null) {
                   if (delta['type'] == 'text_delta') {
                     final text = delta['text'] as String? ?? '';
                     content += text;
                     onToken?.call(text);
+                  } else if (delta['type'] == 'input_json_delta') {
+                    toolUseBlocks[idx]?.inputJson +=
+                        delta['partial_json'] as String? ?? '';
                   }
                 }
               }
+              // content_block_stop 不需要额外处理，数据已累积
             } catch (_) {
               // 跳过解析失败的行
             }
+          }
+
+          // 构建工具调用列表
+          final toolCalls = <ToolCall>[];
+          for (final entry
+              in toolUseBlocks.entries.toList()
+                ..sort((a, b) => a.key.compareTo(b.key))) {
+            final builder = entry.value;
+            Map<String, dynamic> input = {};
+            try {
+              if (builder.inputJson.isNotEmpty) {
+                input = Map<String, dynamic>.from(
+                  jsonDecode(builder.inputJson) as Map,
+                );
+              }
+            } catch (_) {}
+            toolCalls.add(
+              ToolCall(id: builder.id, name: builder.name, arguments: input),
+            );
           }
 
           return LLMResponse(
@@ -537,7 +668,7 @@ class LLMClient {
         }
       } catch (e) {
         lastError = e is Exception ? e : Exception('$e');
-        if (attempt < maxRetries) {
+        if (attempt < maxRetries && _isRetryable(e)) {
           await Future.delayed(Duration(seconds: attempt + 1));
         }
       }
@@ -570,6 +701,37 @@ class LLMClient {
     }
   }
 
+  /// 从 DeepSeek <execute_tool> 文本标签中解析工具调用
+  List<ToolCall>? _parseExecuteToolTags(String content) {
+    final pattern = RegExp(
+      r'<execute_tool>\s*'
+      r'<tool_name>(.*?)</tool_name>'
+      r'(?:\s*<arguments>(.*?)</arguments>)?'
+      r'\s*</execute_tool>',
+      dotAll: true,
+    );
+
+    final matches = pattern.allMatches(content).toList();
+    if (matches.isEmpty) return null;
+
+    return matches.map((m) {
+      final name = m.group(1)?.trim() ?? '';
+      final argsStr = m.group(2)?.trim() ?? '';
+      Map<String, dynamic> args = {};
+      if (argsStr.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(argsStr);
+          if (decoded is Map<String, dynamic>) args = decoded;
+        } catch (_) {}
+      }
+      return ToolCall(
+        id: 'call_${name}_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        arguments: args,
+      );
+    }).toList();
+  }
+
   /// 构建 tool_calls 列表
   List<ToolCall>? _buildToolCalls(Map<int, _ToolCallBuilder> builders) {
     if (builders.isEmpty) return null;
@@ -586,9 +748,18 @@ class LLMClient {
   }
 }
 
-/// 工具调用构建器（用于流式解析）
+/// 工具调用构建器（用于 OpenAI 兼容流式解析）
 class _ToolCallBuilder {
   String id = '';
   String name = '';
   String arguments = '';
+}
+
+/// Anthropic 工具调用构建器（用于流式解析）
+class _AnthropicToolCallBuilder {
+  String id;
+  String name;
+  String inputJson = '';
+
+  _AnthropicToolCallBuilder({required this.id, required this.name});
 }

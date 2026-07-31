@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../agent/agent_core.dart';
 import '../agent/llm_client.dart';
 import '../agent/tool_registry.dart';
-import '../agent/tools/builtin_tools.dart';
+
 import '../agent/types.dart' as agent_types;
 import '../config/platform.dart';
 import '../config/settings.dart';
@@ -16,12 +16,15 @@ class AgentService {
   static Agent? _agent;
   static String? _currentPlatform;
   static String? _currentModel;
+  static String? _systemPrompt;
+
+  /// 设置自定义系统提示（下次 Agent 创建时生效）
+  static void setSystemPrompt(String? prompt) {
+    _systemPrompt = prompt;
+  }
 
   /// 获取或创建 Agent 实例
-  static Future<Agent> _getAgent({
-    String? compactModel,
-    bool forceRecreate = false,
-  }) async {
+  static Future<Agent> _getAgent({bool forceRecreate = false}) async {
     final settings = await SettingsService.load();
     final platform = settings.platform;
     final model = settings.model.isEmpty
@@ -29,8 +32,10 @@ class AgentService {
         : settings.model;
 
     // 如果配置变化或需要重建
-    if (_agent == null || forceRecreate ||
-        _currentPlatform != platform || _currentModel != model) {
+    if (_agent == null ||
+        forceRecreate ||
+        _currentPlatform != platform ||
+        _currentModel != model) {
       final chatUrl = settings.chatUrl.isEmpty
           ? PlatformConfig.defaultChatUrl(platform)
           : settings.chatUrl.trim();
@@ -40,27 +45,21 @@ class AgentService {
         baseURL: chatUrl,
         apiKey: settings.apiKey,
         model: model,
-        verbose: kDebugMode,
-      );
-
-      // 创建压缩 LLM 客户端（使用轻量模型）
-      final compactModelName = compactModel ?? _getDefaultCompactModel(platform);
-      final compactLLM = LLMClient(
-        baseURL: chatUrl,
-        apiKey: settings.apiKey,
-        model: compactModelName,
-        verbose: false,
+        verbose: settings.llmLogEnabled,
+        provider: platform == 'anthropic'
+            ? LLMProvider.anthropic
+            : LLMProvider.openAICompatible,
       );
 
       // 创建工具注册中心
       final registry = ToolRegistry();
-      registerBuiltinTools(registry);
+      registry.initBuiltinTools();
 
       // 创建 Agent
       _agent = Agent(
         llm: llm,
-        compactLLM: compactLLM,
         registry: registry,
+        systemPrompt: _systemPrompt,
         conversationOptions: const agent_types.ConversationOptions(
           maxTokens: 32000,
           keepRecentTurns: 3,
@@ -76,25 +75,17 @@ class AgentService {
       _currentModel = model;
 
       debugPrint('━━━ Agent 初始化完成 ━━━');
-      debugPrint('平台: $platform  模型: $model  压缩模型: $compactModelName');
+      debugPrint('平台: $platform  模型: $model');
     }
 
     return _agent!;
   }
 
-  /// 获取默认压缩模型
-  static String _getDefaultCompactModel(String platform) {
-    return switch (platform) {
-      'deepseek' => 'deepseek-chat',
-      'openai' => 'gpt-3.5-turbo',
-      'anthropic' => 'claude-3-haiku-20240307',
-      'doubao' => 'doubao-lite-32k',
-      'mimo' => 'mimo-mini',
-      'qwen' => 'qwen-turbo',
-      'kimi' => 'moonshot-v1-8k',
-      'zhipu' => 'glm-4-flash',
-      _ => 'deepseek-chat',
-    };
+  /// 同步 LLM 日志开关到已有的 Agent（设置变更时调用，无需重建 Agent）
+  static Future<void> syncLogSettings() async {
+    if (_agent == null) return;
+    final settings = await SettingsService.load();
+    _agent!.llm.verbose = settings.llmLogEnabled;
   }
 
   /// 发送消息到 AI，返回回复文本（非流式，一次性返回）
@@ -172,23 +163,31 @@ class AgentService {
     var hasStreamedTokens = false;
 
     // 异步处理消息
-    agent.processMessage(trimmed, onToken: (token) {
-      hasStreamedTokens = true;
-      controller.add(token);
-    }).then((result) {
-      // 只有当没有流式输出时，才添加最终结果
-      if (!controller.isClosed && !hasStreamedTokens) {
-        controller.add(result);
-        controller.close();
-      } else if (!controller.isClosed) {
-        controller.close();
-      }
-    }).catchError((error) {
-      if (!controller.isClosed) {
-        controller.addError(error is Exception ? error : Exception('$error'));
-        controller.close();
-      }
-    });
+    agent
+        .processMessage(
+          trimmed,
+          onToken: (token) {
+            hasStreamedTokens = true;
+            controller.add(token);
+          },
+        )
+        .then((result) {
+          // 只有当没有流式输出时，才添加最终结果
+          if (!controller.isClosed && !hasStreamedTokens) {
+            controller.add(result);
+            controller.close();
+          } else if (!controller.isClosed) {
+            controller.close();
+          }
+        })
+        .catchError((error) {
+          if (!controller.isClosed) {
+            controller.addError(
+              error is Exception ? error : Exception('$error'),
+            );
+            controller.close();
+          }
+        });
 
     yield* controller.stream;
   }
@@ -212,11 +211,9 @@ class AgentService {
   /// 获取可用工具列表
   static List<Map<String, dynamic>> getAvailableTools() {
     if (_agent == null) return [];
-    return _agent!.registry.getToolDefinitions()
-        .map((t) => {
-          'name': t.name,
-          'description': t.description,
-        })
+    return _agent!.registry
+        .getToolDefinitions()
+        .map((t) => {'name': t.name, 'description': t.description})
         .toList();
   }
 

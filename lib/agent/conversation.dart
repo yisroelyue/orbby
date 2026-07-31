@@ -8,7 +8,8 @@ import 'types.dart';
 
 /// 默认系统提示
 String _defaultSystemPrompt() {
-  final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+  final homeDir =
+      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
   final cwd = Directory.current.path;
   return '你是一个能通过调用工具完成任务的 AI 助手。\n'
       '你的工作方式：理解需求，调用工具执行，返回结果\n'
@@ -39,17 +40,17 @@ class Conversation {
   int totalCompacted = 0;
   CompactionStats? lastCompaction;
 
-  Conversation({
-    ConversationOptions? options,
-    String? systemPrompt,
-  })  : maxTokens = options?.maxTokens ?? 32000,
-        keepRecentTurns = options?.keepRecentTurns ?? 3,
-        summaryMaxChars = options?.summaryMaxChars ?? 2400,
-        maxToolResultChars = options?.maxToolResultChars ?? 12000,
-        contextSoftLimit = options?.contextSoftLimit ?? 0.75,
-        contextHardLimit = options?.contextHardLimit ?? 0.90,
-        reservedOutputTokens = options?.reservedOutputTokens ?? 4096 {
-    messages.add(Message(role: 'system', content: systemPrompt ?? _defaultSystemPrompt()));
+  Conversation({ConversationOptions? options, String? systemPrompt})
+    : maxTokens = options?.maxTokens ?? 32000,
+      keepRecentTurns = options?.keepRecentTurns ?? 3,
+      summaryMaxChars = options?.summaryMaxChars ?? 2400,
+      maxToolResultChars = options?.maxToolResultChars ?? 12000,
+      contextSoftLimit = options?.contextSoftLimit ?? 0.75,
+      contextHardLimit = options?.contextHardLimit ?? 0.90,
+      reservedOutputTokens = options?.reservedOutputTokens ?? 4096 {
+    messages.add(
+      Message(role: 'system', content: systemPrompt ?? _defaultSystemPrompt()),
+    );
   }
 
   /// 粗略 token 估算（字符数 / 4）
@@ -112,7 +113,8 @@ class Conversation {
       case 'assistant':
         var text = '[Assistant]: ${msg.content ?? ''}';
         if (msg.toolCalls != null && msg.toolCalls!.isNotEmpty) {
-          text += '\n[Tool Calls]: ${msg.toolCalls!.map((tc) => '${tc.name}(${tc.arguments})').join(', ')}';
+          text +=
+              '\n[Tool Calls]: ${msg.toolCalls!.map((tc) => '${tc.name}(${tc.arguments})').join(', ')}';
         }
         return text;
       case 'tool':
@@ -128,6 +130,9 @@ class Conversation {
   }
 
   /// 提取文件操作（读取/修改的文件）
+  /// 通过工具名模式匹配而非硬编码具体名称：
+  /// - 包含 "read" 的工具视为读取
+  /// - 包含 "write"/"create"/"edit"/"delete" 的工具视为修改
   Map<String, Set<String>> _extractFileOperations(List<Message> messages) {
     final readFiles = <String>{};
     final modifiedFiles = <String>{};
@@ -137,14 +142,17 @@ class Conversation {
         for (final call in msg.toolCalls!) {
           try {
             final args = _parseArguments(call.arguments);
-            switch (call.name) {
-              case 'read_file':
-                if (args['path'] != null) readFiles.add(args['path'] as String);
-                break;
-              case 'edit_file':
-              case 'create_file':
-                if (args['path'] != null) modifiedFiles.add(args['path'] as String);
-                break;
+            final path = args['path'] as String?;
+            if (path == null || path.isEmpty) continue;
+
+            final name = call.name.toLowerCase();
+            if (name.contains('read')) {
+              readFiles.add(path);
+            } else if (name.contains('write') ||
+                name.contains('create') ||
+                name.contains('edit') ||
+                name.contains('delete')) {
+              modifiedFiles.add(path);
             }
           } catch (_) {
             // 忽略解析错误
@@ -153,28 +161,26 @@ class Conversation {
       }
     }
 
-    return {
-      'readFiles': readFiles,
-      'modifiedFiles': modifiedFiles,
-    };
+    return {'readFiles': readFiles, 'modifiedFiles': modifiedFiles};
   }
 
   /// 添加助手消息
   void addAssistantMessage(LLMResponse response) {
-    final msg = Message(role: 'assistant');
-    if (response.content != null) {
-      msg.content = response.content;
-    }
-    if (response.toolCalls != null && response.toolCalls!.isNotEmpty) {
-      msg.toolCalls = response.toolCalls!
-          .map((tc) => ToolCallFunction(
+    messages.add(
+      Message(
+        role: 'assistant',
+        content: response.content,
+        toolCalls: response.toolCalls
+            ?.map(
+              (tc) => ToolCallFunction(
                 id: tc.id,
                 name: tc.name,
                 arguments: _encodeArguments(tc.arguments),
-              ))
-          .toList();
-    }
-    messages.add(msg);
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
 
   /// 截断工具结果
@@ -188,11 +194,13 @@ class Conversation {
 
   /// 添加工具结果
   void addToolResult(String toolCallId, dynamic result) {
-    messages.add(Message(
-      role: 'tool',
-      toolCallId: toolCallId,
-      content: _trimToolResult(result),
-    ));
+    messages.add(
+      Message(
+        role: 'tool',
+        toolCallId: toolCallId,
+        content: _trimToolResult(result),
+      ),
+    );
   }
 
   /// 获取消息列表
@@ -216,14 +224,20 @@ class Conversation {
 
     for (final message in messages.skip(1)) {
       if (message.role == 'user' && current.isNotEmpty) {
-        blocks.add(_TurnBlock(
-          messages: current,
-          complete: current.any((m) => m.role == 'assistant' && m.toolCalls == null),
-        ));
+        blocks.add(
+          _TurnBlock(
+            messages: current,
+            complete: current.any(
+              (m) => m.role == 'assistant' && m.toolCalls == null,
+            ),
+          ),
+        );
         current = [];
       }
       current.add(message);
-      if (message.role == 'assistant' && message.toolCalls == null && current.isNotEmpty) {
+      if (message.role == 'assistant' &&
+          message.toolCalls == null &&
+          current.isNotEmpty) {
         blocks.add(_TurnBlock(messages: current, complete: true));
         current = [];
       }
@@ -237,7 +251,9 @@ class Conversation {
   }
 
   /// 找到安全裁剪点
-  ({List<_TurnBlock> blocks, int removeCount})? _findSafeTrimPoint(int keepTurns) {
+  ({List<_TurnBlock> blocks, int removeCount})? _findSafeTrimPoint(
+    int keepTurns,
+  ) {
     final blocks = _getTurnBlocks();
     final complete = blocks.where((block) => block.complete).toList();
     if (complete.length <= keepTurns) return null;
@@ -268,7 +284,8 @@ class Conversation {
       String existingSummary,
       String serializedConversation,
       Map<String, Set<String>> fileOps,
-    )? summarizeFn, {
+    )?
+    summarizeFn, {
     int? requestTokens,
     bool force = false,
     String reason = 'soft_limit',
@@ -278,13 +295,17 @@ class Conversation {
     final shouldCompact = force || currentRequestTokens > thresholds.soft;
     if (!shouldCompact) return false;
 
-    final keepTurns = currentRequestTokens > thresholds.hard ? 1 : keepRecentTurns;
+    final keepTurns = currentRequestTokens > thresholds.hard
+        ? 1
+        : keepRecentTurns;
     final safePoint = _findSafeTrimPoint(keepTurns);
     if (safePoint == null || safePoint.removeCount == 0) return false;
 
     // 提取待压缩的旧消息
     final completeBlocks = safePoint.blocks.where((b) => b.complete).toList();
-    final blocksToCompact = completeBlocks.take(completeBlocks.length - keepTurns).toList();
+    final blocksToCompact = completeBlocks
+        .take(completeBlocks.length - keepTurns)
+        .toList();
     final oldMessages = blocksToCompact.expand((b) => b.messages).toList();
     final recentMessages = messages.skip(1).skip(oldMessages.length).toList();
 
@@ -298,7 +319,12 @@ class Conversation {
         final fileOps = _extractFileOperations(oldMessages);
 
         newSummary = _limitSummary(
-          await summarizeFn(oldMessages, summary, serializedConversation, fileOps),
+          await summarizeFn(
+            oldMessages,
+            summary,
+            serializedConversation,
+            fileOps,
+          ),
         );
       } catch (_) {
         // 摘要生成失败，保留原有历史
@@ -312,10 +338,12 @@ class Conversation {
     final rebuilt = <Message>[systemMsg];
 
     if (newSummary.isNotEmpty) {
-      rebuilt.add(Message(
-        role: 'system',
-        content: '[上下文任务状态]\n$newSummary\n---\n以上内容是历史任务状态，请以此为背景继续处理后续请求。',
-      ));
+      rebuilt.add(
+        Message(
+          role: 'system',
+          content: '[上下文任务状态]\n$newSummary\n---\n以上内容是历史任务状态，请以此为背景继续处理后续请求。',
+        ),
+      );
     }
 
     rebuilt.addAll(recentMessages);

@@ -1,20 +1,21 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../config/settings.dart';
-import '../screens/home_screen.dart';
 import '../services/panel_cache.dart';
+import '../services/panel_data_service.dart';
 import 'base_panel.dart';
+import 'interactive_icon.dart';
 
 class DailyQuotePanel extends BasePanel {
   const DailyQuotePanel({super.key});
 
   @override
   PanelSize get panelSize => PanelSize.full;
+
+  @override
+  bool get isCarousel => true;
 
   @override
   String get panelName => 'daily_quote';
@@ -27,7 +28,6 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
     with SingleTickerProviderStateMixin {
   @override
   EdgeInsetsGeometry get panelPadding => const EdgeInsets.symmetric(horizontal: 14, vertical: 12);
-  bool _loading = true;
   bool _isQuerying = false;
   bool _isError = false;
 
@@ -60,38 +60,44 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
       curve: Curves.easeOutCubic,
     );
 
-    // 先从缓存恢复数据
-    final cached = PanelCache.get<Map<String, String>>('daily_quote');
-    if (cached != null) {
-      _quoteText = cached['text'] ?? '';
-      _quoteAuthor = cached['author'] ?? '';
-      _quoteSource = cached['source'] ?? '';
-      _loading = false;
-      if (_quoteText.isNotEmpty) _fadeController.value = 1.0;
-    }
+    _loadFromCache();
+    PanelCache.addListener(_onCacheChanged);
 
-    HomeScreen.refreshNotifier.addListener(_onRefresh);
-    _fetch();
+    if (!PanelCache.has('daily_quote')) {
+      setState(() => _isQuerying = true);
+      PanelDataService.refreshDailyQuote();
+    }
   }
 
   @override
   void dispose() {
     _clearTimer?.cancel();
     _fadeController.dispose();
-    HomeScreen.refreshNotifier.removeListener(_onRefresh);
+    PanelCache.removeListener(_onCacheChanged);
     super.dispose();
   }
 
-  void _onRefresh() {
-    _fetch();
+  void _onCacheChanged() => _loadFromCache();
+
+  void _loadFromCache() {
+    final cached = PanelCache.get<Map<String, String>>('daily_quote');
+    if (cached != null && mounted) {
+      setState(() {
+        _quoteText = cached['text'] ?? '';
+        _quoteAuthor = cached['author'] ?? '';
+        _quoteSource = cached['source'] ?? '';
+        _isQuerying = false;
+        _isError = false;
+      });
+      if (_quoteText.isNotEmpty) _fadeController.forward();
+      _startClearTimer();
+    }
   }
 
   void _startClearTimer() {
     _clearTimer?.cancel();
-
     _clearTimer = Timer(const Duration(minutes: 30), () {
       if (!mounted) return;
-
       setState(() {
         _quoteText = '';
         _quoteAuthor = '';
@@ -101,109 +107,13 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
     });
   }
 
-  Future<void> _fetch() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-      });
-    }
-
-    try {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      if (_quoteText.isEmpty) {
-        await _fetchQuote();
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-        _isError = true;
-        _quoteText = '读取每日一言设置失败：$e';
-      });
-    }
-  }
-
-  Future<void> _fetchQuote() async {
+  /// 手动刷新
+  void _manualRefresh() {
     if (_isQuerying) return;
-
     _clearTimer?.cancel();
     _fadeController.reset();
-
-    setState(() {
-      _isQuerying = true;
-    });
-
-    try {
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 10);
-      final request = await client
-          .getUrl(Uri.parse('https://v1.hitokoto.cn/?c=d&c=h&c=i&c=k'))
-          .timeout(const Duration(seconds: 10));
-      final response = await request.close().timeout(const Duration(seconds: 10));
-      final responseBody = await response.transform(utf8.decoder).join();
-      client.close();
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final data = json.decode(responseBody);
-        final text = data['hitokoto'] ?? '';
-        final author = data['from_who'] ?? '';
-        final source = data['from'] ?? '';
-
-        setState(() {
-          _quoteText = text;
-          _quoteAuthor = author;
-          _quoteSource = source;
-          _isError = false;
-        });
-        PanelCache.set('daily_quote', {
-          'text': _quoteText,
-          'author': _quoteAuthor,
-          'source': _quoteSource,
-        });
-
-        _fadeController.forward();
-        _startClearTimer();
-      } else {
-        setState(() {
-          _quoteText = '获取一言失败 (${response.statusCode})';
-          _quoteAuthor = '';
-          _quoteSource = '';
-          _isError = true;
-        });
-      }
-    } on TimeoutException {
-      if (!mounted) return;
-
-      setState(() {
-        _quoteText = '一言请求超时，请稍后再试';
-        _quoteAuthor = '';
-        _quoteSource = '';
-        _isError = true;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _quoteText = '一言获取失败：$e';
-        _quoteAuthor = '';
-        _quoteSource = '';
-        _isError = true;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isQuerying = false;
-        });
-      }
-    }
+    setState(() => _isQuerying = true);
+    PanelDataService.refreshDailyQuote();
   }
 
   @override
@@ -232,10 +142,6 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
 
   @override
   Widget buildContent(BuildContext context) {
-    if (_loading && _quoteText.isEmpty) {
-      return _buildLoadingContent();
-    }
-
     if (_isQuerying && _quoteText.isEmpty) {
       return _buildLoadingContent();
     }
@@ -264,11 +170,12 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
         : _warmBrown.withOpacity(0.12);
 
     return Stack(
+      clipBehavior: Clip.none,
       children: [
         // 右上角书签丝带
         Positioned(
           top: -6,
-          right: 6,
+          right: 36,
           child: SvgPicture.asset(
             'assets/svg/bookmark.svg',
             width: 20,
@@ -295,12 +202,16 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
         // 主内容
         FadeTransition(
           opacity: _fadeAnimation,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               // 顶部标签行
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -332,6 +243,31 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
                       ],
                     ),
                   ),
+                  InteractiveIcon(
+                    size: 28,
+                    onTap: () {
+                      if (!_isQuerying) {
+                        _quoteText = '';
+                        _quoteAuthor = '';
+                        _quoteSource = '';
+                        _manualRefresh();
+                      }
+                    },
+                    child: _isQuerying
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: tertiaryText,
+                            ),
+                          )
+                        : Icon(
+                            Icons.refresh_rounded,
+                            color: tertiaryText,
+                            size: 18,
+                          ),
+                  ),
                 ],
               ),
 
@@ -340,8 +276,10 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
               // 引言正文
               Padding(
                 padding: const EdgeInsets.only(left: 4, right: 16),
-                child: SelectableText(
+                child: Text(
                   _quoteText,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
                     height: 1.6,
@@ -430,8 +368,10 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
                     ),
                 ],
               ),
+            ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ],
@@ -472,7 +412,7 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
 
     return GestureDetector(
       onTap: () {
-        if (!_isQuerying) _fetchQuote();
+        if (!_isQuerying) _manualRefresh();
       },
       child: Container(
         width: double.infinity,

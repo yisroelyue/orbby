@@ -18,12 +18,14 @@ import 'screens/about_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/favorites_edit_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/notification_screen.dart';
 import 'screens/sub_app_window_screen.dart';
 import 'screens/todo_edit_screen.dart';
 import 'screens/todo_item_popup.dart';
 import 'screens/clipboard_popup.dart';
+import 'services/llm_task.dart';
 import 'services/log_service.dart';
+import 'services/panel_data_service.dart';
 
 import 'screens/vibe_task_screen.dart';
 
@@ -31,6 +33,13 @@ const _windowShapeChannel = MethodChannel('orbby_window_shape');
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 注入今天日期，供 LLM 任务获取实时数据
+  final now = DateTime.now();
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  LlmTask.today =
+      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}（星期${weekdays[now.weekday - 1]}）';
+
   await LogService.init();
   LogService.info('Orbby starting | args: $args');
 
@@ -44,12 +53,6 @@ Future<void> main(List<String> args) async {
     await Window.initialize();
     await _configureMenuWindow(windowController, windowArguments);
     runApp(const HomeScreen());
-    return;
-  }
-  if (windowArguments['type'] == 'settings') {
-    await Window.initialize();
-    await _configureSettingsWindow(windowController, windowArguments);
-    runApp(const SettingsScreen());
     return;
   }
   if (windowArguments['type'] == 'vibe_task') {
@@ -73,19 +76,26 @@ Future<void> main(List<String> args) async {
     await Window.initialize();
     await _configureFavoritesEditWindow(windowController, windowArguments);
     final fid = windowArguments['folderId'] as String?;
-    runApp(FavoritesEditScreen(
-      initialFolderId: (fid != null && fid.isNotEmpty) ? fid : null,
-    ));
+    runApp(
+      FavoritesEditScreen(
+        initialFolderId: (fid != null && fid.isNotEmpty) ? fid : null,
+      ),
+    );
     return;
   }
   if (windowArguments['type'] == 'app_center') {
     await Window.initialize();
     await _configureAppCenterWindow(windowController, windowArguments);
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Microsoft YaHei'),
-      home: const AppCenterScreen(),
-    ));
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          fontFamily: 'Microsoft YaHei',
+        ),
+        home: const AppCenterScreen(),
+      ),
+    );
     return;
   }
   if (windowArguments['type'] == 'sub_app') {
@@ -107,7 +117,20 @@ Future<void> main(List<String> args) async {
     runApp(const ClipboardPopup());
     return;
   }
-
+  if (windowArguments['type'] == 'notification') {
+    await _configureNotificationWindow(windowController, windowArguments);
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          fontFamily: 'Microsoft YaHei',
+        ),
+        home: const NotificationScreen(),
+      ),
+    );
+    return;
+  }
   await Window.initialize();
   await _configurePetWindow();
   await _ensureSettingsFile();
@@ -123,10 +146,7 @@ Future<void> _initSystemTray() async {
     await icoFile.writeAsBytes(data.buffer.asUint8List());
 
     final systemTray = SystemTray();
-    await systemTray.initSystemTray(
-      iconPath: icoFile.path,
-      toolTip: 'Orbby',
-    );
+    await systemTray.initSystemTray(iconPath: icoFile.path, toolTip: 'Orbby');
 
     // On Windows, right-click events must be handled manually to show the menu.
     systemTray.registerSystemTrayEventHandler((eventName) {
@@ -137,14 +157,7 @@ Future<void> _initSystemTray() async {
 
     final menu = Menu();
     await menu.buildFrom([
-      MenuItemLabel(
-        label: '设置',
-        onClicked: (_) => _openSettingsFromTray(),
-      ),
-      MenuItemLabel(
-        label: '关于',
-        onClicked: (_) => _openAboutFromTray(),
-      ),
+      MenuItemLabel(label: '关于', onClicked: (_) => _openAboutFromTray()),
       MenuItemLabel(
         label: '退出',
         onClicked: (_) async {
@@ -158,28 +171,6 @@ Future<void> _initSystemTray() async {
   } catch (e, st) {
     LogService.error('System tray init failed', e, st);
   }
-}
-
-Future<void> _openSettingsFromTray() async {
-  const settingsWidth = 900.0;
-  const settingsHeight = 640.0;
-
-  final display = await screenRetriever.getPrimaryDisplay();
-  final screenSize = display.visibleSize ?? display.size;
-  final left = (screenSize.width - settingsWidth) / 2;
-  final top = (screenSize.height - settingsHeight) / 2;
-
-  await WindowController.create(
-    WindowConfiguration(
-      arguments: jsonEncode({
-        'type': 'settings',
-        'left': left,
-        'top': top,
-        'width': settingsWidth,
-        'height': settingsHeight,
-      }),
-    ),
-  );
 }
 
 Future<void> _openAboutFromTray() async {
@@ -236,24 +227,23 @@ Future<void> _configurePetWindow() async {
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
 
-      // 锁死窗口尺寸。
+      // 锁死窗口尺寸
       await windowManager.setMinimumSize(size);
       await windowManager.setMaximumSize(size);
       await windowManager.setSize(size);
 
-      // 初始位置：屏幕顶部居中，隐藏在屏幕上方
+      // 初始位置：屏幕右侧中部可见区域
       final display = await screenRetriever.getPrimaryDisplay();
       final screenSize = display.visibleSize ?? display.size;
-      final x = (screenSize.width - PetConfig.windowWidth) / 2;
-      final y = -PetConfig.windowHeight;
+      final x = screenSize.width - PetConfig.windowWidth - 20;
+      final y = (screenSize.height - PetConfig.windowHeight) / 2;
       await windowManager.setPosition(Offset(x, y));
 
-      // 透明背景，圆角由 Flutter 层 ClipRRect 抗锯齿渲染
+      // 透明背景
       await windowManager.setBackgroundColor(Colors.transparent);
 
       await windowManager.show();
       await windowManager.focus();
-      // await _applyPetAcrylic();
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setPreventClose(true);
@@ -274,15 +264,28 @@ Future<void> _configureMenuWindow(
         await _placeMenuWindow(_boundsFromArguments(args));
         return;
       case 'refresh_balance':
+        PanelDataService.refreshBalance();
+        HomeScreen.triggerSettingsChange();
+        return;
       case 'refresh_panel_apps':
-        HomeScreen.triggerRefresh();
+        PanelDataService.refreshApps();
         HomeScreen.triggerSettingsChange();
         return;
       case 'refresh_todos':
-        HomeScreen.triggerTodoRefresh();
+        PanelDataService.refreshTodo();
+        return;
+      case 'refresh_schedules':
+        PanelDataService.refreshSchedule();
         return;
       case 'refresh_favorites':
-        HomeScreen.triggerFavoritesRefresh();
+        PanelDataService.refreshFavorites();
+        return;
+      case 'refresh_scripts':
+        PanelDataService.refreshScripts();
+        return;
+      case 'switch_tab':
+        final tabIndex = call.arguments as int;
+        HomeScreen.triggerTabSwitch(tabIndex);
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -301,9 +304,9 @@ Future<void> _configureMenuWindow(
     () async {
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setMinimumSize(Size(bounds.width, 200));
       await windowManager.setBounds(bounds);
+      await windowManager.setResizable(true);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setSkipTaskbar(true);
@@ -582,6 +585,37 @@ Future<void> _configureClipboardPopupWindow(
   );
 }
 
+Future<void> _configureNotificationWindow(
+  WindowController windowController,
+  Map<String, dynamic> arguments,
+) async {
+  await windowController.setWindowMethodHandler((call) async {
+    NotificationScreen.handleMessage(call.method, call.arguments);
+  });
+
+  final bounds = _boundsFromArguments(arguments);
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: bounds.size,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: true,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      alwaysOnTop: true,
+    ),
+    () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setBackgroundColor(Colors.transparent);
+      await windowManager.setSkipTaskbar(true);
+      await windowManager.setTitle('Orbby Notifications');
+      await windowManager.setBounds(bounds);
+      await windowManager.show();
+    },
+  );
+}
+
 Future<void> _applyPetAcrylic() async {
   await Window.setEffect(
     effect: WindowEffect.acrylic,
@@ -604,8 +638,7 @@ Future<void> _applyMenuWindowEffects() async {
 }
 
 Future<void> _placeMenuWindow(Rect bounds) async {
-  await windowManager.setMinimumSize(bounds.size);
-  await windowManager.setMaximumSize(bounds.size);
+  await windowManager.setMinimumSize(Size(bounds.width, 200));
   await windowManager.setBounds(bounds);
   await windowManager.setAlwaysOnTop(true);
   // 特效已在 _configureMenuWindow 中应用，hide/show 不会清除，

@@ -47,11 +47,23 @@ RegExp _globToRegex(String glob) {
 
 /// 跳过不应搜索的目录
 const _skipDirs = {
-  'node_modules', '.git', '.svn', '.hg',
-  '__pycache__', '.idea', '.vscode', '.vs',
-  'target', 'build', 'dist', '.next', '.nuxt',
-  'vendor', 'bower_components',
-  '.cache', '.yarn',
+  'node_modules',
+  '.git',
+  '.svn',
+  '.hg',
+  '__pycache__',
+  '.idea',
+  '.vscode',
+  '.vs',
+  'target',
+  'build',
+  'dist',
+  '.next',
+  '.nuxt',
+  'vendor',
+  'bower_components',
+  '.cache',
+  '.yarn',
 };
 
 bool _shouldSkipDir(String name) {
@@ -67,7 +79,13 @@ class _SearchResult {
 }
 
 /// 递归搜索匹配模式的文件
-List<_SearchResult> _searchRecursive(String rootDir, RegExp regex, int maxResults, int currentDepth, int maxDepth) {
+List<_SearchResult> _searchRecursive(
+  String rootDir,
+  RegExp regex,
+  int maxResults,
+  int currentDepth,
+  int maxDepth,
+) {
   final results = <_SearchResult>[];
   if (currentDepth > maxDepth) return results;
 
@@ -85,7 +103,15 @@ List<_SearchResult> _searchRecursive(String rootDir, RegExp regex, int maxResult
 
     if (entry is Directory) {
       if (_shouldSkipDir(name)) continue;
-      results.addAll(_searchRecursive(entry.path, regex, maxResults - results.length, currentDepth + 1, maxDepth));
+      results.addAll(
+        _searchRecursive(
+          entry.path,
+          regex,
+          maxResults - results.length,
+          currentDepth + 1,
+          maxDepth,
+        ),
+      );
     } else if (entry is File) {
       if (regex.hasMatch(name)) {
         int size = 0;
@@ -101,7 +127,12 @@ List<_SearchResult> _searchRecursive(String rootDir, RegExp regex, int maxResult
 }
 
 /// 格式化搜索结果为文本
-String _formatResults(List<_SearchResult> results, String rootDir, String pattern, int? elapsedMs) {
+String _formatResults(
+  List<_SearchResult> results,
+  String rootDir,
+  String pattern,
+  int? elapsedMs,
+) {
   if (results.isEmpty) {
     return '未找到匹配 "$pattern" 的文件\n搜索目录: $rootDir';
   }

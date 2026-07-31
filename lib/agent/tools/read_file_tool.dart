@@ -11,10 +11,7 @@ final readFileTool = ToolDefinition(
   parameters: {
     'type': 'object',
     'properties': {
-      'path': {
-        'type': 'string',
-        'description': '要读取的文件的完整路径',
-      },
+      'path': {'type': 'string', 'description': '要读取的文件的完整路径'},
       'offset': {
         'type': 'integer',
         'description': '从第几行开始读取（1-based，默认从第 1 行开始）。例如 offset=10 则跳过前 9 行。',
@@ -28,8 +25,12 @@ final readFileTool = ToolDefinition(
   },
   execute: (args) async {
     final filePath = args['path'] as String?;
-    final offset = args['offset'] != null ? (args['offset'] as num).toInt().clamp(1, 999999) : 1;
-    final limit = args['limit'] != null ? (args['limit'] as num).toInt().clamp(1, 999999) : null;
+    final offset = args['offset'] != null
+        ? (args['offset'] as num).toInt().clamp(1, 999999)
+        : 1;
+    final limit = args['limit'] != null
+        ? (args['limit'] as num).toInt().clamp(1, 999999)
+        : null;
 
     if (filePath == null || filePath.isEmpty) {
       return '错误：path 参数无效';

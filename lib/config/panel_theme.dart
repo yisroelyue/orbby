@@ -47,6 +47,9 @@ mixin PanelThemeMixin<T extends StatefulWidget> on State<T> {
   Color get faintText => _isDark ? Colors.white30 : const Color(0xFFE0E0E0);
   Color get barelyVisibleText => _isDark ? Colors.white24 : const Color(0xFFF0F0F0);
 
+  /// 强调色，用于选中状态、高亮等
+  Color get accentColor => _isDark ? const Color(0xFF6C63FF) : const Color(0xFF5B52E0);
+
   @override
   void initState() {
     super.initState();

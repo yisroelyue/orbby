@@ -5,6 +5,7 @@ import '../home_screen.dart';
 import '../../widgets/app_square_panel.dart';
 import '../../widgets/balance_panel.dart';
 import '../../widgets/base_panel.dart';
+import '../../widgets/carousel_panel.dart';
 import '../../widgets/control_panel.dart';
 import '../../widgets/daily_quote_panel.dart';
 import '../../widgets/favorites_panel.dart';
@@ -258,35 +259,71 @@ class _DashboardTabState extends State<DashboardTab> {
           child: Container(
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(22),
             ),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _editButton(
-                    icon: Icons.keyboard_arrow_up,
-                    onTap: isFirst ? null : () {
-                      // 找到在 _panelOrder 中的真实索引
-                      final realIndex = _panelOrder.indexOf(name);
-                      _moveUp(realIndex);
-                    },
+            child: Stack(
+              children: [
+                // 轮播标记（左上角）
+                if (panel.isCarousel)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.swap_horiz_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '轮播',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 12),
-                  _editButton(
-                    icon: Icons.visibility_off_rounded,
-                    onTap: () => _hidePanel(name),
+                // 操作按钮（居中）
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _editButton(
+                        icon: Icons.keyboard_arrow_up,
+                        onTap: isFirst ? null : () {
+                          final realIndex = _panelOrder.indexOf(name);
+                          _moveUp(realIndex);
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _editButton(
+                        icon: Icons.visibility_off_rounded,
+                        onTap: () => _hidePanel(name),
+                      ),
+                      const SizedBox(width: 12),
+                      _editButton(
+                        icon: Icons.keyboard_arrow_down,
+                        onTap: isLast ? null : () {
+                          final realIndex = _panelOrder.indexOf(name);
+                          _moveDown(realIndex);
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _editButton(
-                    icon: Icons.keyboard_arrow_down,
-                    onTap: isLast ? null : () {
-                      final realIndex = _panelOrder.indexOf(name);
-                      _moveDown(realIndex);
-                    },
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -333,19 +370,45 @@ class _DashboardTabState extends State<DashboardTab> {
       return _buildEditingLayout(visiblePanels, visibleOrder);
     }
 
-    final rows = buildPanelRows(visiblePanels);
+    // 分离应用中心面板、轮播面板和普通面板
+    final appSquarePanel = visiblePanels.where((p) => p.panelName == 'app_square').toList();
+    final carouselPanels = visiblePanels.where((p) => p.isCarousel).toList();
+    final normalPanels = visiblePanels.where((p) => !p.isCarousel && p.panelName != 'app_square').toList();
+
+    final rows = <Widget>[];
+
+    // 非编辑模式下，轮播面板组合为 CarouselPanel
+    if (carouselPanels.isNotEmpty) {
+      rows.add(CarouselPanel(panels: carouselPanels));
+    }
+
+    // 普通面板按原有逻辑排列
+    rows.addAll(buildPanelRows(normalPanels));
 
     return Theme(
       data: ThemeData(
         scrollbarTheme:
             const ScrollbarThemeData(thickness: WidgetStatePropertyAll(0)),
       ),
-      child: ListView.separated(
-        primary: true,
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        itemCount: rows.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (_, index) => rows[index],
+      child: Column(
+        children: [
+          // 主内容区域（可滚动）
+          Expanded(
+            child: ListView.separated(
+              primary: true,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+              itemCount: rows.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (_, index) => rows[index],
+            ),
+          ),
+          // 应用中心固定在底部
+          if (appSquarePanel.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6, left: 0, right: 0),
+              child: appSquarePanel.first,
+            ),
+        ],
       ),
     );
   }
@@ -410,7 +473,11 @@ class _DashboardTabState extends State<DashboardTab> {
     }
 
     for (final panel in panels) {
-      if (panel.panelSize == PanelSize.small) {
+      // 轮播面板在编辑模式下展开为独立卡片
+      if (panel.isCarousel) {
+        flush();
+        rows.add(_buildEditablePanel(panel, visibleOrder.indexOf(panel.panelName), visibleOrder));
+      } else if (panel.panelSize == PanelSize.small) {
         buffer.add(panel);
         if (buffer.length >= 2) flush();
       } else {
@@ -428,7 +495,7 @@ class _DashboardTabState extends State<DashboardTab> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.white.withOpacity(0.06),
           width: 0.5,

@@ -1,19 +1,48 @@
 // 公共类型定义
-// 从 orbby-agent/src/types.ts 迁移
+// 从 orbby-agent/src/types.ts 迁移，已 Dart 化（不可变 + copyWith）
 
-/// 工具定义
+/// 工具定义（含执行回调，不可用 freezed 生成）
 class ToolDefinition {
   final String name;
   final String description;
   final Map<String, dynamic> parameters; // JSON Schema
   final Future<String> Function(Map<String, dynamic> args) execute;
+  final ToolExecutionMode executionMode;
 
   const ToolDefinition({
     required this.name,
     required this.description,
     required this.parameters,
     required this.execute,
+    this.executionMode = ToolExecutionMode.readOnly,
   });
+}
+
+enum ToolExecutionMode { readOnly, mutating }
+
+class ToolResult {
+  final bool success;
+  final String output;
+  final String? errorCode;
+  final bool retryable;
+  const ToolResult({
+    required this.success,
+    required this.output,
+    this.errorCode,
+    this.retryable = false,
+  });
+  factory ToolResult.ok(String output) =>
+      ToolResult(success: true, output: output);
+  factory ToolResult.error(
+    String output, {
+    String? code,
+    bool retryable = false,
+  }) => ToolResult(
+    success: false,
+    output: output,
+    errorCode: code,
+    retryable: retryable,
+  );
 }
 
 /// 工具调用参数（传给 LLM 的格式，不含 execute）
@@ -27,6 +56,16 @@ class ToolCallDefinition {
     required this.description,
     required this.parameters,
   });
+
+  ToolCallDefinition copyWith({
+    String? name,
+    String? description,
+    Map<String, dynamic>? parameters,
+  }) => ToolCallDefinition(
+    name: name ?? this.name,
+    description: description ?? this.description,
+    parameters: parameters ?? this.parameters,
+  );
 
   Map<String, dynamic> toJson() => {
     'type': 'function',
@@ -43,10 +82,12 @@ class ToolIndex {
   final String name;
   final String description;
 
-  const ToolIndex({
-    required this.name,
-    required this.description,
-  });
+  const ToolIndex({required this.name, required this.description});
+
+  ToolIndex copyWith({String? name, String? description}) => ToolIndex(
+    name: name ?? this.name,
+    description: description ?? this.description,
+  );
 }
 
 /// LLM 返回的 tool_call
@@ -60,6 +101,16 @@ class ToolCall {
     required this.name,
     required this.arguments,
   });
+
+  ToolCall copyWith({
+    String? id,
+    String? name,
+    Map<String, dynamic>? arguments,
+  }) => ToolCall(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    arguments: arguments ?? this.arguments,
+  );
 }
 
 /// LLM 响应
@@ -75,26 +126,48 @@ class LLMResponse {
     this.reasoningContent,
     this.toolCalls,
   });
+
+  LLMResponse copyWith({
+    String? role,
+    String? content,
+    String? reasoningContent,
+    List<ToolCall>? toolCalls,
+  }) => LLMResponse(
+    role: role ?? this.role,
+    content: content ?? this.content,
+    reasoningContent: reasoningContent ?? this.reasoningContent,
+    toolCalls: toolCalls ?? this.toolCalls,
+  );
 }
 
-/// OpenAI 消息格式
+/// OpenAI 消息格式（不可变）
 class Message {
-  String role;
-  String? content;
-  List<ToolCallFunction>? toolCalls;
-  String? toolCallId;
+  final String role;
+  final String? content;
+  final List<ToolCallFunction>? toolCalls;
+  final String? toolCallId;
 
-  Message({
+  const Message({
     required this.role,
     this.content,
     this.toolCalls,
     this.toolCallId,
   });
 
+  Message copyWith({
+    String? role,
+    String? content,
+    List<ToolCallFunction>? toolCalls,
+    String? toolCallId,
+  }) => Message(
+    role: role ?? this.role,
+    content: content ?? this.content,
+    toolCalls: toolCalls ?? this.toolCalls,
+    toolCallId: toolCallId ?? this.toolCallId,
+  );
+
   Map<String, dynamic> toJson() {
-    final json = <String, dynamic>{
-      'role': role,
-    };
+    final json = <String, dynamic>{'role': role};
     if (content != null) {
       json['content'] = content;
     }
@@ -122,74 +195,43 @@ class ToolCallFunction {
     required this.arguments,
   });
 
+  ToolCallFunction copyWith({
+    String? id,
+    String? type,
+    String? name,
+    String? arguments,
+  }) => ToolCallFunction(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    name: name ?? this.name,
+    arguments: arguments ?? this.arguments,
+  );
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type,
-    'function': {
-      'name': name,
-      'arguments': arguments,
-    },
+    'function': {'name': name, 'arguments': arguments},
   };
 }
 
-/// LLM 配置
-class LLMConfig {
-  final String baseURL;
-  final String apiKey;
-  final String model;
-  final String? compactModel;
-
-  const LLMConfig({
-    required this.baseURL,
-    required this.apiKey,
-    required this.model,
-    this.compactModel,
-  });
-}
-
-/// Agent 配置
-class AgentConfig {
-  final LLMConfig llm;
-  final int maxContextTokens;
+/// Conversation 构造选项
+class ConversationOptions {
+  final int maxTokens;
   final int keepRecentTurns;
   final int summaryMaxChars;
   final double contextSoftLimit;
   final double contextHardLimit;
   final int reservedOutputTokens;
   final int maxToolResultChars;
-  final int maxIterations;
 
-  const AgentConfig({
-    required this.llm,
-    this.maxContextTokens = 32000,
+  const ConversationOptions({
+    this.maxTokens = 32000,
     this.keepRecentTurns = 3,
     this.summaryMaxChars = 2400,
     this.contextSoftLimit = 0.75,
     this.contextHardLimit = 0.90,
     this.reservedOutputTokens = 4096,
     this.maxToolResultChars = 12000,
-    this.maxIterations = 10,
-  });
-}
-
-/// Conversation 构造选项
-class ConversationOptions {
-  final int? maxTokens;
-  final int? keepRecentTurns;
-  final int? summaryMaxChars;
-  final double? contextSoftLimit;
-  final double? contextHardLimit;
-  final int? reservedOutputTokens;
-  final int? maxToolResultChars;
-
-  const ConversationOptions({
-    this.maxTokens,
-    this.keepRecentTurns,
-    this.summaryMaxChars,
-    this.contextSoftLimit,
-    this.contextHardLimit,
-    this.reservedOutputTokens,
-    this.maxToolResultChars,
   });
 }
 
@@ -241,6 +283,10 @@ class ConversationStats {
     required this.keepRecentTurns,
     this.lastCompaction,
   });
+
+  @override
+  String toString() =>
+      'ConversationStats(tokens: $totalTokens/$maxTokens [$usagePercent%], messages: $messagesCount, compacted: $totalCompacted)';
 }
 
 /// 压缩阈值
@@ -248,8 +294,8 @@ class CompactionThresholds {
   final int soft;
   final int hard;
 
-  const CompactionThresholds({
-    required this.soft,
-    required this.hard,
-  });
+  const CompactionThresholds({required this.soft, required this.hard});
+
+  @override
+  String toString() => 'CompactionThresholds(soft: $soft, hard: $hard)';
 }
