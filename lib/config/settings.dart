@@ -50,7 +50,6 @@ class AppSettings {
     this.showVibePanel = true,
     this.enableClipboardMonitor = false,
     this.llmLogEnabled = false,
-    this.menuAutoHideDelay = 3.0,
     this.appTheme = 'light',
     this.agentChatPopupTheme = 'light',
     this.petStyle = 'colorful',
@@ -74,6 +73,7 @@ class AppSettings {
     this.dailyQuoteCountry = '',
     this.balanceRefreshInterval = 0,
     this.photoWallSwitchInterval = 30,
+    this.carouselSwitchInterval = 12,
     Map<String, PlatformApiConfig>? apiConfigs,
   }) : apiConfigs =
            apiConfigs ??
@@ -97,7 +97,6 @@ class AppSettings {
   bool showVibePanel;
   bool enableClipboardMonitor;
   bool llmLogEnabled;
-  double menuAutoHideDelay;
   String appTheme;
   String agentChatPopupTheme;
   String petStyle;
@@ -121,6 +120,7 @@ class AppSettings {
   String dailyQuoteCountry; // 每日一言国家：'' | '中国' | '外国'
   int balanceRefreshInterval; // 余额刷新频率（秒）：0=每天, 21600=6小时, 10800=3小时
   int photoWallSwitchInterval; // 照片墙切换频率（秒）：10, 30, 60, 600, 3600
+  int carouselSwitchInterval; // 轮播图切换频率（秒）：5, 12, 30, 60, 300
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -187,7 +187,6 @@ class AppSettings {
       showVibePanel: json['showVibePanel'] as bool? ?? true,
       enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
       llmLogEnabled: json['llmLogEnabled'] as bool? ?? false,
-      menuAutoHideDelay: (json['menuAutoHideDelay'] as num?)?.toDouble() ?? 3.0,
       appTheme: json['appTheme'] as String? ?? 'light',
       agentChatPopupTheme: json['agentChatPopupTheme'] as String? ?? 'light',
       petStyle: json['petStyle'] as String? ?? 'colorful',
@@ -223,6 +222,7 @@ class AppSettings {
       dailyQuoteCountry: json['dailyQuoteCountry'] as String? ?? '',
       balanceRefreshInterval: json['balanceRefreshInterval'] as int? ?? 0,
       photoWallSwitchInterval: json['photoWallSwitchInterval'] as int? ?? 30,
+      carouselSwitchInterval: json['carouselSwitchInterval'] as int? ?? 12,
       apiConfigs: configs,
     );
   }
@@ -237,7 +237,6 @@ class AppSettings {
     'showVibePanel': showVibePanel,
     'enableClipboardMonitor': enableClipboardMonitor,
     'llmLogEnabled': llmLogEnabled,
-    'menuAutoHideDelay': menuAutoHideDelay,
     'appTheme': appTheme,
     'agentChatPopupTheme': agentChatPopupTheme,
     'petStyle': petStyle,
@@ -261,6 +260,7 @@ class AppSettings {
     'dailyQuoteCountry': dailyQuoteCountry,
     'balanceRefreshInterval': balanceRefreshInterval,
     'photoWallSwitchInterval': photoWallSwitchInterval,
+    'carouselSwitchInterval': carouselSwitchInterval,
   };
 }
 

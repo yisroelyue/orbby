@@ -97,6 +97,7 @@ flutter:
     - assets/png/plugins/
     - assets/svg/
     - assets/svg/home-tab/
+    - assets/svg/setting-panel-ic/
     - assets/scripts/
     - assets/logo_out.ico
 

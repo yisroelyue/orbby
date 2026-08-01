@@ -5,6 +5,7 @@ import 'dart:io';
 
 import '../config/settings.dart';
 import '../services/balance_service.dart';
+import '../services/cost_record_service.dart';
 import '../services/daily_quote_service.dart';
 import '../services/favorites_service.dart';
 import '../services/news_service.dart';
@@ -75,6 +76,8 @@ class PanelDataService {
 
       if (isConnected) {
         final balance = await BalanceService.fetchBalance();
+        // 记录本次余额到本地文件，用于柱状图计算每日花费
+        await CostRecordService.record(balance.totalBalance);
         PanelCache.set('balance_info', balance);
       } else {
         PanelCache.set(

@@ -24,7 +24,7 @@ class MarkdownViewerApp extends SubApp {
   String get packageName => 'orbby';
 
   @override
-  Size get preferredWindowSize => const Size(1650, 1170);
+  Size get preferredWindowSize => const Size(1200, 1000);
 
   @override
   bool get showWindowTitleBar => false;

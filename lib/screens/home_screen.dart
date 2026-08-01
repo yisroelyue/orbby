@@ -22,12 +22,14 @@ import 'tab/settings_tab.dart';
 /// Tab 页描述，驱动 tab 按钮和内容
 class HomeTab {
   const HomeTab({
-    required this.icon,
+    required this.svgName,
     this.builder,
     this.onTap,
   });
 
-  final IconData icon;
+  /// SVG 图标的基础名称（不含扩展名），对应 assets/svg/home-tab/ 下的文件。
+  /// 非激活态使用 `$svgName.svg`，激活态使用 `$svgName-c.svg`。
+  final String svgName;
   final WidgetBuilder? builder;
 
   /// 非 null 时点击触发外部动作（如打开设置窗口），不切换 tab
@@ -84,7 +86,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Color _menuBgColor = const Color(0xFF9E9E9E);
   bool _isDark = true;
   String _userName = '';
@@ -92,23 +94,27 @@ class _HomeScreenState extends State<HomeScreen> {
   String _menuBgImage = '';
   int _currentTab = 0;
 
+  /// 菜单窗口是否曾获得焦点（用于失焦自动隐藏）
+  bool _wasFocused = false;
+
   // ---- Tab 定义 ----
   late final List<HomeTab> _tabs;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabs = [
       HomeTab(
-        icon: Icons.dashboard_rounded,
+        svgName: 'dashboard',
         builder: (_) => const DashboardTab(),
       ),
       HomeTab(
-        icon: Icons.smart_toy_rounded,
+        svgName: 'agent',
         builder: (_) => AgentChatTab(isDark: _isDark),
       ),
       HomeTab(
-        icon: Icons.settings_rounded,
+        svgName: 'setting',
         builder: (_) => const SettingsTab(),
       ),
     ];
@@ -121,11 +127,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HomeScreen.themeNotifier.removeListener(_onSettingsChanged);
     HomeScreen.settingsChangeNotifier.removeListener(_onSettingsChanged);
     HomeScreen.editModeNotifier.removeListener(_onEditModeChanged);
     HomeScreen.tabSwitchNotifier.removeListener(_onTabSwitch);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _wasFocused = true;
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        // 菜单已获得过焦点再失焦时，自动隐藏
+        if (_wasFocused) {
+          _wasFocused = false;
+          HomeScreen.menuChannel.invokeMethod('close_menu');
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   void _onSettingsChanged() => _loadSettings();
@@ -336,8 +362,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildTabButton(int index, HomeTab tab) {
     final isActive = _currentTab == index;
-    final activeColor = _isDark ? Colors.white : const Color(0xFF333333);
-    final inactiveColor = _isDark ? Colors.white54 : Colors.black54;
+    final svgAsset = isActive
+        ? 'assets/svg/home-tab/${tab.svgName}-c.svg'
+        : 'assets/svg/home-tab/${tab.svgName}.svg';
     return GestureDetector(
       onTap: () {
         if (tab.onTap != null) {
@@ -356,7 +383,14 @@ class _HomeScreenState extends State<HomeScreen> {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(tab.icon, size: 20, color: isActive ? activeColor : inactiveColor),
+        child: Padding(
+          padding: EdgeInsets.all(isActive ? 6 : 8),
+          child: SvgPicture.asset(
+            svgAsset,
+            width: isActive ? 24 : 20,
+            height: isActive ? 24 : 20,
+          ),
+        ),
       ),
     );
   }

@@ -134,6 +134,7 @@ class _DashboardTabState extends State<DashboardTab> {
   List<String> _panelOrder = [];
   List<String> _hiddenPanels = [];
   bool _editing = false;
+  int _carouselSwitchInterval = 12;
 
 
   /// 按面板名缓存实例，移动顺序时只重排引用，不重建
@@ -180,6 +181,7 @@ class _DashboardTabState extends State<DashboardTab> {
     setState(() {
       _panelOrder = order;
       _hiddenPanels = List.from(settings.hiddenPanels);
+      _carouselSwitchInterval = settings.carouselSwitchInterval;
     });
   }
 
@@ -379,7 +381,7 @@ class _DashboardTabState extends State<DashboardTab> {
 
     // 非编辑模式下，轮播面板组合为 CarouselPanel
     if (carouselPanels.isNotEmpty) {
-      rows.add(CarouselPanel(panels: carouselPanels));
+      rows.add(CarouselPanel(panels: carouselPanels, switchInterval: _carouselSwitchInterval));
     }
 
     // 普通面板按原有逻辑排列

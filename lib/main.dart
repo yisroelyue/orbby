@@ -232,11 +232,11 @@ Future<void> _configurePetWindow() async {
       await windowManager.setMaximumSize(size);
       await windowManager.setSize(size);
 
-      // 初始位置：屏幕右侧中部可见区域
+      // 初始位置：屏幕右下角可见区域
       final display = await screenRetriever.getPrimaryDisplay();
       final screenSize = display.visibleSize ?? display.size;
-      final x = screenSize.width - PetConfig.windowWidth - 20;
-      final y = (screenSize.height - PetConfig.windowHeight) / 2;
+      final x = screenSize.width - PetConfig.windowWidth - 5;
+      final y = screenSize.height - PetConfig.windowHeight - 5;
       await windowManager.setPosition(Offset(x, y));
 
       // 透明背景
@@ -299,7 +299,7 @@ Future<void> _configureMenuWindow(
       skipTaskbar: true,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
     ),
     () async {
       await windowManager.setAsFrameless();
@@ -307,7 +307,6 @@ Future<void> _configureMenuWindow(
       await windowManager.setMinimumSize(Size(bounds.width, 200));
       await windowManager.setBounds(bounds);
       await windowManager.setResizable(true);
-      await windowManager.setAlwaysOnTop(true);
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setTitle('Orbby Menu');
@@ -640,7 +639,6 @@ Future<void> _applyMenuWindowEffects() async {
 Future<void> _placeMenuWindow(Rect bounds) async {
   await windowManager.setMinimumSize(Size(bounds.width, 200));
   await windowManager.setBounds(bounds);
-  await windowManager.setAlwaysOnTop(true);
   // 特效已在 _configureMenuWindow 中应用，hide/show 不会清除，
   // 无需重复设置，避免 setEffect + show 时序竞争导致毛玻璃不生效。
   await windowManager.show(inactive: true);

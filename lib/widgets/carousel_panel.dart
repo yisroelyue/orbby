@@ -9,7 +9,10 @@ import 'base_panel.dart';
 class CarouselPanel extends StatefulWidget {
   final List<BasePanel> panels;
 
-  const CarouselPanel({super.key, required this.panels});
+  /// 自动切换间隔（秒），默认 12
+  final int switchInterval;
+
+  const CarouselPanel({super.key, required this.panels, this.switchInterval = 12});
 
   @override
   State<CarouselPanel> createState() => _CarouselPanelState();
@@ -28,12 +31,21 @@ class _CarouselPanelState extends State<CarouselPanel> {
 
   void _startAutoPlay() {
     _autoPlayTimer?.cancel();
-    _autoPlayTimer = Timer.periodic(const Duration(seconds: 12), (timer) {
+    _autoPlayTimer = Timer.periodic(Duration(seconds: widget.switchInterval), (timer) {
       if (!mounted || _isHovered) return; // 鼠标悬停时暂停轮播
       setState(() {
         _currentIndex = (_currentIndex + 1) % widget.panels.length;
       });
     });
+  }
+
+  @override
+  void didUpdateWidget(CarouselPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切换间隔改变时重启定时器
+    if (oldWidget.switchInterval != widget.switchInterval) {
+      _startAutoPlay();
+    }
   }
 
   @override

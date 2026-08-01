@@ -22,7 +22,7 @@ class JsonViewerApp extends SubApp {
   String get packageName => 'orbby';
 
   @override
-  Size get preferredWindowSize => const Size(1800, 1200);
+  Size get preferredWindowSize => const Size(1200, 800);
 
   @override
   bool get showWindowTitleBar => false;

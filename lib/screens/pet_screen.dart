@@ -198,6 +198,9 @@ class _PetScreenState extends State<PetScreen> {
           ClipboardService.instance.stop();
         }
         return;
+      case 'settings_saved':
+        await _onSettingsSaved();
+        return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
     }
@@ -208,25 +211,30 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _handleSettingsEvent(MethodCall call) async {
     switch (call.method) {
       case 'settings_saved':
-        final settings = await SettingsService.load();
-        if (mounted) {
-          setState(() {
-            _petStyle = settings.petStyle;
-          });
-        }
-        if (_menuWindow != null) {
-          try {
-            await Future.wait([
-              _menuWindow!.invokeMethod('refresh_balance'),
-              _menuWindow!.invokeMethod('refresh_todos'),
-              _menuWindow!.invokeMethod('refresh_favorites'),
-              _menuWindow!.invokeMethod('refresh_panel_apps'),
-            ]);
-          } catch (_) {}
-        }
+        await _onSettingsSaved();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
+    }
+  }
+
+  /// 设置保存后刷新悬浮球样式及菜单窗口
+  Future<void> _onSettingsSaved() async {
+    final settings = await SettingsService.load();
+    if (mounted) {
+      setState(() {
+        _petStyle = settings.petStyle;
+      });
+    }
+    if (_menuWindow != null) {
+      try {
+        await Future.wait([
+          _menuWindow!.invokeMethod('refresh_balance'),
+          _menuWindow!.invokeMethod('refresh_todos'),
+          _menuWindow!.invokeMethod('refresh_favorites'),
+          _menuWindow!.invokeMethod('refresh_panel_apps'),
+        ]);
+      } catch (_) {}
     }
   }
 

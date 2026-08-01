@@ -97,13 +97,10 @@ class _DailyQuotePanelState extends BasePanelState<DailyQuotePanel>
   void _startClearTimer() {
     _clearTimer?.cancel();
     _clearTimer = Timer(const Duration(minutes: 30), () {
-      if (!mounted) return;
-      setState(() {
-        _quoteText = '';
-        _quoteAuthor = '';
-        _quoteSource = '';
-        _isError = false;
-      });
+      if (!mounted || _isQuerying) return;
+      // 到期静默刷新，保留当前内容避免轮播面板变空白
+      setState(() => _isQuerying = true);
+      PanelDataService.refreshDailyQuote();
     });
   }
 

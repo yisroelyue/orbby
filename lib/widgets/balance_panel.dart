@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../config/platform.dart';
 import '../config/settings.dart';
 import '../services/balance_service.dart';
+import '../services/cost_record_service.dart';
 import '../services/panel_cache.dart';
 import '../services/panel_data_service.dart';
 import 'base_panel.dart';
@@ -29,12 +30,14 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
   bool _notConfigured = false;
   bool _connected = false;
   bool _loading = true;
+  List<DailyCost> _dailyCosts = [];
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _loadFromCache();
+    _loadDailyCosts();
     PanelCache.addListener(_onCacheChanged);
     if (!PanelCache.has('balance_info')) {
       PanelDataService.refreshBalance();
@@ -47,7 +50,10 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
     super.dispose();
   }
 
-  void _onCacheChanged() => _loadFromCache();
+  void _onCacheChanged() {
+    _loadFromCache();
+    _loadDailyCosts();
+  }
 
   void _loadFromCache() {
     final balance = PanelCache.get<BalanceInfo>('balance_info');
@@ -60,6 +66,13 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
         }
         _connected = connected;
       });
+    }
+  }
+
+  Future<void> _loadDailyCosts() async {
+    final costs = await CostRecordService.getDailyCosts();
+    if (mounted) {
+      setState(() => _dailyCosts = costs);
     }
   }
 
@@ -196,17 +209,6 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
     final symbol = b.currency == 'USD' ? '\$' : '¥';
     final accent = isDark ? const Color(0xFF00E5FF) : const Color(0xFF2979FF);
 
-    // 模拟最近7天的使用数据（TODO: 替换为真实数据）
-    final usageData = [
-      _DailyUsage(day: '一', amount: 0.15),
-      _DailyUsage(day: '二', amount: 0.23),
-      _DailyUsage(day: '三', amount: 0.18),
-      _DailyUsage(day: '四', amount: 0.31),
-      _DailyUsage(day: '五', amount: 0.27),
-      _DailyUsage(day: '六', amount: 0.12),
-      _DailyUsage(day: '日', amount: 0.08),
-    ];
-
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -229,16 +231,16 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
             ),
           ),
           const SizedBox(height: 16),
-          // 柱状图
+          // 柱状图（使用真实记录数据）
           Expanded(
-            child: _buildBarChart(usageData, accent: accent),
+            child: _buildBarChart(_dailyCosts, accent: accent),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBarChart(List<_DailyUsage> data, {Color? accent}) {
+  Widget _buildBarChart(List<DailyCost> data, {Color? accent}) {
     final chartColor = accent ?? (isDark ? const Color(0xFF00E5FF) : const Color(0xFF2979FF));
     final gridColor = isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08);
 
@@ -251,7 +253,8 @@ class BalancePanelState extends BasePanelState<BalancePanel> {
       );
     }
 
-    final maxY = data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
+    final rawMax = data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
+    final maxY = rawMax > 0 ? rawMax : 1.0; // 避免全为 0 时图表异常
 
     return BarChart(
       BarChartData(
@@ -406,10 +409,3 @@ class _BalanceHeader extends StatelessWidget {
   }
 }
 
-/// 每日使用量数据
-class _DailyUsage {
-  final String day;
-  final double amount;
-
-  const _DailyUsage({required this.day, required this.amount});
-}

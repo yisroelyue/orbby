@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../config/platform.dart';
 import '../../config/settings.dart';
@@ -42,7 +43,6 @@ class _SettingsTabState extends State<SettingsTab> {
   String _language = 'zh';
   String _appTheme = 'light';
   String _petStyle = 'colorful';
-  double _menuAutoHideDelay = 3.0;
   bool _claudeHookInstalled = false;
   bool _installingClaudeHooks = false;
   bool _loading = true;
@@ -54,6 +54,7 @@ class _SettingsTabState extends State<SettingsTab> {
   String _dailyQuoteCountry = '';
   int _balanceRefreshInterval = 0;
   int _photoWallSwitchInterval = 30;
+  int _carouselSwitchInterval = 12;
 
   /// 每日一言类型选项
   static const _dailyQuoteTypes = <String, String>{
@@ -87,6 +88,15 @@ class _SettingsTabState extends State<SettingsTab> {
     60: '1分钟',
     600: '10分钟',
     3600: '1小时',
+  };
+
+  /// 轮播图切换频率选项（秒）
+  static const _carouselSwitchIntervals = <int, String>{
+    5: '5秒',
+    12: '12秒',
+    30: '30秒',
+    60: '1分钟',
+    300: '5分钟',
   };
 
   /// 内置菜单背景图列表
@@ -147,7 +157,6 @@ class _SettingsTabState extends State<SettingsTab> {
       _language = s.language;
       _appTheme = s.appTheme;
       _petStyle = s.petStyle;
-      _menuAutoHideDelay = s.menuAutoHideDelay;
       _userName = s.userName;
       _userAvatarPath = s.userAvatarPath;
       _menuBgImage = s.menuBgImage;
@@ -161,6 +170,7 @@ class _SettingsTabState extends State<SettingsTab> {
       _dailyQuoteCountry = s.dailyQuoteCountry;
       _balanceRefreshInterval = s.balanceRefreshInterval;
       _photoWallSwitchInterval = s.photoWallSwitchInterval;
+      _carouselSwitchInterval = s.carouselSwitchInterval;
       _claudeHookInstalled = claudeHookInstalled;
       _loading = false;
     });
@@ -268,17 +278,26 @@ class _SettingsTabState extends State<SettingsTab> {
 
   List<Widget> _buildPanelSettings() {
     return [
+      _buildDashboardPanelCard(),
+      _buildWeatherApiCard(),
+      _buildPhotoWallSettingsCard(),
+      _buildCarouselSettingsCard(),
       _buildDailyQuoteCard(),
       _buildBalanceSettingsCard(),
-      _buildPhotoWallSettingsCard(),
-      _buildWeatherApiCard(),
+      _buildScheduleCard(),
+      _buildNewsCard(),
+      _buildFavoritesCard(),
+      _buildNotesCard(),
+      _buildTranslateCard(),
+      _buildScriptCard(),
     ];
   }
 
   Widget _buildDailyQuoteCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('每日一言'),
+        _buildSectionTitle('每日一言',
+            svgIcon: 'assets/svg/setting-panel-ic/每日一言.svg'),
         _buildThinDivider(),
         _DropdownRow(
           label: '类型',
@@ -316,7 +335,8 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildBalanceSettingsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('模型余额'),
+        _buildSectionTitle('模型余额',
+            svgIcon: 'assets/svg/setting-panel-ic/余额.svg'),
         _buildThinDivider(),
         _DropdownRow(
           label: '更新频率',
@@ -339,7 +359,8 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildPhotoWallSettingsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('照片墙'),
+        _buildSectionTitle('照片墙',
+            svgIcon: 'assets/svg/setting-panel-ic/045_照片.svg'),
         _buildThinDivider(),
         _DropdownRow(
           label: '切换频率',
@@ -352,6 +373,31 @@ class _SettingsTabState extends State<SettingsTab> {
               final settings = await SettingsService.load();
               settings.photoWallSwitchInterval = v;
               await SettingsService.save(settings);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCarouselSettingsCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('轮播图',
+            svgIcon: 'assets/svg/setting-panel-ic/轮播.svg'),
+        _buildThinDivider(),
+        _DropdownRow(
+          label: '切换速度',
+          child: _buildSegmented<int>(
+            value: _carouselSwitchInterval,
+            items: _carouselSwitchIntervals.keys.toList(),
+            labelBuilder: (v) => _carouselSwitchIntervals[v] ?? '$v秒',
+            onChanged: (v) async {
+              setState(() => _carouselSwitchInterval = v);
+              final settings = await SettingsService.load();
+              settings.carouselSwitchInterval = v;
+              await SettingsService.save(settings);
+              HomeScreen.triggerSettingsChange();
             },
           ),
         ),
@@ -411,18 +457,6 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           _buildThinDivider(),
           _buildMenuBgSelector(),
-          _buildThinDivider(),
-          _DropdownRow(
-            label: '顶部工作区-自动收起间隔',
-            labelWidth: 200,
-            child: _buildSegmented<double>(
-              value: _menuAutoHideDelay,
-              items: const [0.5, 3, 5, 10],
-              labelBuilder: (v) =>
-                  v == v.roundToDouble() ? '${v.toInt()}秒' : '$v秒',
-              onChanged: (v) => setState(() => _menuAutoHideDelay = v),
-            ),
-          ),
         ],
       ),
       _buildCard(
@@ -439,16 +473,24 @@ class _SettingsTabState extends State<SettingsTab> {
     ];
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, {String? svgIcon}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Color(0xFF333333),
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        children: [
+          if (svgIcon != null) ...[
+            SvgPicture.asset(svgIcon, width: 22, height: 22),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF333333),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -655,7 +697,8 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildWeatherApiCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('天气服务 (和风天气)'),
+        _buildSectionTitle('天气服务 (和风天气)',
+            svgIcon: 'assets/svg/setting-panel-ic/045_天气.svg'),
         _buildThinDivider(),
         _DropdownRow(
           label: 'API ID',
@@ -755,6 +798,93 @@ class _SettingsTabState extends State<SettingsTab> {
         ),
         _buildThinDivider(),
       ],
+    );
+  }
+
+  Widget _buildDashboardPanelCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('控制面板',
+            svgIcon: 'assets/svg/setting-panel-ic/控制面板.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildScheduleCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('日程',
+            svgIcon: 'assets/svg/setting-panel-ic/_ 日程.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildNewsCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('新闻',
+            svgIcon: 'assets/svg/setting-panel-ic/新闻.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildFavoritesCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('收藏',
+            svgIcon: 'assets/svg/setting-panel-ic/收藏.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildNotesCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('笔记',
+            svgIcon: 'assets/svg/setting-panel-ic/笔记.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildTranslateCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('翻译',
+            svgIcon: 'assets/svg/setting-panel-ic/翻译.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildScriptCard() {
+    return _buildCard(
+      children: [
+        _buildSectionTitle('脚本',
+            svgIcon: 'assets/svg/setting-panel-ic/脚本.svg'),
+        _buildThinDivider(),
+        _buildPlaceholder(),
+      ],
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      child: Text(
+        '暂无设置项',
+        style: TextStyle(color: Color(0xFFBBBBBB), fontSize: 13),
+      ),
     );
   }
 
@@ -1338,7 +1468,6 @@ class _SettingsTabState extends State<SettingsTab> {
     existing.language = _language;
     existing.appTheme = _appTheme;
     existing.petStyle = _petStyle;
-    existing.menuAutoHideDelay = _menuAutoHideDelay;
     existing.userName = _userNameController.text.trim();
     existing.userAvatarPath = _userAvatarPath;
     existing.menuBgImage = _menuBgImage;
@@ -1353,6 +1482,9 @@ class _SettingsTabState extends State<SettingsTab> {
     HomeScreen.triggerSettingsChange();
     AgentService.syncLogSettings();
 
+    // 通知悬浮球窗口刷新（助手形象等）
+    HomeScreen.menuChannel.invokeMethod('settings_saved');
+
     if (!mounted) return;
     AppToast.show(context, message: '设置已保存');
   }
@@ -1362,12 +1494,10 @@ class _DropdownRow extends StatelessWidget {
   const _DropdownRow({
     required this.label,
     required this.child,
-    this.labelWidth = 80,
   });
 
   final String label;
   final Widget child;
-  final double labelWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -1376,7 +1506,7 @@ class _DropdownRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: labelWidth,
+            width: 80,
             child: Text(
               label,
               style: const TextStyle(color: Color(0xFF555555), fontSize: 14),
