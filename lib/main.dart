@@ -26,6 +26,7 @@ import 'screens/clipboard_popup.dart';
 import 'services/llm_task.dart';
 import 'services/log_service.dart';
 import 'services/panel_data_service.dart';
+import 'services/weixin_clawbot_service.dart';
 
 import 'screens/vibe_task_screen.dart';
 
@@ -134,6 +135,10 @@ Future<void> main(List<String> args) async {
   await Window.initialize();
   await _configurePetWindow();
   await _ensureSettingsFile();
+
+  // 自动加载微信 Clawbot 已绑定账号并连接（如有）
+  WeixinClawbotService.instance.startup();
+
   runApp(const OrbbyApp());
   _initSystemTray();
 }

@@ -78,6 +78,9 @@ class LogService {
     final ts = DateTime.now().toIso8601String();
     final line = '[$ts] [$level] $message';
 
+    // 同时输出到控制台（flutter run 调试终端可见）
+    debugPrint(line);
+
     if (_file == null) {
       _pending.add(line);
       if (_pending.length > 200) _pending.removeAt(0); // 防止无限积压

@@ -3,11 +3,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-
+import 'package:orbby/services/log_service.dart';
 import '../../config/platform.dart';
 import '../../config/settings.dart';
 import '../../services/agent_service.dart';
 import '../../services/claude_hook_installer.dart';
+import '../../services/weixin_clawbot_service.dart';
 import '../../screens/home_screen.dart';
 import '../../widgets/app_toast.dart';
 
@@ -48,6 +49,13 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _loading = true;
   String _userName = '';
   String _userAvatarPath = '';
+  bool _weixinConnected = false;
+  bool _weixinConnecting = false;
+  bool _weixinAutoReply = true;
+  String _weixinBotId = '';
+  bool _weixinQrLoading = false;
+  bool _weixinConnectLoading = false;
+  VoidCallback? _connectionStateListener;
   String _menuBgImage = '';
   String _menuBgFilePath = '';
   String _dailyQuoteType = '';
@@ -130,6 +138,27 @@ class _SettingsTabState extends State<SettingsTab> {
     _weatherApiHostController = TextEditingController();
     _weatherCityController = TextEditingController();
     _loadSettings();
+
+    // 监听微信 Clawbot 连接状态变化，实时更新 UI
+    _connectionStateListener = () {
+      if (!mounted) return;
+      final s = WeixinClawbotService.instance.connectionState.value;
+      setState(() {
+        _weixinConnected = s == WeixinConnectionState.connected;
+        _weixinConnecting =
+            s == WeixinConnectionState.connecting ||
+            s == WeixinConnectionState.reconnecting;
+        if (s == WeixinConnectionState.connected ||
+            s == WeixinConnectionState.disconnected) {
+          _weixinConnectLoading = false;
+        }
+        if (s == WeixinConnectionState.disconnected) {
+          _weixinBotId = WeixinClawbotService.instance.currentAccount?.botId ?? '';
+        }
+      });
+    };
+    WeixinClawbotService.instance.connectionState
+        .addListener(_connectionStateListener!);
   }
 
   Future<void> _loadSettings() async {
@@ -172,7 +201,22 @@ class _SettingsTabState extends State<SettingsTab> {
       _photoWallSwitchInterval = s.photoWallSwitchInterval;
       _carouselSwitchInterval = s.carouselSwitchInterval;
       _claudeHookInstalled = claudeHookInstalled;
+
       _loading = false;
+    });
+
+    // 微信 Clawbot 状态（异步加载，无需阻塞 setState）
+    final wx = WeixinClawbotService.instance;
+    await wx.loadAccount();
+    if (!mounted) return;
+    final state = wx.connectionState.value;
+    setState(() {
+      _weixinConnected = state == WeixinConnectionState.connected;
+      _weixinConnecting =
+          state == WeixinConnectionState.connecting ||
+          state == WeixinConnectionState.reconnecting;
+      _weixinAutoReply = wx.autoReplyEnabled;
+      _weixinBotId = wx.currentAccount?.botId ?? '';
     });
   }
 
@@ -188,6 +232,10 @@ class _SettingsTabState extends State<SettingsTab> {
     _weatherApiHostController.dispose();
     _weatherCityController.dispose();
     _detailScrollController.dispose();
+    if (_connectionStateListener != null) {
+      WeixinClawbotService.instance.connectionState
+          .removeListener(_connectionStateListener!);
+    }
     super.dispose();
   }
 
@@ -290,6 +338,7 @@ class _SettingsTabState extends State<SettingsTab> {
       _buildNotesCard(),
       _buildTranslateCard(),
       _buildScriptCard(),
+      _buildWeixinCard(),
     ];
   }
 
@@ -876,6 +925,307 @@ class _SettingsTabState extends State<SettingsTab> {
         _buildPlaceholder(),
       ],
     );
+  }
+
+  Widget _buildWeixinCard() {
+    final connected = _weixinConnected;
+    final connecting = _weixinConnecting || _weixinConnectLoading;
+    final hasAccount = _weixinBotId.isNotEmpty;
+
+    // 状态文字与颜色
+    String statusText;
+    Color statusColor;
+    if (connecting) {
+      statusText = '连接中…';
+      statusColor = Colors.blue;
+    } else if (connected) {
+      statusText = '已连接';
+      statusColor = const Color(0xFF66BB6A);
+    } else if (hasAccount) {
+      statusText = '已绑定 · 未连接';
+      statusColor = Colors.orange;
+    } else {
+      statusText = '未绑定';
+      statusColor = const Color(0xFF999999);
+    }
+
+    return _buildCard(
+      children: [
+        _buildSectionTitle('微信消息'),
+        _buildThinDivider(),
+
+        // 状态显示
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              if (connecting)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue,
+                  ),
+                )
+              else
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: statusColor,
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Text(
+                statusText,
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (hasAccount) ...[
+                const Spacer(),
+                Text(
+                  'Bot: ${_weixinBotId.length > 12 ? '${_weixinBotId.substring(0, 12)}...' : _weixinBotId}',
+                  style: const TextStyle(color: Color(0xFFBBBBBB), fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        _buildThinDivider(),
+
+        // 操作按钮行
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              if (!hasAccount)
+                _buildWeixinActionButton(
+                  label: '扫码绑定',
+                  icon: Icons.qr_code_scanner,
+                  color: const Color(0xFF66BB6A),
+                  onTap: connecting ? null : _startWeixinQrLogin,
+                  loading: _weixinQrLoading,
+                )
+              else ...[
+                if (connecting)
+                  _buildWeixinActionButton(
+                    label: '连接中…',
+                    icon: Icons.hourglass_top,
+                    color: Colors.blue,
+                    onTap: null,
+                    loading: true,
+                  )
+                else if (!connected)
+                  _buildWeixinActionButton(
+                    label: '连接',
+                    icon: Icons.link,
+                    color: const Color(0xFF66BB6A),
+                    onTap: _connectWeixin,
+                    loading: _weixinConnectLoading,
+                  )
+                else
+                  _buildWeixinActionButton(
+                    label: '断开',
+                    icon: Icons.link_off,
+                    color: Colors.orange,
+                    onTap: _disconnectWeixin,
+                    loading: _weixinConnectLoading,
+                  ),
+                const SizedBox(width: 8),
+                _buildWeixinActionButton(
+                  label: '解绑',
+                  icon: Icons.delete_outline,
+                  color: const Color(0xFFE57373),
+                  onTap: connecting ? null : _unbindWeixin,
+                  loading: false,
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // AI 自动回复开关（仅绑定后显示）
+        if (hasAccount) ...[
+          _buildThinDivider(),
+          _DropdownRow(
+            label: 'AI 自动回复',
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _weixinAutoReply ? '已开启' : '已关闭',
+                  style: const TextStyle(color: Color(0xFF555555), fontSize: 14),
+                ),
+                Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: _weixinAutoReply,
+                    activeThumbColor: const Color(0xFF66BB6A),
+                    activeTrackColor: Colors.black12,
+                    inactiveThumbColor: Colors.grey,
+                    inactiveTrackColor: Colors.black12,
+                    onChanged: connecting
+                        ? null
+                        : (v) {
+                            setState(() => _weixinAutoReply = v);
+                            WeixinClawbotService.instance.setAutoReply(v);
+                          },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWeixinActionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onTap,
+    required bool loading,
+  }) {
+    return Expanded(
+      child: SizedBox(
+        height: 36,
+        child: ElevatedButton.icon(
+          onPressed: loading ? null : onTap,
+          icon: loading
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+                )
+              : Icon(icon, size: 16),
+          label: Text(
+            loading ? '等待扫码...' : label,
+            style: const TextStyle(fontSize: 13),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color.withValues(alpha: 0.12),
+            foregroundColor: color,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startWeixinQrLogin() async {
+    setState(() => _weixinQrLoading = true);
+    try {
+      final wx = WeixinClawbotService.instance;
+      final account = await wx.loginAndConnect(
+        context,
+        autoReply: _weixinAutoReply,
+      );
+
+      if (!mounted) return;
+
+      if (account != null) {
+        setState(() {
+          _weixinBotId = account.botId;
+          _weixinQrLoading = false;
+          _weixinConnected = true;
+        });
+        AppToast.show(context, message: '微信绑定成功');
+      } else {
+        setState(() => _weixinQrLoading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _weixinQrLoading = false);
+        AppToast.show(context, message: '绑定失败：$e');
+      }
+    }
+  }
+
+  Future<void> _connectWeixin() async {
+    setState(() => _weixinConnectLoading = true);
+    try {
+      final wx = WeixinClawbotService.instance;
+      await wx.connect(autoReply: _weixinAutoReply);
+      if (mounted) {
+        setState(() {
+          _weixinConnected = true;
+          _weixinConnectLoading = false;
+        });
+        AppToast.show(context, message: '微信已连接');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _weixinConnectLoading = false);
+        AppToast.show(context, message: '连接失败：$e');
+        LogService.error('微信连接失败: $e');
+      }
+    }
+  }
+
+  Future<void> _disconnectWeixin() async {
+    setState(() => _weixinConnectLoading = true);
+    try {
+      await WeixinClawbotService.instance.disconnect();
+      if (mounted) {
+        setState(() {
+          _weixinConnected = false;
+          _weixinConnectLoading = false;
+        });
+        AppToast.show(context, message: '微信已断开');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _weixinConnectLoading = false);
+        AppToast.show(context, message: '断开失败：$e');
+      }
+    }
+  }
+
+  Future<void> _unbindWeixin() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('解绑微信'),
+        content: const Text('确定要解绑微信吗？解绑后 AI 自动回复将停止。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('解绑'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await WeixinClawbotService.instance.logout();
+        setState(() {
+          _weixinConnected = false;
+          _weixinBotId = '';
+          _weixinAutoReply = true;
+        });
+        AppToast.show(context, message: '微信已解绑');
+      } catch (e) {
+        if (mounted) {
+          AppToast.show(context, message: '解绑失败：$e');
+        }
+      }
+    }
   }
 
   Widget _buildPlaceholder() {
