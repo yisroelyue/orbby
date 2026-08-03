@@ -119,13 +119,13 @@ class ClawBotAccount {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'token': token,
-        'baseUrl': baseUrl,
-        'botId': botId,
-        if (defaultTo != null) 'defaultTo': defaultTo,
-        if (contextToken != null) 'contextToken': contextToken,
-      };
+    'id': id,
+    'token': token,
+    'baseUrl': baseUrl,
+    'botId': botId,
+    if (defaultTo != null) 'defaultTo': defaultTo,
+    if (contextToken != null) 'contextToken': contextToken,
+  };
 
   factory ClawBotAccount.fromJson(Map<String, dynamic> json) {
     return ClawBotAccount(
@@ -150,6 +150,62 @@ class ClawBotAccount {
   }
 }
 
+// ─── Service status ─────────────────────────────────────────────────────────
+
+enum WeixinConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+  error,
+}
+
+/// 可在多窗口之间传递的微信服务状态快照。
+class WeixinServiceStatus {
+  const WeixinServiceStatus({
+    this.state = WeixinConnectionState.disconnected,
+    this.enabled = false,
+    this.hasAccount = false,
+    this.botId = '',
+    this.error,
+  });
+
+  final WeixinConnectionState state;
+  final bool enabled;
+  final bool hasAccount;
+  final String botId;
+  final String? error;
+
+  bool get isConnected => state == WeixinConnectionState.connected;
+
+  bool get isConnecting =>
+      state == WeixinConnectionState.connecting ||
+      state == WeixinConnectionState.reconnecting;
+
+  Map<String, dynamic> toJson() => {
+    'state': state.name,
+    'enabled': enabled,
+    'hasAccount': hasAccount,
+    'botId': botId,
+    if (error != null && error!.isNotEmpty) 'error': error,
+  };
+
+  factory WeixinServiceStatus.fromJson(Map<String, dynamic> json) {
+    final stateName = json['state'] as String?;
+    final state = WeixinConnectionState.values.firstWhere(
+      (value) => value.name == stateName,
+      orElse: () => WeixinConnectionState.disconnected,
+    );
+    return WeixinServiceStatus(
+      state: state,
+      enabled: json['enabled'] as bool? ?? false,
+      hasAccount: json['hasAccount'] as bool? ?? false,
+      botId: json['botId'] as String? ?? '',
+      error: json['error'] as String?,
+    );
+  }
+}
+
 // ─── Messages ──────────────────────────────────────────────────────────────
 
 /// [MessageItem] 的类型区分器。
@@ -165,9 +221,9 @@ enum MessageItemType {
   const MessageItemType(this.value);
 
   static MessageItemType fromInt(int v) => MessageItemType.values.firstWhere(
-        (e) => e.value == v,
-        orElse: () => MessageItemType.unknown,
-      );
+    (e) => e.value == v,
+    orElse: () => MessageItemType.unknown,
+  );
 }
 
 /// [WeixinMessage] 内部的一个内容段。

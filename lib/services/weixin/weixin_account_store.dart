@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'weixin_models.dart';
 
 const _kAccountsKey = 'weixin_clawbot_accounts';
+const _kEnabledKey = 'weixin_clawbot_enabled';
 
 /// 跨应用重启持久化 [ClawBotAccount] 凭证。
 class WeixinAccountStore {
@@ -16,17 +17,15 @@ class WeixinAccountStore {
   static WeixinAccountStore? _instance;
 
   /// 返回单例。
-  static WeixinAccountStore get instance => _instance ??= WeixinAccountStore._();
+  static WeixinAccountStore get instance =>
+      _instance ??= WeixinAccountStore._();
 
   // ── Public API ────────────────────────────────────────────────────────────
 
   /// 保存 [account]，覆盖同 [ClawBotAccount.id] 的旧条目。
   Future<void> save(ClawBotAccount account) async {
     final all = await loadAll();
-    final updated = {
-      for (final a in all) a.id: a,
-      account.id: account,
-    };
+    final updated = {for (final a in all) a.id: a, account.id: account};
     await _persist(updated.values.toList());
   }
 
@@ -57,7 +56,8 @@ class WeixinAccountStore {
         .map((s) {
           try {
             return ClawBotAccount.fromJson(
-                jsonDecode(s) as Map<String, dynamic>);
+              jsonDecode(s) as Map<String, dynamic>,
+            );
           } catch (_) {
             return null;
           }
@@ -70,6 +70,17 @@ class WeixinAccountStore {
   Future<ClawBotAccount?> loadFirst() async {
     final all = await loadAll();
     return all.isEmpty ? null : all.first;
+  }
+
+  /// 服务是否应在应用启动时自动连接。旧版本默认保持开启。
+  Future<bool> loadEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kEnabledKey) ?? true;
+  }
+
+  Future<void> saveEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEnabledKey, enabled);
   }
 
   /// 移除指定 [accountId] 的账号。

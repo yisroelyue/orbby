@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../config/settings.dart';
 import '../screens/home_screen.dart';
-import '../services/notification_service.dart';
+import '../services/weixin/weixin_models.dart';
+import 'app_toast.dart';
 import 'base_panel.dart';
 import 'tooltip_popup.dart';
 
@@ -48,7 +51,9 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
   bool _panelHovered = false;
   bool _showVibePanel = true;
   bool _enableClipboard = false;
-  bool _enableNotification = true;
+  VoidCallback? _weixinListener;
+  WeixinServiceStatus _weixinStatus = const WeixinServiceStatus();
+  bool _weixinBusy = false;
 
   @override
   bool get panelHovered => _panelHovered;
@@ -58,10 +63,23 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     super.initState();
     _loadSettings();
     HomeScreen.settingsChangeNotifier.addListener(_onRefresh);
+
+    // 微信服务运行在主窗口，本窗口只监听跨窗口状态快照。
+    _weixinListener = () {
+      if (!mounted) return;
+      setState(() {
+        _weixinStatus = HomeScreen.weixinStatusNotifier.value;
+      });
+    };
+    HomeScreen.weixinStatusNotifier.addListener(_weixinListener!);
+    unawaited(_refreshWeixinStatus());
   }
 
   @override
   void dispose() {
+    if (_weixinListener != null) {
+      HomeScreen.weixinStatusNotifier.removeListener(_weixinListener!);
+    }
     HomeScreen.settingsChangeNotifier.removeListener(_onRefresh);
     super.dispose();
   }
@@ -97,13 +115,56 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     HomeScreen.menuChannel.invokeMethod('toggle_vibe_panel');
   }
 
-  void _toggleNotification() {
-    setState(() => _enableNotification = !_enableNotification);
-    NotificationService.instance.enabled = _enableNotification;
+  Future<void> _toggleWeixin() async {
+    if (_weixinBusy) return;
+    if (!_weixinStatus.enabled && !_weixinStatus.hasAccount) {
+      HomeScreen.triggerTabSwitch(2);
+      AppToast.show(context, message: '请先扫码绑定微信账号');
+      return;
+    }
+
+    setState(() => _weixinBusy = true);
+    try {
+      final status = await HomeScreen.setWeixinEnabled(!_weixinStatus.enabled);
+      if (mounted) setState(() => _weixinStatus = status);
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(context, message: '微信服务操作失败：$e');
+      }
+    } finally {
+      if (mounted) setState(() => _weixinBusy = false);
+    }
+  }
+
+  Future<void> _refreshWeixinStatus() async {
+    try {
+      final status = await HomeScreen.queryWeixinStatus();
+      if (mounted) setState(() => _weixinStatus = status);
+    } catch (_) {
+      // 主窗口通道初始化完成后会主动推送状态。
+    }
   }
 
   /// 构建当前控制项列表（依赖运行时状态）
   List<_ControlSwitch> get _items => [
+    _ControlSwitch(
+      id: 'weixin',
+      title: 'weixin-clawbot',
+      icon: Icons.chat_rounded,
+      descriptionSpans: [
+        const TextSpan(text: '微信消息自动回复服务\n'),
+        TextSpan(
+          text: 'WeixinClawbot',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _primaryColor,
+          ),
+        ),
+        const TextSpan(text: ' 连接后自动处理微信消息'),
+      ],
+      value: _weixinStatus.enabled,
+      onToggle: _weixinBusy ? null : _toggleWeixin,
+    ),
     _ControlSwitch(
       id: 'clipboard',
       title: '快速剪切板',
@@ -141,46 +202,6 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
       value: _showVibePanel,
       onToggle: _toggleVibePanel,
     ),
-    _ControlSwitch(
-      id: 'notification',
-      title: '通知推送',
-      icon: Icons.notifications_rounded,
-      descriptionSpans: [
-        const TextSpan(text: '开启后接收系统通知\n'),
-        const TextSpan(text: '包括 '),
-        TextSpan(
-          text: '任务完成',
-          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
-        ),
-        const TextSpan(text: '、'),
-        TextSpan(
-          text: '消息提醒',
-          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
-        ),
-        const TextSpan(text: ' 等'),
-      ],
-      value: _enableNotification,
-      onToggle: _toggleNotification,
-    ),
-    _ControlSwitch(
-      id: 'placeholder2',
-      title: '自动同步',
-      icon: Icons.sync_rounded,
-      descriptionSpans: [
-        const TextSpan(text: '自动同步数据到云端\n'),
-        const TextSpan(text: '支持 '),
-        TextSpan(
-          text: '实时备份',
-          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
-        ),
-        const TextSpan(text: ' 和 '),
-        TextSpan(
-          text: '跨设备同步',
-          style: TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
-        ),
-      ],
-      value: false,
-    ),
   ];
 
   @override
@@ -212,7 +233,11 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
     );
   }
 
-  void _showTooltip(BuildContext context, _ControlSwitch item, Offset position) {
+  void _showTooltip(
+    BuildContext context,
+    _ControlSwitch item,
+    Offset position,
+  ) {
     TooltipPopup.show(
       context: context,
       title: item.title,
@@ -231,10 +256,7 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
 }
 
 class _ControlItemWidget extends StatefulWidget {
-  const _ControlItemWidget({
-    required this.item,
-    required this.onShowTooltip,
-  });
+  const _ControlItemWidget({required this.item, required this.onShowTooltip});
 
   final _ControlSwitch item;
   final Function(Offset) onShowTooltip;
@@ -258,27 +280,27 @@ class _ControlItemWidgetState extends State<_ControlItemWidget> {
       child: GestureDetector(
         onTap: widget.item.onToggle,
         child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 15,
-              spreadRadius: 2,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 30,
-              spreadRadius: 4,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Row(
+          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 15,
+                spreadRadius: 2,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 30,
+                spreadRadius: 4,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Row(
             children: [
               Icon(
                 widget.item.icon,
@@ -308,7 +330,9 @@ class _ControlItemWidgetState extends State<_ControlItemWidget> {
                 ),
                 child: AnimatedAlign(
                   duration: const Duration(milliseconds: 200),
-                  alignment: enabled ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment: enabled
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Container(
                     width: 16,
                     height: 16,

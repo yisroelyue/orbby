@@ -6,8 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-
+import '../services/log_service.dart';
 import 'types.dart';
 
 enum LLMProvider { openAICompatible, anthropic }
@@ -163,9 +162,9 @@ class LLMClient {
 
     final url = baseURL;
     if (verbose) {
-      debugPrint('━━━ LLM 请求 ━━━');
-      debugPrint('URL: $url');
-      debugPrint(_formatBodyForLog(body));
+      LogService.info('━━━ LLM 请求 ━━━', category: 'llm');
+      LogService.info('URL: $url', category: 'llm');
+      LogService.info(_formatBodyForLog(body), category: 'llm');
     }
 
     Exception? lastError;
@@ -193,8 +192,8 @@ class LLMClient {
           }
 
           if (verbose) {
-            debugPrint('━━━ LLM 响应 ━━━');
-            debugPrint(raw);
+            LogService.info('━━━ LLM 响应 ━━━', category: 'llm');
+            LogService.info(raw, category: 'llm');
           }
 
           final json = jsonDecode(raw) as Map<String, dynamic>;
@@ -223,8 +222,9 @@ class LLMClient {
           // 打印 token 使用情况
           if (verbose && json['usage'] != null) {
             final usage = json['usage'] as Map<String, dynamic>;
-            debugPrint(
+            LogService.info(
               '  Token: prompt=${usage['prompt_tokens']}, completion=${usage['completion_tokens']}, total=${usage['total_tokens']}',
+              category: 'llm',
             );
           }
 
@@ -272,9 +272,9 @@ class LLMClient {
 
     final url = baseURL;
     if (verbose) {
-      debugPrint('━━━ LLM 流式请求 ━━━');
-      debugPrint('URL: $url');
-      debugPrint(_formatBodyForLog(body));
+      LogService.info('━━━ LLM 流式请求 ━━━', category: 'llm');
+      LogService.info('URL: $url', category: 'llm');
+      LogService.info(_formatBodyForLog(body), category: 'llm');
     }
 
     Exception? lastError;
@@ -437,9 +437,9 @@ class LLMClient {
 
     final url = baseURL;
     if (verbose) {
-      debugPrint('━━━ Anthropic 请求 ━━━');
-      debugPrint('URL: $url');
-      debugPrint(_formatBodyForLog(body));
+      LogService.info('━━━ Anthropic 请求 ━━━', category: 'llm');
+      LogService.info('URL: $url', category: 'llm');
+      LogService.info(_formatBodyForLog(body), category: 'llm');
     }
 
     Exception? lastError;
@@ -470,8 +470,8 @@ class LLMClient {
           }
 
           if (verbose) {
-            debugPrint('━━━ Anthropic 响应 ━━━');
-            debugPrint(raw);
+            LogService.info('━━━ Anthropic 响应 ━━━', category: 'llm');
+            LogService.info(raw, category: 'llm');
           }
 
           final json = jsonDecode(raw) as Map<String, dynamic>;
@@ -562,9 +562,9 @@ class LLMClient {
 
     final url = baseURL;
     if (verbose) {
-      debugPrint('━━━ Anthropic 流式请求 ━━━');
-      debugPrint('URL: $url');
-      debugPrint(_formatBodyForLog(body));
+      LogService.info('━━━ Anthropic 流式请求 ━━━', category: 'llm');
+      LogService.info('URL: $url', category: 'llm');
+      LogService.info(_formatBodyForLog(body), category: 'llm');
     }
 
     Exception? lastError;

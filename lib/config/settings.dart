@@ -3,6 +3,36 @@ import 'dart:io';
 
 import 'platform.dart';
 
+/// 单类日志的开关配置
+class LogCategoryConfig {
+  final bool console;
+  final bool file;
+
+  const LogCategoryConfig({
+    this.console = true,
+    this.file = true,
+  });
+
+  factory LogCategoryConfig.fromJson(Map<String, dynamic> json) {
+    return LogCategoryConfig(
+      console: json['console'] as bool? ?? true,
+      file: json['file'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'console': console,
+    'file': file,
+  };
+
+  LogCategoryConfig copyWith({bool? console, bool? file}) {
+    return LogCategoryConfig(
+      console: console ?? this.console,
+      file: file ?? this.file,
+    );
+  }
+}
+
 class PlatformApiConfig {
   PlatformApiConfig({
     this.apiKey = '',
@@ -49,7 +79,6 @@ class AppSettings {
     this.language = 'zh',
     this.showVibePanel = true,
     this.enableClipboardMonitor = false,
-    this.llmLogEnabled = false,
     this.appTheme = 'light',
     this.agentChatPopupTheme = 'light',
     this.petStyle = 'colorful',
@@ -75,6 +104,7 @@ class AppSettings {
     this.photoWallSwitchInterval = 30,
     this.carouselSwitchInterval = 12,
     Map<String, PlatformApiConfig>? apiConfigs,
+    Map<String, LogCategoryConfig>? logCategories,
   }) : apiConfigs =
            apiConfigs ??
            {
@@ -87,6 +117,12 @@ class AppSettings {
                    ? PlatformConfig.defaultChatUrl('deepseek')
                    : chatUrl,
              ),
+           },
+       logCategories = logCategories ??
+           {
+             'system': const LogCategoryConfig(console: true, file: true),
+             'weixin': const LogCategoryConfig(console: true, file: true),
+             'llm': const LogCategoryConfig(console: true, file: false),
            };
 
   String platform;
@@ -96,7 +132,7 @@ class AppSettings {
   String language;
   bool showVibePanel;
   bool enableClipboardMonitor;
-  bool llmLogEnabled;
+  Map<String, LogCategoryConfig> logCategories;
   String appTheme;
   String agentChatPopupTheme;
   String petStyle;
@@ -147,6 +183,13 @@ class AppSettings {
   bool get enableBalance => currentApi.enableBalance;
   set enableBalance(bool v) => currentApi.enableBalance = v;
 
+  /// 向后兼容：LLM 日志开关 → 映射到 logCategories['llm'].console
+  bool get llmLogEnabled => logCategories['llm']?.console ?? false;
+  set llmLogEnabled(bool v) {
+    final cur = logCategories['llm'] ?? const LogCategoryConfig();
+    logCategories['llm'] = cur.copyWith(console: v);
+  }
+
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     final platform = json['platform'] as String? ?? 'deepseek';
 
@@ -186,7 +229,7 @@ class AppSettings {
       language: json['language'] as String? ?? 'zh',
       showVibePanel: json['showVibePanel'] as bool? ?? true,
       enableClipboardMonitor: json['enableClipboardMonitor'] as bool? ?? false,
-      llmLogEnabled: json['llmLogEnabled'] as bool? ?? false,
+      logCategories: _parseLogCategories(json),
       appTheme: json['appTheme'] as String? ?? 'light',
       agentChatPopupTheme: json['agentChatPopupTheme'] as String? ?? 'light',
       petStyle: json['petStyle'] as String? ?? 'colorful',
@@ -227,6 +270,28 @@ class AppSettings {
     );
   }
 
+  /// 从 JSON 解析 logCategories，兼容旧的 llmLogEnabled 字段
+  static Map<String, LogCategoryConfig> _parseLogCategories(
+    Map<String, dynamic> json,
+  ) {
+    final raw = json['logCategories'] as Map<String, dynamic>?;
+    if (raw != null) {
+      return raw.map(
+        (k, v) => MapEntry(
+          k,
+          LogCategoryConfig.fromJson(v as Map<String, dynamic>),
+        ),
+      );
+    }
+    // 从旧格式迁移：只有 llmLogEnabled 布尔值
+    final oldLlmLog = json['llmLogEnabled'] as bool? ?? false;
+    return {
+      'system': const LogCategoryConfig(console: true, file: true),
+      'weixin': const LogCategoryConfig(console: true, file: true),
+      'llm': LogCategoryConfig(console: oldLlmLog, file: false),
+    };
+  }
+
   Map<String, dynamic> toJson() => {
     'platform': platform,
     'apiConfigs': apiConfigs.map((k, v) => MapEntry(k, v.toJson())),
@@ -236,7 +301,7 @@ class AppSettings {
     'language': language,
     'showVibePanel': showVibePanel,
     'enableClipboardMonitor': enableClipboardMonitor,
-    'llmLogEnabled': llmLogEnabled,
+    'logCategories': logCategories.map((k, v) => MapEntry(k, v.toJson())),
     'appTheme': appTheme,
     'agentChatPopupTheme': agentChatPopupTheme,
     'petStyle': petStyle,

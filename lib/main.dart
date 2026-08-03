@@ -26,7 +26,7 @@ import 'screens/clipboard_popup.dart';
 import 'services/llm_task.dart';
 import 'services/log_service.dart';
 import 'services/panel_data_service.dart';
-import 'services/weixin_clawbot_service.dart';
+import 'services/weixin/weixin_clawbot_service.dart';
 
 import 'screens/vibe_task_screen.dart';
 
@@ -42,13 +42,11 @@ Future<void> main(List<String> args) async {
       '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}（星期${weekdays[now.weekday - 1]}）';
 
   await LogService.init();
-  LogService.info('Orbby starting | args: $args');
 
   await windowManager.ensureInitialized();
   bootstrapSubApps();
 
   final windowController = await WindowController.fromCurrentEngine();
-  LogService.info('Window controller ready | id=${windowController.windowId}');
   final windowArguments = _parseWindowArguments(windowController.arguments);
   if (windowArguments['type'] == 'menu') {
     await Window.initialize();
@@ -136,8 +134,12 @@ Future<void> main(List<String> args) async {
   await _configurePetWindow();
   await _ensureSettingsFile();
 
-  // 自动加载微信 Clawbot 已绑定账号并连接（如有）
-  WeixinClawbotService.instance.startup();
+  // 微信服务只在主窗口 Engine 中启动，避免多窗口产生重复长轮询。
+  try {
+    await WeixinClawbotService.instance.startup();
+  } catch (e, st) {
+    LogService.error('WeixinClawbot: 启动失败', exception: e, stack: st, category: 'weixin');
+  }
 
   runApp(const OrbbyApp());
   _initSystemTray();
@@ -174,7 +176,7 @@ Future<void> _initSystemTray() async {
     ]);
     await systemTray.setContextMenu(menu);
   } catch (e, st) {
-    LogService.error('System tray init failed', e, st);
+    LogService.error('System tray init failed', exception: e, stack: st);
   }
 }
 
@@ -203,6 +205,7 @@ Future<void> _openAboutFromTray() async {
 Future<void> _ensureSettingsFile() async {
   final settings = await SettingsService.load();
   await SettingsService.save(settings);
+  LogService.updateConfig(settings.logCategories);
 }
 
 Map<String, dynamic> _parseWindowArguments(String arguments) {
@@ -291,6 +294,9 @@ Future<void> _configureMenuWindow(
       case 'switch_tab':
         final tabIndex = call.arguments as int;
         HomeScreen.triggerTabSwitch(tabIndex);
+        return;
+      case 'weixin_status_changed':
+        HomeScreen.applyWeixinStatus(call.arguments);
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -615,7 +621,7 @@ Future<void> _configureNotificationWindow(
       await windowManager.setSkipTaskbar(true);
       await windowManager.setTitle('Orbby Notifications');
       await windowManager.setBounds(bounds);
-      await windowManager.show();
+      // Don't show initially — NotificationScreen shows itself when a notification arrives
     },
   );
 }

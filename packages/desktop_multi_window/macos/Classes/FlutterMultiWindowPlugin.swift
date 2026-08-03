@@ -15,13 +15,13 @@ public class FlutterMultiWindowPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         guard let app = NSApplication.shared.delegate as? FlutterAppDelegate else {
-            debugPrint(
+
                 "failed to find flutter main window, application delegate is not FlutterAppDelegate"
             )
             return
         }
         guard let window = app.mainFlutterWindow else {
-            debugPrint("failed to find flutter main window")
+
             return
         }
         MultiWindowManager.shared.AttachWindow(window: window, registrar: registrar)

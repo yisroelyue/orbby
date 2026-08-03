@@ -22,7 +22,7 @@ class CustomWindow: NSWindow {
     }
 
     deinit {
-        debugPrint("Child window deinit")
+
     }
 
 }
@@ -92,7 +92,7 @@ class FlutterWindow: NSObject {
         if let channel = channel {
             channel.invokeMethod(event, arguments: data)
         } else {
-            debugPrint("Channel not set for window \(windowId), cannot notify event \(event)")
+
         }
     }
 

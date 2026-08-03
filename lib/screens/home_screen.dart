@@ -2,13 +2,13 @@ import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
 import '../services/panel_data_service.dart';
+import '../services/weixin/weixin_models.dart';
 import '../widgets/frosted_panel.dart';
 import '../widgets/interactive_icon.dart';
 import 'tab/agent_chat_tab.dart';
@@ -21,11 +21,7 @@ import 'tab/settings_tab.dart';
 
 /// Tab 页描述，驱动 tab 按钮和内容
 class HomeTab {
-  const HomeTab({
-    required this.svgName,
-    this.builder,
-    this.onTap,
-  });
+  const HomeTab({required this.svgName, this.builder, this.onTap});
 
   /// SVG 图标的基础名称（不含扩展名），对应 assets/svg/home-tab/ 下的文件。
   /// 非激活态使用 `$svgName.svg`，激活态使用 `$svgName-c.svg`。
@@ -48,6 +44,49 @@ class HomeScreen extends StatefulWidget {
     mode: ChannelMode.unidirectional,
   );
 
+  /// 微信服务由主窗口唯一持有；菜单窗口仅保存主窗口推送的状态快照。
+  static final weixinStatusNotifier = ValueNotifier(
+    const WeixinServiceStatus(),
+  );
+
+  static void applyWeixinStatus(Object? raw) {
+    if (raw is! Map) return;
+    weixinStatusNotifier.value = WeixinServiceStatus.fromJson(
+      Map<String, dynamic>.from(raw),
+    );
+  }
+
+  static Future<WeixinServiceStatus> queryWeixinStatus() async {
+    final raw = await menuChannel.invokeMethod('weixin_get_status');
+    applyWeixinStatus(raw);
+    return weixinStatusNotifier.value;
+  }
+
+  static Future<WeixinServiceStatus> setWeixinEnabled(bool enabled) async {
+    final raw = await menuChannel.invokeMethod('weixin_set_enabled', {
+      'enabled': enabled,
+    });
+    applyWeixinStatus(raw);
+    return weixinStatusNotifier.value;
+  }
+
+  static Future<WeixinServiceStatus> bindWeixinAccount(
+    ClawBotAccount account,
+  ) async {
+    final raw = await menuChannel.invokeMethod(
+      'weixin_bind_account',
+      account.toJson(),
+    );
+    applyWeixinStatus(raw);
+    return weixinStatusNotifier.value;
+  }
+
+  static Future<WeixinServiceStatus> logoutWeixin() async {
+    final raw = await menuChannel.invokeMethod('weixin_logout');
+    applyWeixinStatus(raw);
+    return weixinStatusNotifier.value;
+  }
+
   /// 面板数据刷新（统一通过 PanelDataService）
   static void triggerRefresh() {
     PanelDataService.refreshBalance();
@@ -69,7 +108,8 @@ class HomeScreen extends StatefulWidget {
 
   /// 编辑布局模式通知器
   static final editModeNotifier = ValueNotifier<bool>(false);
-  static void toggleEditMode() => editModeNotifier.value = !editModeNotifier.value;
+  static void toggleEditMode() =>
+      editModeNotifier.value = !editModeNotifier.value;
 
   /// 设置变更通知器（面板开关等设置变化时触发）
   static final settingsChangeNotifier = ValueNotifier<int>(0);
@@ -105,18 +145,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabs = [
-      HomeTab(
-        svgName: 'dashboard',
-        builder: (_) => const DashboardTab(),
-      ),
+      HomeTab(svgName: 'dashboard', builder: (_) => const DashboardTab()),
       HomeTab(
         svgName: 'agent',
         builder: (_) => AgentChatTab(isDark: _isDark),
       ),
-      HomeTab(
-        svgName: 'setting',
-        builder: (_) => const SettingsTab(),
-      ),
+      HomeTab(svgName: 'setting', builder: (_) => const SettingsTab()),
     ];
     _loadSettings();
     HomeScreen.themeNotifier.addListener(_onSettingsChanged);
@@ -188,7 +222,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       } else {
         _menuBgImage = '';
       }
-      _menuBgColor = _isDark ? const Color(0xFF454545) : const Color(0xEFE1E1E1);
+      _menuBgColor = _isDark
+          ? const Color(0xFF454545)
+          : const Color(0xEFE1E1E1);
     });
   }
 
@@ -230,11 +266,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 key: ValueKey(_menuBgImage),
                                 fit: BoxFit.fitHeight,
                                 alignment: Alignment.center,
-                                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
                               ),
                       ),
                     Padding(
-                      padding: const EdgeInsets.only(left: 24, top: 12, bottom: 12, right: 0),
+                      padding: const EdgeInsets.only(
+                        left: 24,
+                        top: 12,
+                        bottom: 12,
+                        right: 0,
+                      ),
                       child: Row(
                         children: [
                           Expanded(
@@ -262,7 +304,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ---- Top Row ----
 
   Widget _buildTopRow() {
-    final hasUserInfo = _userName.isNotEmpty ||
+    final hasUserInfo =
+        _userName.isNotEmpty ||
         (_userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync());
     final topIconColor = _isDark ? Colors.white : Colors.black87;
     return Padding(
@@ -275,10 +318,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.white24,
-              backgroundImage: _userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync()
+              backgroundImage:
+                  _userAvatarPath.isNotEmpty &&
+                      File(_userAvatarPath).existsSync()
                   ? FileImage(File(_userAvatarPath))
                   : null,
-              child: _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
+              child:
+                  _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
                   ? const Icon(Icons.person, size: 22, color: Colors.white70)
                   : null,
             ),
@@ -379,7 +425,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         height: 36,
         decoration: BoxDecoration(
           color: isActive
-              ? (_isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08))
+              ? (_isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.08))
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),

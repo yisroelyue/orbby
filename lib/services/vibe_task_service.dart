@@ -186,11 +186,11 @@ class VibeTaskService {
       _watchSub = _stateDirectory.watch().listen(
         _onDirectoryEvent,
         onError: (error) {
-          debugPrint('Vibe task directory watcher error: $error');
+          
         },
       );
     } catch (error) {
-      debugPrint('Failed to start directory watcher: $error');
+      
     }
   }
 
@@ -234,7 +234,7 @@ class VibeTaskService {
 
       _publish();
     } catch (error) {
-      debugPrint('Vibe task read error: $error');
+      
     }
   }
 
@@ -258,7 +258,7 @@ class VibeTaskService {
       // File disappeared between list and read — ignore.
       return null;
     } catch (error) {
-      debugPrint('Failed to parse task file: $error');
+      
       return null;
     }
   }
@@ -320,7 +320,7 @@ class VibeTaskService {
         signalFile.deleteSync();
       }
     } catch (error) {
-      debugPrint('Failed to delete task files for $sessionId: $error');
+      
     }
   }
 
@@ -413,7 +413,7 @@ class VibeTaskService {
         }
       }
     } catch (error) {
-      debugPrint('Vibe task stale file cleanup error: $error');
+      
     }
   }
 
@@ -428,7 +428,7 @@ class VibeTaskService {
         dir.createSync(recursive: true);
       }
     } catch (error) {
-      debugPrint('Failed to create Vibe task state directory: $error');
+      
     }
   }
 

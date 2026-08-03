@@ -91,7 +91,7 @@ class NewsCache {
     // 每天 9 点重新拉取
     _scheduleDailyFetch();
 
-    debugPrint('[News] 初始化完成，共 ${_pool.length} 条新闻');
+    
   }
 
   /// 获取当前展示的新闻
@@ -116,7 +116,7 @@ class NewsCache {
   void next() {
     if (_pool.isEmpty) return;
     _currentIndex = (_currentIndex + 1) % _pool.length;
-    debugPrint(' ${_pool[_currentIndex + 1]} ');
+    
   }
 
   /// 重新拉取全部数据

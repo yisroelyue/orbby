@@ -177,7 +177,7 @@ $serializedConversation''';
       return result.content ?? '';
     } catch (err) {
       // 轻量模型失败，回退到主力模型
-      debugPrint('[Agent] 摘要生成失败 ($err)，返回已有摘要');
+
       return existingSummary;
     }
   }
@@ -267,10 +267,6 @@ $serializedConversation''';
       conversation.addAssistantMessage(response);
 
       for (final toolCall in response.toolCalls!) {
-        debugPrint(
-          '  调用工具: ${toolCall.name}(${jsonEncode(toolCall.arguments)})',
-        );
-
         String result;
         if (toolCall.name == toolSearchName) {
           result = _loadToolsForQuery(toolCall.arguments, loadedToolNames);
@@ -282,7 +278,6 @@ $serializedConversation''';
           )).output;
         }
 
-        debugPrint('  工具结果: $result');
         conversation.addToolResult(toolCall.id, result);
       }
 

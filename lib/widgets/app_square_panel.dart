@@ -128,7 +128,7 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
           );
         }
       } catch (e) {
-        debugPrint('Failed to launch app "${app.name}": $e');
+        
       }
     }
   }
@@ -438,7 +438,7 @@ class AppConfig {
             .toList();
       }
     } catch (e) {
-      debugPrint('Failed to load embedded system apps: $e');
+      
     }
     return [];
   }
@@ -454,7 +454,7 @@ class AppConfig {
           .map((e) => AppInfo.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      debugPrint('Failed to load custom apps: $e');
+      
     }
     return [];
   }
@@ -472,7 +472,7 @@ class AppConfig {
         }),
       );
     } catch (e) {
-      debugPrint('Failed to save custom apps: $e');
+      
     }
   }
 }

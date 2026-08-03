@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import 'log_service.dart';
+import '../log_service.dart';
 import 'weixin_models.dart';
 
 /// 自定义 iLink Bot API 客户端（自研，不依赖 weixin_clawbot 包）。
@@ -23,9 +23,11 @@ class WeixinILinkClient {
     this.botId = '',
     String? baseUrl,
     http.Client? httpClient,
-  })  : baseUrl = (baseUrl ?? 'https://ilinkai.weixin.qq.com')
-            .replaceAll(RegExp(r'/+$'), ''),
-        _http = httpClient ?? http.Client();
+  }) : baseUrl = (baseUrl ?? 'https://ilinkai.weixin.qq.com').replaceAll(
+         RegExp(r'/+$'),
+         '',
+       ),
+       _http = httpClient ?? http.Client();
 
   final String baseUrl;
   final String token;
@@ -51,6 +53,9 @@ class WeixinILinkClient {
 
   int _consecutiveErrors = 0;
   static const _maxBackoffSeconds = 30;
+  bool _reportedConnected = false;
+  void Function()? _onConnected;
+  void Function(Object error)? _onConnectionError;
 
   StreamController<WeixinMessage>? _controller;
 
@@ -70,8 +75,9 @@ class WeixinILinkClient {
   /// 轮询登录状态。
   Future<QrStatusResponse> pollQrStatus(String qrCode) async {
     final encoded = Uri.encodeComponent(qrCode);
-    final uri =
-        Uri.parse('$baseUrl/ilink/bot/get_qrcode_status?qrcode=$encoded');
+    final uri = Uri.parse(
+      '$baseUrl/ilink/bot/get_qrcode_status?qrcode=$encoded',
+    );
     final resp = await _http.get(
       uri,
       headers: {'iLink-App-ClientVersion': '1'},
@@ -86,10 +92,16 @@ class WeixinILinkClient {
   // -------------------------------------------------------------------------
 
   /// 启动长轮询消息流。
-  Stream<WeixinMessage> startPolling() {
+  Stream<WeixinMessage> startPolling({
+    void Function()? onConnected,
+    void Function(Object error)? onConnectionError,
+  }) {
     if (_running) return _controller!.stream;
     _running = true;
     _consecutiveErrors = 0;
+    _reportedConnected = false;
+    _onConnected = onConnected;
+    _onConnectionError = onConnectionError;
     final gen = ++_loopGeneration;
     _controller = StreamController<WeixinMessage>.broadcast(
       onCancel: stopPolling,
@@ -99,9 +111,16 @@ class WeixinILinkClient {
   }
 
   void stopPolling() {
+    if (!_running && _controller == null) return;
     _running = false;
-    _controller?.close();
+    _loopGeneration++;
+    final controller = _controller;
     _controller = null;
+    _onConnected = null;
+    _onConnectionError = null;
+    if (controller != null && !controller.isClosed) {
+      controller.close();
+    }
   }
 
   Future<void> _pollLoop(int gen) async {
@@ -118,19 +137,32 @@ class WeixinILinkClient {
         }
 
         if (!resp.isOk) {
+          final error = Exception(
+            'getupdates ret=${resp.ret} errcode=${resp.errCode} '
+            '${resp.errMsg}',
+          );
           LogService.warn(
             'WeixinILinkClient[$_instanceId]: getupdates error '
             'url=$baseUrl/ilink/bot/getupdates ret=${resp.ret} '
             'errcode=${resp.errCode} ${resp.errMsg}',
+            category: 'weixin',
           );
+          _reportedConnected = false;
+          _onConnectionError?.call(error);
+          if (!_running || gen != _loopGeneration) break;
           await _backoffDelay();
           continue;
         }
 
         // 成功响应 → 重置错误计数
         _consecutiveErrors = 0;
+        if (!_reportedConnected) {
+          _reportedConnected = true;
+          _onConnected?.call();
+        }
 
-        if (resp.getUpdatesBuf.isNotEmpty && resp.getUpdatesBuf != _updatesBuf) {
+        if (resp.getUpdatesBuf.isNotEmpty &&
+            resp.getUpdatesBuf != _updatesBuf) {
           _updatesBuf = resp.getUpdatesBuf;
         }
 
@@ -140,8 +172,12 @@ class WeixinILinkClient {
           }
         }
       } catch (e) {
-        LogService.warn('WeixinILinkClient[$_instanceId]: poll error – $e');
-        if (_running && gen == _loopGeneration) await _backoffDelay();
+        if (!_running || gen != _loopGeneration) break;
+        LogService.warn('WeixinILinkClient[$_instanceId]: poll error – $e', category: 'weixin');
+        _reportedConnected = false;
+        _onConnectionError?.call(e);
+        if (!_running || gen != _loopGeneration) break;
+        await _backoffDelay();
       }
     }
   }
@@ -154,6 +190,7 @@ class WeixinILinkClient {
         : _maxBackoffSeconds;
     LogService.info(
       'WeixinILinkClient[$_instanceId]: 退避 ${seconds}s（连续错误 $_consecutiveErrors 次）',
+      category: 'weixin',
     );
     await Future.delayed(Duration(seconds: seconds));
   }
@@ -199,7 +236,7 @@ class WeixinILinkClient {
           {
             'type': 1,
             'text_item': {'text': text},
-          }
+          },
         ],
       },
       'base_info': {'channel_version': '2.4.3'},
@@ -275,5 +312,8 @@ class WeixinILinkClient {
     }
   }
 
-  void dispose() => _http.close();
+  void dispose() {
+    stopPolling();
+    _http.close();
+  }
 }

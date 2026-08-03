@@ -74,8 +74,8 @@ class AgentService {
       _currentPlatform = platform;
       _currentModel = model;
 
-      debugPrint('━━━ Agent 初始化完成 ━━━');
-      debugPrint('平台: $platform  模型: $model');
+      
+      
     }
 
     return _agent!;

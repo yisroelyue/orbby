@@ -30,7 +30,7 @@ struct WindowConfiguration: Codable {
 
     static func fromJson(_ json: [String: Any?]) -> WindowConfiguration {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []) else {
-            debugPrint("invalid json object: \(json)")
+
             return defaultConfiguration
         }
         
@@ -38,7 +38,7 @@ struct WindowConfiguration: Codable {
             let decoder = JSONDecoder()
             return try decoder.decode(WindowConfiguration.self, from: jsonData)
         } catch {
-            debugPrint("Failed to parse window configuration: \(error)")
+
             return defaultConfiguration
         }
     }

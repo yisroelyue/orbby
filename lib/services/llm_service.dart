@@ -50,13 +50,13 @@ class LlmService {
     LlmException? lastError;
     for (int attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) {
-        debugPrint('━━━ LlmService 第 $attempt 次重试 ━━━');
+        
         // 重试前等待 1 秒，避免频繁请求
         await Future.delayed(const Duration(seconds: 1));
       }
 
-      debugPrint('━━━ LlmService 请求 ━━━');
-      debugPrint('平台: ${settings.platform}  模型: $useModel');
+      
+      
 
       final client = LLMClient(
         baseURL: chatUrl,

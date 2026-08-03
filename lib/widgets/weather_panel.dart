@@ -91,7 +91,7 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
 
   /// 手动刷新（点击刷新按钮）
   void _manualRefresh() {
-    log('[Weather] 手动刷新');
+    
     setState(() {
       _isQuerying = true;
       _loading = true;
@@ -114,7 +114,7 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
   void _scheduleNextUpdate() {
     _dailyTimer?.cancel();
     final duration = _timeUntilNext9AM();
-    log('[Weather] 下次更新: ${duration.inHours}小时${duration.inMinutes % 60}分钟后');
+    
     _dailyTimer = Timer(duration, () {
       if (!mounted) return;
       PanelDataService.refreshWeather();
@@ -326,7 +326,7 @@ class _WeatherPanelState extends BasePanelState<WeatherPanel> {
         InteractiveIcon(
           size: 28,
           onTap: () {
-            log('[Weather] 刷新按钮点击, _isQuerying: $_isQuerying');
+            
             if (!_isQuerying) _manualRefresh();
           },
           child: _isQuerying

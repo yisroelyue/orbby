@@ -179,7 +179,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
           );
         }
       } catch (e) {
-        debugPrint('Failed to launch "${app.name}": $e');
+        
       }
     }
   }

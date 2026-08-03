@@ -67,9 +67,9 @@ class BalanceService {
       'max_tokens': 1,
     });
 
-    debugPrint('━━━ 连通性测试 ━━━');
-    debugPrint('URL: $uri');
-    debugPrint('请求体: $body');
+    
+    
+    
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 5);
@@ -85,10 +85,10 @@ class BalanceService {
             const Duration(seconds: 8),
           );
       final raw = await response.transform(utf8.decoder).join();
-      debugPrint('响应 [${response.statusCode}]: $raw');
+      
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('连通性测试失败: $e');
+      
       return false;
     } finally {
       client.close();
@@ -99,9 +99,9 @@ class BalanceService {
     final settings = await SettingsService.load();
 
     final uri = Uri.parse(settings.balanceUrl.trim());
-    // debugPrint('━━━ 余额请求 ━━━');
-    // debugPrint('URL: $uri');
-    // debugPrint('API Key: ${settings.apiKey.isEmpty ? "(未配置)" : "${settings.apiKey.substring(0, min(8, settings.apiKey.length))}..."}');
+    // 
+    // 
+    // 
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 3);

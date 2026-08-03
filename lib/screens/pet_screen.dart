@@ -19,6 +19,8 @@ import '../screens/todo_item_popup.dart';
 import '../services/clipboard_service.dart';
 import '../services/favorites_service.dart';
 import '../services/notification_service.dart';
+import '../services/weixin/weixin_clawbot_service.dart';
+import '../services/weixin/weixin_models.dart';
 import '../widgets/pet_ball_round.dart';
 import '../widgets/pet_ball_colorful.dart';
 
@@ -66,6 +68,7 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _notifWindow;
   bool _menuVisible = false;
   bool _precreatingMenu = false;
+  VoidCallback? _weixinStatusListener;
 
   String _petStyle = 'colorful';
 
@@ -82,6 +85,10 @@ class _PetScreenState extends State<PetScreen> {
       _handleFavoritesEditEvent,
     );
     AppCenterScreen.panelChannel.setMethodCallHandler(_handleAppCenterEvent);
+    _weixinStatusListener = () => _pushWeixinStatus();
+    WeixinClawbotService.instance.statusNotifier.addListener(
+      _weixinStatusListener!,
+    );
 
     // 绑定通知发送器
     NotificationService.instance.bindSender((data) async {
@@ -127,12 +134,17 @@ class _PetScreenState extends State<PetScreen> {
     _settingsChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
     _hotkeyChannel.setMethodCallHandler(null);
+    if (_weixinStatusListener != null) {
+      WeixinClawbotService.instance.statusNotifier.removeListener(
+        _weixinStatusListener!,
+      );
+    }
     super.dispose();
   }
 
   // ─── 菜单事件（来自 HomeScreen） ───────────────────────────────────────────
 
-  Future<void> _handleMenuEvent(MethodCall call) async {
+  Future<dynamic> _handleMenuEvent(MethodCall call) async {
     switch (call.method) {
       case 'test_action':
         return;
@@ -198,11 +210,43 @@ class _PetScreenState extends State<PetScreen> {
           ClipboardService.instance.stop();
         }
         return;
+      case 'weixin_get_status':
+        return WeixinClawbotService.instance.status.toJson();
+      case 'weixin_set_enabled':
+        final args = call.arguments as Map;
+        final enabled = args['enabled'] as bool? ?? false;
+        await WeixinClawbotService.instance.setEnabled(enabled);
+        await _pushWeixinStatus();
+        return WeixinClawbotService.instance.status.toJson();
+      case 'weixin_bind_account':
+        final account = ClawBotAccount.fromJson(
+          Map<String, dynamic>.from(call.arguments as Map),
+        );
+        await WeixinClawbotService.instance.bindAndConnect(account);
+        await _pushWeixinStatus();
+        return WeixinClawbotService.instance.status.toJson();
+      case 'weixin_logout':
+        await WeixinClawbotService.instance.logout();
+        await _pushWeixinStatus();
+        return WeixinClawbotService.instance.status.toJson();
       case 'settings_saved':
         await _onSettingsSaved();
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
+    }
+  }
+
+  Future<void> _pushWeixinStatus() async {
+    final menuWindow = _menuWindow;
+    if (menuWindow == null) return;
+    try {
+      await menuWindow.invokeMethod(
+        'weixin_status_changed',
+        WeixinClawbotService.instance.status.toJson(),
+      );
+    } catch (_) {
+      // 菜单窗口尚未完成初始化时，由其随后主动查询状态。
     }
   }
 
@@ -435,6 +479,7 @@ class _PetScreenState extends State<PetScreen> {
     try {
       _notifWindow = await WindowController.create(
         WindowConfiguration(
+          hiddenAtLaunch: true,
           arguments: jsonEncode({
             'type': 'notification',
             'left': 0,
@@ -821,16 +866,18 @@ class _PetBodyState extends State<_PetBody> {
   }
 
   Future<void> _onPanStart(DragStartDetails details) async {
-    _dragStartScreenPos = await _getCursorScreenPos();
-    final pos = await windowManager.getPosition();
+    _dragStartScreenPos = await _getCursorScreenPos(); // 物理像素
+    final pos = await windowManager.getPosition(); // 逻辑像素
     _dragStartWindowPos = pos;
   }
 
   Future<void> _onPanUpdate(DragUpdateDetails details) async {
     if (_dragStartScreenPos == null || _dragStartWindowPos == null) return;
-    final currentPos = await _getCursorScreenPos();
-    final dx = currentPos.dx - _dragStartScreenPos!.dx;
-    final dy = currentPos.dy - _dragStartScreenPos!.dy;
+    final currentPos = await _getCursorScreenPos(); // 物理像素
+    final dpr = MediaQuery.of(context).devicePixelRatio; // 物理/逻辑 缩放比
+    // 物理像素位移 → 逻辑像素位移，与 windowManager 坐标系一致
+    final dx = (currentPos.dx - _dragStartScreenPos!.dx) / dpr;
+    final dy = (currentPos.dy - _dragStartScreenPos!.dy) / dpr;
 
     final newPos = Offset(
       _dragStartWindowPos!.dx + dx,
@@ -844,6 +891,7 @@ class _PetBodyState extends State<_PetBody> {
     _dragStartWindowPos = null;
   }
 
+  /// 获取鼠标在屏幕上的物理像素坐标（Win32 GetCursorPos）
   Future<Offset> _getCursorScreenPos() async {
     if (!Platform.isWindows) return Offset.zero;
     final point = pkg_ffi.calloc<ffi.Int32>(2);

@@ -8,11 +8,13 @@ import '../../config/platform.dart';
 import '../../config/settings.dart';
 import '../../services/agent_service.dart';
 import '../../services/claude_hook_installer.dart';
-import '../../services/weixin_clawbot_service.dart';
+import '../../services/weixin/weixin_ilink_client.dart';
+import '../../services/weixin/weixin_models.dart';
+import '../../services/weixin/weixin_qr_login_widget.dart';
 import '../../screens/home_screen.dart';
 import '../../widgets/app_toast.dart';
 
-enum _SettingCategory { display, general, api, panel }
+enum _SettingCategory { display, panel, general, api, log }
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -40,7 +42,7 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _obscureApiKey = true;
   bool _obscureWeatherApiKey = true;
   bool _autoStart = false;
-  bool _llmLogEnabled = false;
+  Map<String, LogCategoryConfig> _logCategories = {};
   String _language = 'zh';
   String _appTheme = 'light';
   String _petStyle = 'colorful';
@@ -51,7 +53,9 @@ class _SettingsTabState extends State<SettingsTab> {
   String _userAvatarPath = '';
   bool _weixinConnected = false;
   bool _weixinConnecting = false;
-  bool _weixinAutoReply = true;
+  bool _weixinEnabled = false;
+  WeixinConnectionState _weixinState = WeixinConnectionState.disconnected;
+  String? _weixinError;
   String _weixinBotId = '';
   bool _weixinQrLoading = false;
   bool _weixinConnectLoading = false;
@@ -113,16 +117,14 @@ class _SettingsTabState extends State<SettingsTab> {
     'assets/png/menuBg/80939131.png',
     'assets/png/menuBg/55754261.png',
     'assets/png/menuBg/80039502.png',
-
   ];
-
-  static const _languages = {'zh': '中文', 'en': 'English'};
 
   static const _categoryItems = <(_SettingCategory, IconData, String)>[
     (_SettingCategory.display, Icons.palette_outlined, '显示设置'),
+    (_SettingCategory.panel, Icons.dashboard_outlined, '面板设置'),
     (_SettingCategory.general, Icons.tune_rounded, '通用设置'),
     (_SettingCategory.api, Icons.smart_toy_outlined, '模型设置'),
-    (_SettingCategory.panel, Icons.dashboard_outlined, '面板设置'),
+    (_SettingCategory.log, Icons.article_outlined, '开发设置'),
   ];
 
   @override
@@ -139,26 +141,12 @@ class _SettingsTabState extends State<SettingsTab> {
     _weatherCityController = TextEditingController();
     _loadSettings();
 
-    // 监听微信 Clawbot 连接状态变化，实时更新 UI
+    // 微信服务由主窗口持有，监听其跨窗口状态快照。
     _connectionStateListener = () {
       if (!mounted) return;
-      final s = WeixinClawbotService.instance.connectionState.value;
-      setState(() {
-        _weixinConnected = s == WeixinConnectionState.connected;
-        _weixinConnecting =
-            s == WeixinConnectionState.connecting ||
-            s == WeixinConnectionState.reconnecting;
-        if (s == WeixinConnectionState.connected ||
-            s == WeixinConnectionState.disconnected) {
-          _weixinConnectLoading = false;
-        }
-        if (s == WeixinConnectionState.disconnected) {
-          _weixinBotId = WeixinClawbotService.instance.currentAccount?.botId ?? '';
-        }
-      });
+      _applyWeixinStatus(HomeScreen.weixinStatusNotifier.value);
     };
-    WeixinClawbotService.instance.connectionState
-        .addListener(_connectionStateListener!);
+    HomeScreen.weixinStatusNotifier.addListener(_connectionStateListener!);
   }
 
   Future<void> _loadSettings() async {
@@ -182,7 +170,7 @@ class _SettingsTabState extends State<SettingsTab> {
           : cfg.model;
       _enableBalance = cfg.enableBalance;
       _autoStart = s.autoStart;
-      _llmLogEnabled = s.llmLogEnabled;
+      _logCategories = Map.of(s.logCategories);
       _language = s.language;
       _appTheme = s.appTheme;
       _petStyle = s.petStyle;
@@ -205,19 +193,12 @@ class _SettingsTabState extends State<SettingsTab> {
       _loading = false;
     });
 
-    // 微信 Clawbot 状态（异步加载，无需阻塞 setState）
-    final wx = WeixinClawbotService.instance;
-    await wx.loadAccount();
-    if (!mounted) return;
-    final state = wx.connectionState.value;
-    setState(() {
-      _weixinConnected = state == WeixinConnectionState.connected;
-      _weixinConnecting =
-          state == WeixinConnectionState.connecting ||
-          state == WeixinConnectionState.reconnecting;
-      _weixinAutoReply = wx.autoReplyEnabled;
-      _weixinBotId = wx.currentAccount?.botId ?? '';
-    });
+    try {
+      final status = await HomeScreen.queryWeixinStatus();
+      if (mounted) _applyWeixinStatus(status);
+    } catch (e) {
+      LogService.error('读取微信服务状态失败: $e', category: 'weixin');
+    }
   }
 
   @override
@@ -233,10 +214,24 @@ class _SettingsTabState extends State<SettingsTab> {
     _weatherCityController.dispose();
     _detailScrollController.dispose();
     if (_connectionStateListener != null) {
-      WeixinClawbotService.instance.connectionState
-          .removeListener(_connectionStateListener!);
+      HomeScreen.weixinStatusNotifier.removeListener(_connectionStateListener!);
     }
     super.dispose();
+  }
+
+  void _applyWeixinStatus(WeixinServiceStatus status) {
+    if (!mounted) return;
+    setState(() {
+      _weixinState = status.state;
+      _weixinEnabled = status.enabled;
+      _weixinConnected = status.isConnected;
+      _weixinConnecting = status.isConnecting;
+      _weixinBotId = status.botId;
+      _weixinError = status.error;
+      if (!status.isConnecting) {
+        _weixinConnectLoading = false;
+      }
+    });
   }
 
   @override
@@ -285,6 +280,7 @@ class _SettingsTabState extends State<SettingsTab> {
           _SettingCategory.display => _buildDisplaySettings(),
           _SettingCategory.general => _buildGeneralSettings(),
           _SettingCategory.panel => _buildPanelSettings(),
+          _SettingCategory.log => _buildLogSettings(),
         },
       ),
     );
@@ -326,6 +322,7 @@ class _SettingsTabState extends State<SettingsTab> {
 
   List<Widget> _buildPanelSettings() {
     return [
+      _buildWeixinCard(),
       _buildDashboardPanelCard(),
       _buildWeatherApiCard(),
       _buildPhotoWallSettingsCard(),
@@ -338,15 +335,16 @@ class _SettingsTabState extends State<SettingsTab> {
       _buildNotesCard(),
       _buildTranslateCard(),
       _buildScriptCard(),
-      _buildWeixinCard(),
     ];
   }
 
   Widget _buildDailyQuoteCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('每日一言',
-            svgIcon: 'assets/svg/setting-panel-ic/每日一言.svg'),
+        _buildSectionTitle(
+          '每日一言',
+          svgIcon: 'assets/svg/setting-panel-ic/每日一言.svg',
+        ),
         _buildThinDivider(),
         _DropdownRow(
           label: '类型',
@@ -384,8 +382,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildBalanceSettingsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('模型余额',
-            svgIcon: 'assets/svg/setting-panel-ic/余额.svg'),
+        _buildSectionTitle(
+          '模型余额',
+          svgIcon: 'assets/svg/setting-panel-ic/余额.svg',
+        ),
         _buildThinDivider(),
         _DropdownRow(
           label: '更新频率',
@@ -408,8 +408,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildPhotoWallSettingsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('照片墙',
-            svgIcon: 'assets/svg/setting-panel-ic/045_照片.svg'),
+        _buildSectionTitle(
+          '照片墙',
+          svgIcon: 'assets/svg/setting-panel-ic/045_照片.svg',
+        ),
         _buildThinDivider(),
         _DropdownRow(
           label: '切换频率',
@@ -432,8 +434,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildCarouselSettingsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('轮播图',
-            svgIcon: 'assets/svg/setting-panel-ic/轮播.svg'),
+        _buildSectionTitle(
+          '轮播图',
+          svgIcon: 'assets/svg/setting-panel-ic/轮播.svg',
+        ),
         _buildThinDivider(),
         _DropdownRow(
           label: '切换速度',
@@ -582,15 +586,84 @@ class _SettingsTabState extends State<SettingsTab> {
     return [
       _buildCard(
         children: [
-          _buildLanguageDropdown(),
-          _buildThinDivider(),
           _buildAutoStartToggle(),
-          _buildThinDivider(),
-          _buildLlmLogToggle(),
         ],
       ),
       _buildCard(children: [_buildClaudeHookInstaller()]),
     ];
+  }
+
+  /// 日志分类的显示名称
+  static const _logCategoryNames = <String, String>{
+    'system': '系统日志',
+    'weixin': 'Clawbot日志',
+    'llm': 'LLM 日志',
+  };
+
+  List<Widget> _buildLogSettings() {
+    final categories = ['system', 'weixin', 'llm'];
+    return [
+      for (final cat in categories)
+        _buildCard(
+          children: [
+            _buildSectionTitle(_logCategoryNames[cat] ?? cat),
+            _buildThinDivider(),
+            _buildLogToggleRow(
+              label: '控制台输出',
+              value: _logCategories[cat]?.console ?? true,
+              onChanged: (v) {
+                setState(() {
+                  final cur =
+                      _logCategories[cat] ?? const LogCategoryConfig();
+                  _logCategories[cat] = cur.copyWith(console: v);
+                });
+              },
+            ),
+            _buildThinDivider(),
+            _buildLogToggleRow(
+              label: '日志文件',
+              value: _logCategories[cat]?.file ?? true,
+              onChanged: (v) {
+                setState(() {
+                  final cur =
+                      _logCategories[cat] ?? const LogCategoryConfig();
+                  _logCategories[cat] = cur.copyWith(file: v);
+                });
+              },
+            ),
+          ],
+        ),
+    ];
+  }
+
+  Widget _buildLogToggleRow({
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: Color(0xFF555555), fontSize: 14),
+          ),
+          const Spacer(),
+          Transform.scale(
+            scale: 0.8,
+            child: Switch(
+              value: value,
+              activeColor: const Color(0xFF66BB6A),
+              activeTrackColor: Colors.black12,
+              inactiveThumbColor: Colors.grey,
+              inactiveTrackColor: Colors.black12,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildApiKeyField() {
@@ -746,8 +819,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildWeatherApiCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('天气服务 (和风天气)',
-            svgIcon: 'assets/svg/setting-panel-ic/045_天气.svg'),
+        _buildSectionTitle(
+          '天气服务 (和风天气)',
+          svgIcon: 'assets/svg/setting-panel-ic/045_天气.svg',
+        ),
         _buildThinDivider(),
         _DropdownRow(
           label: 'API ID',
@@ -792,11 +867,15 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
               suffixIcon: IconButton(
                 icon: Icon(
-                  _obscureWeatherApiKey ? Icons.visibility_off : Icons.visibility,
+                  _obscureWeatherApiKey
+                      ? Icons.visibility_off
+                      : Icons.visibility,
                   size: 18,
                   color: Colors.black38,
                 ),
-                onPressed: () => setState(() => _obscureWeatherApiKey = !_obscureWeatherApiKey),
+                onPressed: () => setState(
+                  () => _obscureWeatherApiKey = !_obscureWeatherApiKey,
+                ),
               ),
             ),
           ),
@@ -853,8 +932,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildDashboardPanelCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('控制面板',
-            svgIcon: 'assets/svg/setting-panel-ic/控制面板.svg'),
+        _buildSectionTitle(
+          '控制面板',
+          svgIcon: 'assets/svg/setting-panel-ic/控制面板.svg',
+        ),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -864,8 +945,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildScheduleCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('日程',
-            svgIcon: 'assets/svg/setting-panel-ic/_ 日程.svg'),
+        _buildSectionTitle(
+          '日程',
+          svgIcon: 'assets/svg/setting-panel-ic/_ 日程.svg',
+        ),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -875,8 +958,7 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildNewsCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('新闻',
-            svgIcon: 'assets/svg/setting-panel-ic/新闻.svg'),
+        _buildSectionTitle('新闻', svgIcon: 'assets/svg/setting-panel-ic/新闻.svg'),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -886,8 +968,7 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildFavoritesCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('收藏',
-            svgIcon: 'assets/svg/setting-panel-ic/收藏.svg'),
+        _buildSectionTitle('收藏', svgIcon: 'assets/svg/setting-panel-ic/收藏.svg'),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -897,8 +978,7 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildNotesCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('笔记',
-            svgIcon: 'assets/svg/setting-panel-ic/笔记.svg'),
+        _buildSectionTitle('笔记', svgIcon: 'assets/svg/setting-panel-ic/笔记.svg'),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -908,8 +988,7 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildTranslateCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('翻译',
-            svgIcon: 'assets/svg/setting-panel-ic/翻译.svg'),
+        _buildSectionTitle('翻译', svgIcon: 'assets/svg/setting-panel-ic/翻译.svg'),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -919,8 +998,7 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget _buildScriptCard() {
     return _buildCard(
       children: [
-        _buildSectionTitle('脚本',
-            svgIcon: 'assets/svg/setting-panel-ic/脚本.svg'),
+        _buildSectionTitle('脚本', svgIcon: 'assets/svg/setting-panel-ic/脚本.svg'),
         _buildThinDivider(),
         _buildPlaceholder(),
       ],
@@ -935,12 +1013,21 @@ class _SettingsTabState extends State<SettingsTab> {
     // 状态文字与颜色
     String statusText;
     Color statusColor;
-    if (connecting) {
+    if (_weixinState == WeixinConnectionState.reconnecting) {
+      statusText = '正在重连…';
+      statusColor = Colors.blue;
+    } else if (connecting) {
       statusText = '连接中…';
       statusColor = Colors.blue;
     } else if (connected) {
       statusText = '已连接';
       statusColor = const Color(0xFF66BB6A);
+    } else if (_weixinState == WeixinConnectionState.error) {
+      statusText = '连接异常';
+      statusColor = Colors.redAccent;
+    } else if (_weixinEnabled && hasAccount) {
+      statusText = '已启用 · 等待连接';
+      statusColor = Colors.blue;
     } else if (hasAccount) {
       statusText = '已绑定 · 未连接';
       statusColor = Colors.orange;
@@ -951,7 +1038,7 @@ class _SettingsTabState extends State<SettingsTab> {
 
     return _buildCard(
       children: [
-        _buildSectionTitle('微信消息'),
+        _buildSectionTitle('weixin-clawbot'),
         _buildThinDivider(),
 
         // 状态显示
@@ -990,12 +1077,29 @@ class _SettingsTabState extends State<SettingsTab> {
                 const Spacer(),
                 Text(
                   'Bot: ${_weixinBotId.length > 12 ? '${_weixinBotId.substring(0, 12)}...' : _weixinBotId}',
-                  style: const TextStyle(color: Color(0xFFBBBBBB), fontSize: 11),
+                  style: const TextStyle(
+                    color: Color(0xFFBBBBBB),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ],
           ),
         ),
+
+        if (_weixinError?.isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _weixinError!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+              ),
+            ),
+          ),
 
         _buildThinDivider(),
 
@@ -1015,15 +1119,15 @@ class _SettingsTabState extends State<SettingsTab> {
               else ...[
                 if (connecting)
                   _buildWeixinActionButton(
-                    label: '连接中…',
-                    icon: Icons.hourglass_top,
-                    color: Colors.blue,
-                    onTap: null,
-                    loading: true,
+                    label: '取消连接',
+                    icon: Icons.link_off,
+                    color: Colors.orange,
+                    onTap: _disconnectWeixin,
+                    loading: _weixinConnectLoading,
                   )
                 else if (!connected)
                   _buildWeixinActionButton(
-                    label: '连接',
+                    label: _weixinEnabled ? '重试' : '连接',
                     icon: Icons.link,
                     color: const Color(0xFF66BB6A),
                     onTap: _connectWeixin,
@@ -1042,46 +1146,13 @@ class _SettingsTabState extends State<SettingsTab> {
                   label: '解绑',
                   icon: Icons.delete_outline,
                   color: const Color(0xFFE57373),
-                  onTap: connecting ? null : _unbindWeixin,
+                  onTap: _weixinConnectLoading ? null : _unbindWeixin,
                   loading: false,
                 ),
               ],
             ],
           ),
         ),
-
-        // AI 自动回复开关（仅绑定后显示）
-        if (hasAccount) ...[
-          _buildThinDivider(),
-          _DropdownRow(
-            label: 'AI 自动回复',
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _weixinAutoReply ? '已开启' : '已关闭',
-                  style: const TextStyle(color: Color(0xFF555555), fontSize: 14),
-                ),
-                Transform.scale(
-                  scale: 0.8,
-                  child: Switch(
-                    value: _weixinAutoReply,
-                    activeThumbColor: const Color(0xFF66BB6A),
-                    activeTrackColor: Colors.black12,
-                    inactiveThumbColor: Colors.grey,
-                    inactiveTrackColor: Colors.black12,
-                    onChanged: connecting
-                        ? null
-                        : (v) {
-                            setState(() => _weixinAutoReply = v);
-                            WeixinClawbotService.instance.setAutoReply(v);
-                          },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -1102,7 +1173,10 @@ class _SettingsTabState extends State<SettingsTab> {
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white70,
+                  ),
                 )
               : Icon(icon, size: 16),
           label: Text(
@@ -1124,21 +1198,20 @@ class _SettingsTabState extends State<SettingsTab> {
 
   Future<void> _startWeixinQrLogin() async {
     setState(() => _weixinQrLoading = true);
+    final loginClient = WeixinILinkClient(token: '');
     try {
-      final wx = WeixinClawbotService.instance;
-      final account = await wx.loginAndConnect(
-        context,
-        autoReply: _weixinAutoReply,
+      final account = await showWeixinQrLoginDialog(
+        context: context,
+        client: loginClient,
       );
 
       if (!mounted) return;
 
       if (account != null) {
-        setState(() {
-          _weixinBotId = account.botId;
-          _weixinQrLoading = false;
-          _weixinConnected = true;
-        });
+        final status = await HomeScreen.bindWeixinAccount(account);
+        if (!mounted) return;
+        _applyWeixinStatus(status);
+        setState(() => _weixinQrLoading = false);
         AppToast.show(context, message: '微信绑定成功');
       } else {
         setState(() => _weixinQrLoading = false);
@@ -1148,26 +1221,24 @@ class _SettingsTabState extends State<SettingsTab> {
         setState(() => _weixinQrLoading = false);
         AppToast.show(context, message: '绑定失败：$e');
       }
+    } finally {
+      loginClient.dispose();
     }
   }
 
   Future<void> _connectWeixin() async {
     setState(() => _weixinConnectLoading = true);
     try {
-      final wx = WeixinClawbotService.instance;
-      await wx.connect(autoReply: _weixinAutoReply);
+      final status = await HomeScreen.setWeixinEnabled(true);
       if (mounted) {
-        setState(() {
-          _weixinConnected = true;
-          _weixinConnectLoading = false;
-        });
-        AppToast.show(context, message: '微信已连接');
+        _applyWeixinStatus(status);
+        AppToast.show(context, message: '微信服务已启用');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _weixinConnectLoading = false);
         AppToast.show(context, message: '连接失败：$e');
-        LogService.error('微信连接失败: $e');
+        LogService.error('微信连接失败: $e', category: 'weixin');
       }
     }
   }
@@ -1175,13 +1246,10 @@ class _SettingsTabState extends State<SettingsTab> {
   Future<void> _disconnectWeixin() async {
     setState(() => _weixinConnectLoading = true);
     try {
-      await WeixinClawbotService.instance.disconnect();
+      final status = await HomeScreen.setWeixinEnabled(false);
       if (mounted) {
-        setState(() {
-          _weixinConnected = false;
-          _weixinConnectLoading = false;
-        });
-        AppToast.show(context, message: '微信已断开');
+        _applyWeixinStatus(status);
+        AppToast.show(context, message: '微信服务已关闭');
       }
     } catch (e) {
       if (mounted) {
@@ -1213,12 +1281,9 @@ class _SettingsTabState extends State<SettingsTab> {
 
     if (confirmed == true && mounted) {
       try {
-        await WeixinClawbotService.instance.logout();
-        setState(() {
-          _weixinConnected = false;
-          _weixinBotId = '';
-          _weixinAutoReply = true;
-        });
+        final status = await HomeScreen.logoutWeixin();
+        if (!mounted) return;
+        _applyWeixinStatus(status);
         AppToast.show(context, message: '微信已解绑');
       } catch (e) {
         if (mounted) {
@@ -1393,7 +1458,10 @@ class _SettingsTabState extends State<SettingsTab> {
               GestureDetector(
                 onTap: _pickMenuBgImage,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(6),
@@ -1401,7 +1469,11 @@ class _SettingsTabState extends State<SettingsTab> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.upload_rounded, size: 16, color: Colors.black.withValues(alpha: 0.5)),
+                      Icon(
+                        Icons.upload_rounded,
+                        size: 16,
+                        color: Colors.black.withValues(alpha: 0.5),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '上传图片',
@@ -1418,7 +1490,8 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           const SizedBox(height: 8),
           // 用户上传的图片
-          if (_menuBgFilePath.isNotEmpty && File(_menuBgFilePath).existsSync()) ...[
+          if (_menuBgFilePath.isNotEmpty &&
+              File(_menuBgFilePath).existsSync()) ...[
             GestureDetector(
               onTap: () => setState(() {
                 _menuBgImage = _menuBgFilePath;
@@ -1451,7 +1524,11 @@ class _SettingsTabState extends State<SettingsTab> {
                             color: Colors.black.withValues(alpha: 0.5),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.close, size: 12, color: Colors.white),
+                          child: const Icon(
+                            Icons.close,
+                            size: 12,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -1533,18 +1610,6 @@ class _SettingsTabState extends State<SettingsTab> {
     });
   }
 
-  Widget _buildLanguageDropdown() {
-    return _DropdownRow(
-      label: '语言',
-      child: _buildSegmented<String>(
-        value: _language,
-        items: _languages.keys.toList(),
-        labelBuilder: (k) => _languages[k]!,
-        onChanged: (v) => setState(() => _language = v),
-      ),
-    );
-  }
-
   Widget _buildAutoStartToggle() {
     return _DropdownRow(
       label: '开机自启',
@@ -1559,26 +1624,6 @@ class _SettingsTabState extends State<SettingsTab> {
             inactiveThumbColor: Colors.grey,
             inactiveTrackColor: Colors.black12,
             onChanged: (v) => setState(() => _autoStart = v),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLlmLogToggle() {
-    return _DropdownRow(
-      label: 'LLM 日志',
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Transform.scale(
-          scale: 0.8,
-          child: Switch(
-            value: _llmLogEnabled,
-            activeColor: const Color(0xFF66BB6A),
-            activeTrackColor: Colors.black12,
-            inactiveThumbColor: Colors.grey,
-            inactiveTrackColor: Colors.black12,
-            onChanged: (v) => setState(() => _llmLogEnabled = v),
           ),
         ),
       ),
@@ -1814,7 +1859,7 @@ class _SettingsTabState extends State<SettingsTab> {
     existing.platform = _platform;
     existing.apiConfigs = _apiConfigs;
     existing.autoStart = _autoStart;
-    existing.llmLogEnabled = _llmLogEnabled;
+    existing.logCategories = Map.of(_logCategories);
     existing.language = _language;
     existing.appTheme = _appTheme;
     existing.petStyle = _petStyle;
@@ -1831,6 +1876,7 @@ class _SettingsTabState extends State<SettingsTab> {
     // 通知设置变更
     HomeScreen.triggerSettingsChange();
     AgentService.syncLogSettings();
+    LogService.updateConfig(Map.of(_logCategories));
 
     // 通知悬浮球窗口刷新（助手形象等）
     HomeScreen.menuChannel.invokeMethod('settings_saved');
@@ -1841,10 +1887,7 @@ class _SettingsTabState extends State<SettingsTab> {
 }
 
 class _DropdownRow extends StatelessWidget {
-  const _DropdownRow({
-    required this.label,
-    required this.child,
-  });
+  const _DropdownRow({required this.label, required this.child});
 
   final String label;
   final Widget child;
