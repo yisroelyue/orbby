@@ -45,6 +45,8 @@ class _PetScreenState extends State<PetScreen> {
   static const _todoItemPopupHeight = 300.0;
   static const _clipboardPopupWidth = 320.0;
   static const _clipboardPopupHeight = 400.0;
+  static const _vibeTaskWidth = 180.0;
+  static const _vibeTaskHeight = 36.0;
   static const _notifWidth = 400.0;
   static const _notifHeight = 400.0;
   static const _menuChannel = WindowMethodChannel(
@@ -65,6 +67,7 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _subAppWindow;
   WindowController? _todoItemPopupWindow;
   WindowController? _clipboardPopupWindow;
+  WindowController? _vibeTaskWindow;
   WindowController? _notifWindow;
   bool _menuVisible = false;
   bool _precreatingMenu = false;
@@ -121,6 +124,9 @@ class _PetScreenState extends State<PetScreen> {
       }
       if (settings.enableClipboardMonitor) {
         ClipboardService.instance.start();
+      }
+      if (settings.showVibePanel) {
+        await _toggleVibeTaskWindow();
       }
       _precreateWindows();
     });
@@ -179,6 +185,10 @@ class _PetScreenState extends State<PetScreen> {
         }
         return;
       case 'toggle_vibe_panel':
+        // 延后到下一帧创建窗口，避免在方法通道回调中直接创建新进程导致菜单窗口焦点异常
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _toggleVibeTaskWindow();
+        });
         return;
       case 'open_favorites_editor':
         final args = call.arguments;
@@ -383,6 +393,35 @@ class _PetScreenState extends State<PetScreen> {
     await _clipboardPopupWindow!.show();
   }
 
+  /// 切换 Claude 监测面板显隐
+  Future<void> _toggleVibeTaskWindow() async {
+    if (_vibeTaskWindow != null) {
+      try {
+        await _vibeTaskWindow!.hide();
+      } catch (_) {}
+      _vibeTaskWindow = null;
+      return;
+    }
+
+    final display = await screenRetriever.getPrimaryDisplay();
+    final screenSize = display.visibleSize ?? display.size;
+    final left = (screenSize.width - _vibeTaskWidth) / 2;
+    const top = 0.0;
+
+    final createdWindow = await WindowController.create(
+      WindowConfiguration(
+        arguments: jsonEncode({
+          'type': 'vibe_task',
+          'left': left,
+          'top': top,
+          'width': _vibeTaskWidth,
+          'height': _vibeTaskHeight,
+        }),
+      ),
+    );
+    _vibeTaskWindow = createdWindow;
+  }
+
   /// 获取当前鼠标指针屏幕坐标
   Offset _getCursorPos() {
     if (!Platform.isWindows) return Offset.zero;
@@ -500,16 +539,29 @@ class _PetScreenState extends State<PetScreen> {
     switch (call.method) {
       case 'filesDropped':
         final files = (call.arguments as List).cast<String>();
+        int addedCount = 0;
         for (final path in files) {
           final file = File(path);
           if (await file.exists()) {
             await FavoritesService.add(path);
+            addedCount++;
           }
         }
         if (_menuWindow != null) {
           try {
             await _menuWindow!.invokeMethod('refresh_favorites');
           } catch (_) {}
+        }
+        if (addedCount > 0) {
+          final msg = addedCount == 1
+              ? '已经添加该文件至未分类目录'
+              : '已经添加 $addedCount 个文件至未分类目录';
+          NotificationService.instance.show(
+            title: '收藏成功',
+            message: msg,
+            level: NotificationLevel.success,
+            duration: const Duration(seconds: 2),
+          );
         }
         return;
       default:

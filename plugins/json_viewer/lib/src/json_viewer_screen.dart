@@ -20,6 +20,8 @@ class JsonViewerScreen extends StatefulWidget {
 
 class _JsonViewerScreenState extends State<JsonViewerScreen> {
   final _textController = TextEditingController();
+  final _pathController = TextEditingController();
+  String? _currentFilePath;
   JsonNode? _rootNode;
   String? _parseError;
   Timer? _debounceTimer;
@@ -29,6 +31,7 @@ class _JsonViewerScreenState extends State<JsonViewerScreen> {
   void dispose() {
     _debounceTimer?.cancel();
     _textController.dispose();
+    _pathController.dispose();
     super.dispose();
   }
 
@@ -96,6 +99,19 @@ class _JsonViewerScreenState extends State<JsonViewerScreen> {
   }
 
   Future<void> _openFile() async {
+    final pathText = _pathController.text.trim();
+    if (pathText.isNotEmpty) {
+      try {
+        final content = await File(pathText).readAsString();
+        if (!mounted) return;
+        _currentFilePath = pathText;
+        _applyText(content);
+      } catch (_) {
+        // 读取失败时忽略
+      }
+      return;
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json', 'txt'],
@@ -106,9 +122,55 @@ class _JsonViewerScreenState extends State<JsonViewerScreen> {
     try {
       final content = await File(path).readAsString();
       if (!mounted) return;
+      _currentFilePath = path;
       _applyText(content);
     } catch (_) {
       // 读取失败时忽略
+    }
+  }
+
+  Future<void> _saveFile() async {
+    String? savePath = _currentFilePath;
+    savePath ??= await FilePicker.platform.saveFile(
+      dialogTitle: '保存 JSON 文件',
+      fileName: 'output.json',
+      type: FileType.custom,
+      allowedExtensions: ['json', 'txt'],
+    );
+    if (savePath == null) return;
+
+    try {
+      await File(savePath).writeAsString(_textController.text);
+      _currentFilePath = savePath;
+      _pathController.text = savePath;
+      if (mounted) {
+        final name = savePath.split(Platform.pathSeparator).last;
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(
+            content: Text('已保存: $name',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: const Color(0xFF333333),
+            duration: const Duration(seconds: 2),
+          ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(
+            content: const Text('保存失败',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 2),
+          ));
+      }
     }
   }
 
@@ -133,7 +195,9 @@ class _JsonViewerScreenState extends State<JsonViewerScreen> {
                       child: JsonEditorPanel(
                         controller: _textController,
                         onChanged: _onTextChanged,
+                        pathController: _pathController,
                         onOpenFile: _openFile,
+                        onSaveFile: _saveFile,
                         onFormat: _formatJson,
                         onCompress: _compressJson,
                         onCopy: _copyToClipboard,

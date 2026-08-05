@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../services/translate_service.dart';
 import 'platform.dart';
 
 /// 单类日志的开关配置
@@ -103,9 +104,14 @@ class AppSettings {
     this.balanceRefreshInterval = 0,
     this.photoWallSwitchInterval = 30,
     this.carouselSwitchInterval = 12,
+    this.showTranslateLangSelector = true,
+    List<String>? translateEnabledLangs,
     Map<String, PlatformApiConfig>? apiConfigs,
     Map<String, LogCategoryConfig>? logCategories,
-  }) : apiConfigs =
+  }) : translateEnabledLangs =
+           translateEnabledLangs ??
+           TranslateLang.values.map((e) => e.name).toList(),
+       apiConfigs =
            apiConfigs ??
            {
              'deepseek': PlatformApiConfig(
@@ -157,6 +163,8 @@ class AppSettings {
   int balanceRefreshInterval; // 余额刷新频率（秒）：0=每天, 21600=6小时, 10800=3小时
   int photoWallSwitchInterval; // 照片墙切换频率（秒）：10, 30, 60, 600, 3600
   int carouselSwitchInterval; // 轮播图切换频率（秒）：5, 12, 30, 60, 300
+  bool showTranslateLangSelector; // 是否显示翻译面板的语言选择器
+  List<String> translateEnabledLangs; // 启用的翻译语言对（TranslateLang.name 列表）
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -266,6 +274,12 @@ class AppSettings {
       balanceRefreshInterval: json['balanceRefreshInterval'] as int? ?? 0,
       photoWallSwitchInterval: json['photoWallSwitchInterval'] as int? ?? 30,
       carouselSwitchInterval: json['carouselSwitchInterval'] as int? ?? 12,
+      showTranslateLangSelector:
+          json['showTranslateLangSelector'] as bool? ?? true,
+      translateEnabledLangs:
+          (json['translateEnabledLangs'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
       apiConfigs: configs,
     );
   }
@@ -326,6 +340,8 @@ class AppSettings {
     'balanceRefreshInterval': balanceRefreshInterval,
     'photoWallSwitchInterval': photoWallSwitchInterval,
     'carouselSwitchInterval': carouselSwitchInterval,
+    'showTranslateLangSelector': showTranslateLangSelector,
+    'translateEnabledLangs': translateEnabledLangs,
   };
 }
 

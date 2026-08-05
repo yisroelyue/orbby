@@ -149,7 +149,7 @@ class _ControlPanelState extends BasePanelState<ControlPanel> {
   List<_ControlSwitch> get _items => [
     _ControlSwitch(
       id: 'weixin',
-      title: 'weixin-clawbot',
+      title: 'claw bot',
       icon: Icons.chat_rounded,
       descriptionSpans: [
         const TextSpan(text: '微信消息自动回复服务\n'),

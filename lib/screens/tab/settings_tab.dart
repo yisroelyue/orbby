@@ -8,6 +8,7 @@ import '../../config/platform.dart';
 import '../../config/settings.dart';
 import '../../services/agent_service.dart';
 import '../../services/claude_hook_installer.dart';
+import '../../services/translate_service.dart';
 import '../../services/weixin/weixin_ilink_client.dart';
 import '../../services/weixin/weixin_models.dart';
 import '../../services/weixin/weixin_qr_login_widget.dart';
@@ -67,6 +68,8 @@ class _SettingsTabState extends State<SettingsTab> {
   int _balanceRefreshInterval = 0;
   int _photoWallSwitchInterval = 30;
   int _carouselSwitchInterval = 12;
+  bool _showTranslateLangSelector = true;
+  List<String> _translateEnabledLangs = [];
 
   /// 每日一言类型选项
   static const _dailyQuoteTypes = <String, String>{
@@ -188,6 +191,8 @@ class _SettingsTabState extends State<SettingsTab> {
       _balanceRefreshInterval = s.balanceRefreshInterval;
       _photoWallSwitchInterval = s.photoWallSwitchInterval;
       _carouselSwitchInterval = s.carouselSwitchInterval;
+      _showTranslateLangSelector = s.showTranslateLangSelector;
+      _translateEnabledLangs = List.of(s.translateEnabledLangs);
       _claudeHookInstalled = claudeHookInstalled;
 
       _loading = false;
@@ -602,38 +607,53 @@ class _SettingsTabState extends State<SettingsTab> {
 
   List<Widget> _buildLogSettings() {
     final categories = ['system', 'weixin', 'llm'];
-    return [
-      for (final cat in categories)
-        _buildCard(
-          children: [
-            _buildSectionTitle(_logCategoryNames[cat] ?? cat),
-            _buildThinDivider(),
-            _buildLogToggleRow(
-              label: '控制台输出',
-              value: _logCategories[cat]?.console ?? true,
-              onChanged: (v) {
-                setState(() {
-                  final cur =
-                      _logCategories[cat] ?? const LogCategoryConfig();
-                  _logCategories[cat] = cur.copyWith(console: v);
-                });
-              },
-            ),
-            _buildThinDivider(),
-            _buildLogToggleRow(
-              label: '日志文件',
-              value: _logCategories[cat]?.file ?? true,
-              onChanged: (v) {
-                setState(() {
-                  final cur =
-                      _logCategories[cat] ?? const LogCategoryConfig();
-                  _logCategories[cat] = cur.copyWith(file: v);
-                });
-              },
-            ),
-          ],
-        ),
+    final widgets = <Widget>[
+      _buildSectionTitle('日志开关'),
     ];
+    for (int i = 0; i < categories.length; i++) {
+      final cat = categories[i];
+      if (i > 0) {
+        widgets.add(_buildThinDivider());
+      }
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text(
+            _logCategoryNames[cat] ?? cat,
+            style: const TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      );
+      widgets.add(
+        _buildLogToggleRow(
+          label: '控制台输出',
+          value: _logCategories[cat]?.console ?? true,
+          onChanged: (v) {
+            setState(() {
+              final cur = _logCategories[cat] ?? const LogCategoryConfig();
+              _logCategories[cat] = cur.copyWith(console: v);
+            });
+          },
+        ),
+      );
+      widgets.add(
+        _buildLogToggleRow(
+          label: '日志文件',
+          value: _logCategories[cat]?.file ?? true,
+          onChanged: (v) {
+            setState(() {
+              final cur = _logCategories[cat] ?? const LogCategoryConfig();
+              _logCategories[cat] = cur.copyWith(file: v);
+            });
+          },
+        ),
+      );
+    }
+    return [_buildCard(children: widgets)];
   }
 
   Widget _buildLogToggleRow({
@@ -986,11 +1006,73 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Widget _buildTranslateCard() {
+    final allLangs = TranslateLang.values;
+    // 确保 _translateEnabledLangs 有默认值
+    if (_translateEnabledLangs.isEmpty) {
+      _translateEnabledLangs = allLangs.map((e) => e.name).toList();
+    }
     return _buildCard(
       children: [
         _buildSectionTitle('翻译', svgIcon: 'assets/svg/setting-panel-ic/翻译.svg'),
         _buildThinDivider(),
-        _buildPlaceholder(),
+        // 是否显示翻译选项
+        _buildLogToggleRow(
+          label: '显示翻译选项',
+          value: _showTranslateLangSelector,
+          onChanged: (v) {
+            setState(() => _showTranslateLangSelector = v);
+          },
+        ),
+        _buildThinDivider(),
+        // 可选语言
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text(
+            '可选语言',
+            style: TextStyle(
+              color: Colors.black.withValues(alpha: 0.4),
+              fontSize: 12,
+            ),
+          ),
+        ),
+        ...allLangs.map((lang) {
+          final enabled = _translateEnabledLangs.contains(lang.name);
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                if (enabled) {
+                  _translateEnabledLangs.remove(lang.name);
+                } else {
+                  _translateEnabledLangs.add(lang.name);
+                }
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    enabled
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded,
+                    size: 20,
+                    color: enabled
+                        ? const Color(0xFF66BB6A)
+                        : const Color(0xFFBBBBBB),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    lang.label,
+                    style: const TextStyle(
+                      color: Color(0xFF555555),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -1038,7 +1120,7 @@ class _SettingsTabState extends State<SettingsTab> {
 
     return _buildCard(
       children: [
-        _buildSectionTitle('weixin-clawbot'),
+        _buildSectionTitle('claw bot'),
         _buildThinDivider(),
 
         // 状态显示
@@ -1871,6 +1953,8 @@ class _SettingsTabState extends State<SettingsTab> {
     existing.weatherApiKey = _weatherApiKeyController.text.trim();
     existing.weatherApiHost = _weatherApiHostController.text.trim();
     existing.weatherCity = _weatherCityController.text.trim();
+    existing.showTranslateLangSelector = _showTranslateLangSelector;
+    existing.translateEnabledLangs = List.of(_translateEnabledLangs);
     await SettingsService.save(existing);
 
     // 通知设置变更

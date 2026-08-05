@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../services/vibe_task_service.dart';
 
@@ -61,19 +62,25 @@ class _VibeTaskScreenState extends State<VibeTaskScreen> {
       theme: ThemeData(fontFamily: 'Microsoft YaHei'),
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+        body: GestureDetector(
+          onPanStart: (_) => windowManager.startDragging(),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
           ),

@@ -28,30 +28,30 @@ class FavoriteFolder {
 
 class FavoriteItem {
   FavoriteItem({
-    required this.id,
     required this.filePath,
-    String? displayName,
     this.folderId,
     DateTime? createdAt,
-  })  : displayName = displayName ?? _extractName(filePath),
-       createdAt = createdAt ?? DateTime.now();
+  }) : createdAt = createdAt ?? DateTime.now();
 
-  final String id;
+  /// 文件在存储目录中的绝对路径
   String filePath;
-  final String displayName;
-  String? folderId; // null = uncategorized
+
+  /// null = 未分类
+  String? folderId;
   final DateTime createdAt;
 
-  static String _extractName(String path) {
-    final segments = path.replaceAll('\\', '/').split('/');
-    return segments.isNotEmpty ? segments.last : path;
+  /// 文件名（不含路径）
+  String get displayName {
+    final segments = filePath.replaceAll('\\', '/').split('/');
+    return segments.isNotEmpty ? segments.last : filePath;
   }
+
+  /// 唯一标识，等同于 [filePath]
+  String get id => filePath;
 
   factory FavoriteItem.fromJson(Map<String, dynamic> json) {
     return FavoriteItem(
-      id: json['id'] as String,
       filePath: json['filePath'] as String,
-      displayName: json['displayName'] as String?,
       folderId: json['folderId'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String)
@@ -60,9 +60,7 @@ class FavoriteItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
         'filePath': filePath,
-        'displayName': displayName,
         'folderId': folderId,
         'createdAt': createdAt.toIso8601String(),
       };

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:orbby/core/sub_app.dart';
 import 'package:orbby/core/sub_app_registry.dart';
@@ -56,6 +57,7 @@ class _MarkdownViewerContent extends StatefulWidget {
 
 class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
   final _textController = TextEditingController();
+  final _pathController = TextEditingController();
   final _previewScrollController = ScrollController();
 
   double _dividerPosition = 0.5;
@@ -73,6 +75,7 @@ class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
   void dispose() {
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
+    _pathController.dispose();
     _previewScrollController.dispose();
     super.dispose();
   }
@@ -86,6 +89,25 @@ class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
   // ── 文件操作 ───────────────────────────────────────────────────────────
 
   Future<void> _openFile() async {
+    final pathText = _pathController.text.trim();
+    if (pathText.isNotEmpty) {
+      try {
+        final content = await File(pathText).readAsString();
+        _textController.text = content;
+        _currentFilePath = pathText;
+        if (mounted) {
+          final name = pathText.split(Platform.pathSeparator).last;
+          _showSnackBar('已加载: $name');
+        }
+        return;
+      } catch (e) {
+        if (mounted) {
+          _showSnackBar('读取文件失败: $e', error: true);
+        }
+        return;
+      }
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['md', 'markdown', 'txt'],
@@ -105,6 +127,31 @@ class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
     } catch (e) {
       if (mounted) {
         _showSnackBar('读取文件失败: $e', error: true);
+      }
+    }
+  }
+
+  Future<void> _saveFile() async {
+    String? savePath = _currentFilePath;
+    savePath ??= await FilePicker.platform.saveFile(
+      dialogTitle: '保存 Markdown 文件',
+      fileName: 'output.md',
+      type: FileType.custom,
+      allowedExtensions: ['md', 'markdown', 'txt'],
+    );
+    if (savePath == null) return;
+
+    try {
+      await File(savePath).writeAsString(_textController.text);
+      _currentFilePath = savePath;
+      _pathController.text = savePath;
+      if (mounted) {
+        final name = savePath.split(Platform.pathSeparator).last;
+        _showSnackBar('已保存: $name');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('保存失败: $e', error: true);
       }
     }
   }
@@ -138,12 +185,20 @@ class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
         useMaterial3: true,
         fontFamily: 'Microsoft YaHei',
       ),
-      child: Column(
-        children: [
-          _buildTitleBar(),
-          _buildToolbar(),
-          Expanded(child: _buildSplitView()),
-        ],
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: CallbackShortcuts(
+          bindings: {
+            SingleActivator(LogicalKeyboardKey.keyS, control: true): _saveFile,
+          },
+          child: Column(
+            children: [
+              _buildTitleBar(),
+              _buildToolbar(),
+              Expanded(child: _buildSplitView()),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -217,10 +272,44 @@ class _MarkdownViewerContentState extends State<_MarkdownViewerContent> {
       ),
       child: Row(
         children: [
+          Expanded(
+            child: SizedBox(
+              height: 32,
+              child: TextField(
+                controller: _pathController,
+                onSubmitted: (_) => _openFile(),
+                style: const TextStyle(
+                  color: _textPrimary,
+                  fontSize: 12,
+                  fontFamily: 'Consolas',
+                ),
+                decoration: InputDecoration(
+                  hintText: '文件路径，不输入则使用文件选择器。',
+                  hintStyle: const TextStyle(color: _textSecondary, fontSize: 12),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.06),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide.none,
+                  ),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           _ToolBtn(
             icon: Icons.folder_open_rounded,
             label: '打开文件',
             onTap: _openFile,
+          ),
+          const SizedBox(width: 8),
+          _ToolBtn(
+            icon: Icons.save_rounded,
+            label: '保存',
+            onTap: _saveFile,
           ),
           const Spacer(),
         ],

@@ -40,7 +40,7 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
   bool _showDeleteFolderDialog = false;
   String? _deleteTargetFolderId;
   bool _showMoveDialog = false;
-  String? _moveTargetItemId;
+  String? _moveTargetFilePath;
   final _newFolderController = TextEditingController();
 
   @override
@@ -183,21 +183,21 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
 
   // ── Move item ────────────────────────────────────────────
 
-  void _openMoveDialog(String itemId) {
+  void _openMoveDialog(String filePath) {
     setState(() {
       _showMoveDialog = true;
-      _moveTargetItemId = itemId;
+      _moveTargetFilePath = filePath;
     });
   }
 
   Future<void> _moveToFolder(String? folderId) async {
-    final itemId = _moveTargetItemId;
+    final filePath = _moveTargetFilePath;
     setState(() {
       _showMoveDialog = false;
-      _moveTargetItemId = null;
+      _moveTargetFilePath = null;
     });
-    if (itemId == null) return;
-    await FavoritesService.moveToFolder(itemId, folderId);
+    if (filePath == null) return;
+    await FavoritesService.moveToFolder(filePath, folderId);
     FavoritesEditScreen.editChannel.invokeMethod('favorites_changed');
     await _loadData();
   }
@@ -205,14 +205,14 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
   void _cancelMove() {
     setState(() {
       _showMoveDialog = false;
-      _moveTargetItemId = null;
+      _moveTargetFilePath = null;
     });
   }
 
   // ── Delete item ──────────────────────────────────────────
 
-  Future<void> _deleteItem(String id) async {
-    await FavoritesService.remove(id);
+  Future<void> _deleteItem(String filePath) async {
+    await FavoritesService.remove(filePath);
     FavoritesEditScreen.editChannel.invokeMethod('favorites_changed');
     await _loadData();
   }
@@ -231,13 +231,21 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
     await _loadData();
   }
 
+  /// 打开文件所在目录并选中该文件
   void _openFile(String filePath) {
     if (Platform.isWindows) {
-      Process.run('explorer', [filePath]);
+      // /select, 必须与路径拼为一个参数
+      Process.run(
+        'explorer',
+        ['/select,${filePath.replaceAll('/', '\\')}'],
+      );
     } else if (Platform.isMacOS) {
-      Process.run('open', [filePath]);
+      Process.run('open', ['-R', filePath]);
     } else {
-      Process.run('xdg-open', [filePath]);
+      final segments =
+          filePath.replaceAll('\\', '/').split('/');
+      final parentPath = segments.sublist(0, segments.length - 1).join('/');
+      Process.run('xdg-open', [parentPath]);
     }
   }
 
@@ -459,13 +467,13 @@ class _FavoritesEditScreenState extends State<FavoritesEditScreen>
               if (_folders.isNotEmpty)
                 InteractiveIcon(
                   size: 24,
-                  onTap: () => _openMoveDialog(item.id),
+                  onTap: () => _openMoveDialog(item.filePath),
                   child: const Icon(Icons.drive_file_move_outline,
                       color: Colors.black54, size: 16),
                 ),
               InteractiveIcon(
                 size: 24,
-                onTap: () => _deleteItem(item.id),
+                onTap: () => _deleteItem(item.filePath),
                 child: const Icon(Icons.close, color: Colors.black38, size: 14),
               ),
             ],

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/translate_service.dart';
+import '../config/settings.dart';
+import '../screens/home_screen.dart';
 import 'base_panel.dart';
 import 'interactive_icon.dart';
 
@@ -28,14 +30,44 @@ class _TranslatePanelState extends BasePanelState<TranslatePanel> {
   String _resultText = '';
   Timer? _clearTimer;
   TranslateLang _selectedLang = TranslateLang.zhEn;
+  bool _showLangSelector = true;
+  List<String> _enabledLangs = [];
 
   @override
   void initState() {
     super.initState();
+    _loadTranslateSettings();
+    HomeScreen.settingsChangeNotifier.addListener(_onRefresh);
+  }
+
+  void _onRefresh() {
+    _loadTranslateSettings();
+  }
+
+  Future<void> _loadTranslateSettings() async {
+    final settings = await SettingsService.load();
+    if (!mounted) return;
+    setState(() {
+      _showLangSelector = settings.showTranslateLangSelector;
+      _enabledLangs = List.of(settings.translateEnabledLangs);
+      // 如果当前语言不在启用列表中，切换到第一个启用的
+      final enabledValues = _getEnabledLangs();
+      if (enabledValues.isNotEmpty && !enabledValues.contains(_selectedLang)) {
+        _selectedLang = enabledValues.first;
+      }
+    });
+  }
+
+  List<TranslateLang> _getEnabledLangs() {
+    if (_enabledLangs.isEmpty) return TranslateLang.values;
+    return TranslateLang.values
+        .where((e) => _enabledLangs.contains(e.name))
+        .toList();
   }
 
   @override
   void dispose() {
+    HomeScreen.settingsChangeNotifier.removeListener(_onRefresh);
     _clearTimer?.cancel();
     _inputController.dispose();
     _inputFocus.dispose();
@@ -161,14 +193,18 @@ Widget buildContent(BuildContext context) {
   }
 
   Widget _buildLangSelector() {
+    final enabledLangs = _getEnabledLangs();
+    if (!_showLangSelector || enabledLangs.length <= 1) {
+      return const SizedBox.shrink();
+    }
     return SizedBox(
       height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: TranslateLang.values.length,
+        itemCount: enabledLangs.length,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (context, index) {
-          final lang = TranslateLang.values[index];
+          final lang = enabledLangs[index];
           final isSelected = lang == _selectedLang;
           return GestureDetector(
             onTap: () {
