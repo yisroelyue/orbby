@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:image/image.dart' as img;
 
 import '../screens/home_screen.dart';
 import '../services/panel_cache.dart';
@@ -14,32 +15,29 @@ class AppInfo {
     required this.id,
     required this.name,
     this.executable,
-    this.subAppId,
     required this.icon,
     this.description = '',
     this.type = 'system',
-    this.launchType = 'executable',
   });
 
   final String id;
   final String name;
   final String? executable;
-  final String? subAppId;
   final String icon;
   final String description;
   final String type;
-  final String launchType;
+
+  /// 是否配置了独立图标（默认 svg 占位不算）。
+  bool get hasIcon => icon.isNotEmpty && icon != 'assets/svg/应用.svg';
 
   factory AppInfo.fromJson(Map<String, dynamic> json) {
     return AppInfo(
       id: json['id'] as String,
       name: json['name'] as String,
       executable: json['executable'] as String?,
-      subAppId: json['subAppId'] as String?,
       icon: json['icon'] as String,
       description: json['description'] as String? ?? '',
       type: json['type'] as String? ?? 'system',
-      launchType: json['launchType'] as String? ?? 'executable',
     );
   }
 
@@ -47,11 +45,9 @@ class AppInfo {
         'id': id,
         'name': name,
         'executable': executable,
-        'subAppId': subAppId,
         'icon': icon,
         'description': description,
         'type': type,
-        'launchType': launchType,
       };
 }
 
@@ -109,10 +105,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
   }
 
   Future<void> _launchApp(AppInfo app) async {
-    if (app.launchType == 'plugin' && app.subAppId != null) {
-      await _launchPluginApp(app.subAppId!);
-      return;
-    }
     if (app.executable != null) {
       final exePath = AppConfig.resolvePath(app.executable!);
       try {
@@ -131,12 +123,6 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
         
       }
     }
-  }
-
-  Future<void> _launchPluginApp(String subAppId) async {
-    HomeScreen.menuChannel.invokeMethod('launch_sub_app', {
-      'subAppId': subAppId,
-    });
   }
 
   @override
@@ -169,14 +155,15 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
     }
 
     if (_apps.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text(
+      return Row(
+        children: [
+          _buildAppCenterButton(),
+          const SizedBox(width: 10),
+          Text(
             '暂无应用',
             style: TextStyle(color: tertiaryText, fontSize: 12),
           ),
-        ),
+        ],
       );
     }
 
@@ -284,7 +271,7 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
 
   Widget _buildAppCard(AppInfo app, int index) {
     final isHovered = _hoveredIndex == index;
-    final hasIcon = app.icon.isNotEmpty && app.icon != 'assets/svg/应用.svg';
+    final hasIcon = app.hasIcon;
     return Tooltip(
       message: app.name,
       child: MouseRegion(
@@ -338,19 +325,7 @@ class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
 class AppConfig {
   AppConfig._();
 
-  static String get projectRoot {
-    try {
-      var dir = Directory(Platform.resolvedExecutable).parent;
-      while (dir.path != dir.parent.path) {
-        if (Directory('${dir.path}/sub_app').existsSync() ||
-            Directory('${dir.path}/sub_apps').existsSync()) {
-          return dir.path;
-        }
-        dir = dir.parent;
-      }
-    } catch (_) {}
-    return Directory.current.path;
-  }
+  static String get projectRoot => Directory.current.path;
 
   static String get systemConfigPath =>
       '$projectRoot/lib/config/apps_config.json';
@@ -370,48 +345,7 @@ class AppConfig {
 
   static const _systemAppsJson = '''
 {
-  "apps": [
-    {
-      "id": "image_handler",
-      "name": "图像处理器",
-      "launchType": "plugin",
-      "subAppId": "image_handler",
-      "executable": null,
-      "icon": "assets/svg/图像处理.svg",
-      "description": "图片格式转换与处理",
-      "type": "system"
-    },
-    {
-      "id": "markdown_viewer",
-      "name": "Markdown 查看器",
-      "launchType": "plugin",
-      "subAppId": "markdown_viewer",
-      "executable": null,
-      "icon": "assets/svg/markdown.svg",
-      "description": "编辑与预览 Markdown 报文",
-      "type": "system"
-    },
-    {
-      "id": "screen_record",
-      "name": "屏幕录制",
-      "launchType": "plugin",
-      "subAppId": "screen_record",
-      "executable": null,
-      "icon": "assets/png/录制.png",
-      "description": "录制全屏视频",
-      "type": "system"
-    },
-    {
-      "id": "json_viewer",
-      "name": "JSON 查看器",
-      "launchType": "plugin",
-      "subAppId": "json_viewer",
-      "executable": null,
-      "icon": "assets/svg/JSON查看.svg",
-      "description": "编辑、格式化、树形预览 JSON 数据",
-      "type": "system"
-    }
-  ]
+  "apps": []
 }
 ''';
 
@@ -472,7 +406,34 @@ class AppConfig {
         }),
       );
     } catch (e) {
-      
+
+    }
+  }
+
+  /// 图标缓存目录：转换后的图标统一存放在 ~/.orbby/icons/ 下。
+  static String get iconsDir {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
+    return '$home/.orbby/icons';
+  }
+
+  /// 将 ICO 图标解码并转存为 PNG 到图标缓存目录，返回 PNG 路径；失败返回 null。
+  static String? convertIcoToPng(String icoPath, String appId) {
+    try {
+      final bytes = File(icoPath).readAsBytesSync();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+      final pngBytes = img.encodePng(decoded);
+      final dir = Directory(iconsDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      final outPath = '${dir.path}/$appId.png';
+      File(outPath).writeAsBytesSync(pngBytes);
+      return outPath;
+    } catch (_) {
+      return null;
     }
   }
 }

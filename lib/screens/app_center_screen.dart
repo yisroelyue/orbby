@@ -8,8 +8,6 @@ import 'package:window_manager/window_manager.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import '../config/settings.dart';
-import '../core/sub_app.dart';
-import '../core/sub_app_registry.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/interactive_icon.dart';
 
@@ -109,15 +107,16 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     if (result == null) return;
 
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    final launchType = result['launchType'] ?? 'executable';
+    var icon = result['icon'] ?? 'assets/svg/应用.svg';
+    if (icon.toLowerCase().endsWith('.ico')) {
+      icon = AppConfig.convertIcoToPng(icon, id) ?? 'assets/svg/应用.svg';
+    }
     final app = AppInfo(
       id: id,
       name: result['name']!,
-      executable: launchType == 'executable' ? result['path'] : null,
-      subAppId: launchType == 'plugin' ? result['subAppId'] : null,
-      icon: launchType == 'plugin' ? result['icon'] ?? 'assets/svg/应用.svg' : 'assets/svg/应用.svg',
+      executable: result['path'],
+      icon: icon,
       type: 'custom',
-      launchType: launchType,
     );
     _customApps.add(app);
     await AppConfig.saveCustomApps(_customApps);
@@ -158,12 +157,6 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
   }
 
   void _launch(AppInfo app) async {
-    if (app.launchType == 'plugin' && app.subAppId != null) {
-      AppCenterScreen.panelChannel.invokeMethod('launch_sub_app', {
-        'subAppId': app.subAppId!,
-      });
-      return;
-    }
     if (app.executable != null) {
       final exePath = AppConfig.resolvePath(app.executable!);
       try {
@@ -355,7 +348,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
-                  child: app.type == 'system'
+                  child: app.hasIcon
                       ? _buildAppIcon(app)
                       : Text(
                           app.name.isNotEmpty ? app.name[0] : '?',
@@ -480,7 +473,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
-                    child: isSystem
+                    child: app.hasIcon
                         ? _buildAppIcon(app)
                         : Text(
                             app.name.isNotEmpty ? app.name[0] : '?',
@@ -598,11 +591,7 @@ class _AddAppDialog extends StatefulWidget {
 class _AddAppDialogState extends State<_AddAppDialog> {
   final _nameCtrl = TextEditingController();
   String? _selectedPath;
-  String _mode = 'executable'; // 'plugin' or 'executable'
-  String? _selectedPluginId;
-  SubApp? _selectedPlugin;
-
-  List<SubApp> get _plugins => SubAppRegistry.all;
+  String? _selectedIcon;
 
   @override
   void dispose() {
@@ -617,16 +606,40 @@ class _AddAppDialogState extends State<_AddAppDialog> {
       allowMultiple: false,
     );
     if (result != null && result.files.isNotEmpty) {
-      setState(() => _selectedPath = result.files.first.path);
+      final path = result.files.first.path;
+      if (path == null) return;
+      setState(() {
+        _selectedPath = path;
+        _selectedIcon = _findIco(path);
+      });
     }
   }
 
-  void _selectPlugin(SubApp plugin) {
-    setState(() {
-      _selectedPlugin = plugin;
-      _selectedPluginId = plugin.id;
-      _nameCtrl.text = plugin.name;
-    });
+  /// 在选中程序的同目录查找 .ico 图标（优先与程序同名，其次第一个）。
+  String? _findIco(String exePath) {
+    try {
+      final dir = Directory(File(exePath).parent.path);
+      if (!dir.existsSync()) return null;
+      final icos = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.ico'))
+          .toList();
+      if (icos.isEmpty) return null;
+      final base = File(exePath)
+          .uri
+          .pathSegments
+          .last
+          .replaceAll(RegExp(r'\.exe$', caseSensitive: false), '');
+      for (final f in icos) {
+        if (f.uri.pathSegments.last.toLowerCase() == '$base.ico') {
+          return f.path;
+        }
+      }
+      return icos.first.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -643,15 +656,6 @@ class _AddAppDialogState extends State<_AddAppDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Mode toggle
-            Row(
-              children: [
-                _buildModeChip('外部程序', 'executable'),
-                const SizedBox(width: 8),
-                _buildModeChip('已注册插件', 'plugin'),
-              ],
-            ),
-            const SizedBox(height: 12),
             TextField(
               controller: _nameCtrl,
               style: const TextStyle(color: Colors.black87, fontSize: 14),
@@ -671,75 +675,37 @@ class _AddAppDialogState extends State<_AddAppDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_mode == 'executable')
-              GestureDetector(
-                onTap: _pickFile,
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.folder_open_rounded,
-                          color: Colors.black54, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _selectedPath ?? '选择应用文件',
-                          style: TextStyle(
-                            color: _selectedPath != null
-                                ? Colors.black54
-                                : Colors.black.withValues(alpha: 0.35),
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+            GestureDetector(
+              onTap: _pickFile,
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              )
-            else
-              ..._plugins.map((p) => GestureDetector(
-                    onTap: () => _selectPlugin(p),
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _selectedPluginId == p.id
-                            ? Colors.black.withValues(alpha: 0.10)
-                            : Colors.black.withValues(alpha: 0.03),
-                        borderRadius: BorderRadius.circular(8),
-                        border: _selectedPluginId == p.id
-                            ? Border.all(
-                                color: Colors.black.withValues(alpha: 0.15))
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              p.name,
-                              style: const TextStyle(
-                                  color: Colors.black87, fontSize: 14),
-                            ),
-                          ),
-                          if (p.description.isNotEmpty)
-                            Text(
-                              p.description,
-                              style: const TextStyle(
-                                  color: Colors.black38, fontSize: 12),
-                            ),
-                        ],
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_open_rounded,
+                        color: Colors.black54, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedPath ?? '选择应用文件',
+                        style: TextStyle(
+                          color: _selectedPath != null
+                              ? Colors.black54
+                              : Colors.black.withValues(alpha: 0.35),
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  )),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -754,15 +720,11 @@ class _AddAppDialogState extends State<_AddAppDialog> {
         TextButton(
           onPressed: () {
             final name = _nameCtrl.text.trim();
-            if (name.isEmpty) return;
-            if (_mode == 'executable' && _selectedPath == null) return;
-            if (_mode == 'plugin' && _selectedPluginId == null) return;
+            if (name.isEmpty || _selectedPath == null) return;
             Navigator.of(context).pop({
               'name': name,
               'path': _selectedPath,
-              'launchType': _mode,
-              'subAppId': _selectedPluginId,
-              'icon': _selectedPlugin?.iconAsset,
+              'icon': _selectedIcon ?? 'assets/svg/应用.svg',
             });
           },
           child: const Text(
@@ -771,29 +733,6 @@ class _AddAppDialogState extends State<_AddAppDialog> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildModeChip(String label, String value) {
-    final active = _mode == value;
-    return GestureDetector(
-      onTap: () => setState(() => _mode = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active
-              ? Colors.black.withValues(alpha: 0.10)
-              : Colors.black.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.black87 : Colors.black38,
-            fontSize: 13,
-          ),
-        ),
-      ),
     );
   }
 }

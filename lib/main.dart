@@ -13,13 +13,11 @@ import 'package:window_manager/window_manager.dart';
 import 'app.dart';
 import 'config/constants.dart';
 import 'config/settings.dart';
-import 'core/sub_app_bootstrap.dart';
 import 'screens/about_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/favorites_edit_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/notification_screen.dart';
-import 'screens/sub_app_window_screen.dart';
 import 'screens/todo_edit_screen.dart';
 import 'screens/todo_item_popup.dart';
 import 'screens/clipboard_popup.dart';
@@ -44,7 +42,6 @@ Future<void> main(List<String> args) async {
   await LogService.init();
 
   await windowManager.ensureInitialized();
-  bootstrapSubApps();
 
   final windowController = await WindowController.fromCurrentEngine();
   final windowArguments = _parseWindowArguments(windowController.arguments);
@@ -95,13 +92,6 @@ Future<void> main(List<String> args) async {
         home: const AppCenterScreen(),
       ),
     );
-    return;
-  }
-  if (windowArguments['type'] == 'sub_app') {
-    await Window.initialize();
-    await _configureSubAppWindow(windowController, windowArguments);
-    final subAppId = windowArguments['subAppId'] as String? ?? '';
-    runApp(SubAppWindowScreen(subAppId: subAppId));
     return;
   }
   if (windowArguments['type'] == 'about') {
@@ -501,34 +491,6 @@ Future<void> _configureAppCenterWindow(
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('Orbby App Center');
-      await windowManager.show();
-    },
-  );
-}
-
-Future<void> _configureSubAppWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(const Size(200, 48));
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setTitle('Orbby Sub App');
       await windowManager.show();
     },
   );

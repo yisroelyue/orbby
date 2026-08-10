@@ -11,7 +11,6 @@ import 'package:window_manager/window_manager.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
-import '../core/sub_app_registry.dart';
 import '../screens/app_center_screen.dart';
 import '../screens/favorites_edit_screen.dart';
 import '../screens/todo_edit_screen.dart';
@@ -39,8 +38,6 @@ class _PetScreenState extends State<PetScreen> {
   static const _favoritesEditHeight = 600.0;
   static const _appCenterWidth = 720.0;
   static const _appCenterHeight = 580.0;
-  static const _subAppDefaultWidth = 800.0;
-  static const _subAppDefaultHeight = 600.0;
   static const _todoItemPopupWidth = 500.0;
   static const _todoItemPopupHeight = 300.0;
   static const _clipboardPopupWidth = 320.0;
@@ -64,7 +61,6 @@ class _PetScreenState extends State<PetScreen> {
   WindowController? _todoEditWindow;
   WindowController? _favoritesEditWindow;
   WindowController? _appCenterWindow;
-  WindowController? _subAppWindow;
   WindowController? _todoItemPopupWindow;
   WindowController? _clipboardPopupWindow;
   WindowController? _vibeTaskWindow;
@@ -201,10 +197,6 @@ class _PetScreenState extends State<PetScreen> {
         return;
       case 'open_app_center':
         _showAppCenter();
-        return;
-      case 'launch_sub_app':
-        final args = call.arguments as Map;
-        _showSubAppWindow(args['subAppId'] as String);
         return;
       case 'close_menu':
         _menuVisible = false;
@@ -688,10 +680,6 @@ class _PetScreenState extends State<PetScreen> {
           } catch (_) {}
         }
         return;
-      case 'launch_sub_app':
-        final args = call.arguments as Map;
-        _showSubAppWindow(args['subAppId'] as String);
-        return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
     }
@@ -749,37 +737,6 @@ class _PetScreenState extends State<PetScreen> {
       ),
     );
     _appCenterWindow = createdWindow;
-  }
-
-  Future<void> _showSubAppWindow(String subAppId) async {
-    try {
-      await _subAppWindow?.hide();
-    } catch (_) {}
-    _subAppWindow = null;
-
-    final subApp = SubAppRegistry.byId(subAppId);
-    final preferredSize =
-        subApp?.preferredWindowSize ??
-        const Size(_subAppDefaultWidth, _subAppDefaultHeight);
-
-    final display = await screenRetriever.getPrimaryDisplay();
-    final screenSize = display.visibleSize ?? display.size;
-    final left = (screenSize.width - preferredSize.width) / 2;
-    final top = (screenSize.height - preferredSize.height) / 2;
-
-    final createdWindow = await WindowController.create(
-      WindowConfiguration(
-        arguments: jsonEncode({
-          'type': 'sub_app',
-          'subAppId': subAppId,
-          'left': left,
-          'top': top,
-          'width': preferredSize.width,
-          'height': preferredSize.height,
-        }),
-      ),
-    );
-    _subAppWindow = createdWindow;
   }
 
   Future<void> _showTodoItemPopup(Map<String, dynamic> item) async {

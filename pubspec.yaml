@@ -49,12 +49,6 @@ dependencies:
   file_picker: ^8.1.7
   ffi: ^2.1.0
   flutter_markdown: ^0.7.6
-  orbby_plugin_image_processer:
-    path: plugins/image_processer
-  orbby_plugin_screen_record:
-    path: plugins/screen_record
-  orbby_plugin_json_viewer:
-    path: plugins/json_viewer
   fl_chart:
     git:
       url: https://github.com/imaNNeo/fl_chart.git
@@ -63,6 +57,7 @@ dependencies:
   dart_jsonwebtoken: ^3.4.1
   cryptography: ^2.9.0
   qr_flutter: ^4.1.0
+  image: ^4.9.1
 
 dependency_overrides:
   desktop_multi_window:

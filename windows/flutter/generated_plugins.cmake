@@ -5,8 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_multi_window
   flutter_acrylic
-  orbby_plugin_image_processer
-  orbby_plugin_screen_record
   screen_retriever_windows
   system_tray
   url_launcher_windows
