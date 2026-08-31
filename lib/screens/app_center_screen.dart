@@ -37,12 +37,21 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
 
   Future<void> _load() async {
     final settings = await SettingsService.load();
+    final systemApps = AppConfig.loadSystemApps();
+    final customApps = AppConfig.loadCustomApps();
     setState(() {
-      _systemApps = AppConfig.loadSystemApps();
-      _customApps = AppConfig.loadCustomApps();
-      _panelAppIds = settings.panelAppIds;
+      _systemApps = systemApps;
+      _customApps = customApps;
+      // 过滤掉已失效的面板 id（如旧架构残留），避免计数虚高导致右键菜单异常
+      _panelAppIds = settings.panelAppIds
+          .where((id) => [...customApps, ...systemApps].any((a) => a.id == id))
+          .toList();
       _loading = false;
     });
+    // 有失效 id 被过滤时写回，持久化清理脏数据
+    if (_panelAppIds.length != settings.panelAppIds.length) {
+      await _savePanel();
+    }
   }
 
   List<AppInfo> get _allApps => [..._customApps, ..._systemApps];
@@ -76,7 +85,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               ],
             ),
           )
-        else if (_panelAppIds.length < 8)
+        else if (_panelApps.length < 8)
           const PopupMenuItem(
             value: 'add',
             child: Row(
@@ -84,6 +93,17 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                 Icon(Icons.add_circle_outline, color: Colors.black54, size: 18),
                 SizedBox(width: 8),
                 Text('加入显示面板', style: TextStyle(color: Colors.black54, fontSize: 14)),
+              ],
+            ),
+          )
+        else
+          const PopupMenuItem(
+            enabled: false,
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.black26, size: 18),
+                SizedBox(width: 8),
+                Text('显示面板已满', style: TextStyle(color: Colors.black38, fontSize: 14)),
               ],
             ),
           ),

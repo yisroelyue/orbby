@@ -247,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(8),
               child: FrostedPanel(
                 color: _menuBgColor,
                 child: Stack(
