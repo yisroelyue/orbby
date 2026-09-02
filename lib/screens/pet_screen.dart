@@ -12,11 +12,9 @@ import 'package:window_manager/window_manager.dart';
 import '../config/constants.dart';
 import '../config/settings.dart';
 import '../screens/app_center_screen.dart';
-import '../screens/favorites_edit_screen.dart';
 import '../screens/todo_edit_screen.dart';
 import '../screens/todo_item_popup.dart';
 import '../services/clipboard_service.dart';
-import '../services/favorites_service.dart';
 import '../services/notification_service.dart';
 import '../services/weixin/weixin_clawbot_service.dart';
 import '../services/weixin/weixin_models.dart';
@@ -34,8 +32,6 @@ class _PetScreenState extends State<PetScreen> {
   static const _menuWidth = 600.0;
   static const _todoEditWidth = 800.0;
   static const _todoEditHeight = 620.0;
-  static const _favoritesEditWidth = 750.0;
-  static const _favoritesEditHeight = 600.0;
   static const _appCenterWidth = 720.0;
   static const _appCenterHeight = 580.0;
   static const _todoItemPopupWidth = 500.0;
@@ -46,6 +42,8 @@ class _PetScreenState extends State<PetScreen> {
   static const _vibeTaskHeight = 36.0;
   static const _notifWidth = 400.0;
   static const _notifHeight = 400.0;
+  static const _appBarWidth = 700.0;
+  static const _appBarHeight = 80.0;
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events',
     mode: ChannelMode.unidirectional,
@@ -56,15 +54,20 @@ class _PetScreenState extends State<PetScreen> {
   );
   static const _dropChannel = MethodChannel('orbby_file_drop');
   static const _hotkeyChannel = MethodChannel('orbby_hotkey');
+  static const _appBarChannel = WindowMethodChannel(
+    'orbby_app_bar_events',
+    mode: ChannelMode.unidirectional,
+  );
 
   WindowController? _menuWindow;
   WindowController? _todoEditWindow;
-  WindowController? _favoritesEditWindow;
   WindowController? _appCenterWindow;
   WindowController? _todoItemPopupWindow;
   WindowController? _clipboardPopupWindow;
   WindowController? _vibeTaskWindow;
   WindowController? _notifWindow;
+  WindowController? _appBarWindow;
+  bool _appBarVisible = false;
   bool _menuVisible = false;
   bool _precreatingMenu = false;
   VoidCallback? _weixinStatusListener;
@@ -78,11 +81,11 @@ class _PetScreenState extends State<PetScreen> {
     _settingsChannel.setMethodCallHandler(_handleSettingsEvent);
     _dropChannel.setMethodCallHandler(_handleDropEvent);
     _hotkeyChannel.setMethodCallHandler(_handleHotkeyEvent);
+    _appBarChannel.setMethodCallHandler((call) async {
+      if (call.method == 'hidden') _appBarVisible = false;
+    });
     TodoEditScreen.editChannel.setMethodCallHandler(_handleTodoEditEvent);
     TodoItemPopup.popupChannel.setMethodCallHandler(_handleTodoItemPopupEvent);
-    FavoritesEditScreen.editChannel.setMethodCallHandler(
-      _handleFavoritesEditEvent,
-    );
     AppCenterScreen.panelChannel.setMethodCallHandler(_handleAppCenterEvent);
     _weixinStatusListener = () => _pushWeixinStatus();
     WeixinClawbotService.instance.statusNotifier.addListener(
@@ -136,6 +139,7 @@ class _PetScreenState extends State<PetScreen> {
     _settingsChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
     _hotkeyChannel.setMethodCallHandler(null);
+    _appBarChannel.setMethodCallHandler(null);
     if (_weixinStatusListener != null) {
       WeixinClawbotService.instance.statusNotifier.removeListener(
         _weixinStatusListener!,
@@ -154,7 +158,7 @@ class _PetScreenState extends State<PetScreen> {
         // 设置已集成到 HomeScreen 的设置 tab，切换过去
         if (_menuWindow != null) {
           try {
-            await _menuWindow!.invokeMethod('switch_tab', 2);
+            await _menuWindow!.invokeMethod('switch_tab', 1);
           } catch (_) {}
         }
         return;
@@ -185,15 +189,6 @@ class _PetScreenState extends State<PetScreen> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _toggleVibeTaskWindow();
         });
-        return;
-      case 'open_favorites_editor':
-        final args = call.arguments;
-        if (args is Map) {
-          _showFavoritesEditor({
-            'folderId': args['folderId'] as String? ?? '',
-            'folderName': args['folderName'] as String? ?? '未分类',
-          });
-        }
         return;
       case 'open_app_center':
         _showAppCenter();
@@ -275,10 +270,7 @@ class _PetScreenState extends State<PetScreen> {
     if (_menuWindow != null) {
       try {
         await Future.wait([
-          _menuWindow!.invokeMethod('refresh_balance'),
           _menuWindow!.invokeMethod('refresh_todos'),
-          _menuWindow!.invokeMethod('refresh_favorites'),
-          _menuWindow!.invokeMethod('refresh_panel_apps'),
         ]);
       } catch (_) {}
     }
@@ -324,6 +316,37 @@ class _PetScreenState extends State<PetScreen> {
       ),
     );
     _menuWindow = createdWindow;
+  }
+
+  Future<void> _toggleAppBarWindow() async {
+    if (_appBarVisible) {
+      _appBarVisible = false;
+      await _appBarWindow?.hide();
+      return;
+    }
+    final display = await screenRetriever.getPrimaryDisplay();
+    final size = display.visibleSize ?? display.size;
+    final left = (size.width - _appBarWidth) / 2;
+    final top = size.height - _appBarHeight - 10;
+    if (_appBarWindow == null) {
+      _appBarWindow = await WindowController.create(WindowConfiguration(
+        hiddenAtLaunch: true,
+        arguments: jsonEncode({
+          'type': 'app_bar',
+          'left': left,
+          'top': top,
+          'width': _appBarWidth,
+          'height': _appBarHeight,
+        }),
+      ));
+      await _appBarWindow!.show();
+    } else {
+      await _appBarWindow!.invokeMethod('place', {
+        'left': left, 'top': top, 'width': _appBarWidth, 'height': _appBarHeight,
+      });
+      await _appBarWindow!.show();
+    }
+    _appBarVisible = true;
   }
 
   /// 切换 HomeScreen 显隐
@@ -530,31 +553,7 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _handleDropEvent(MethodCall call) async {
     switch (call.method) {
       case 'filesDropped':
-        final files = (call.arguments as List).cast<String>();
-        int addedCount = 0;
-        for (final path in files) {
-          final file = File(path);
-          if (await file.exists()) {
-            await FavoritesService.add(path);
-            addedCount++;
-          }
-        }
-        if (_menuWindow != null) {
-          try {
-            await _menuWindow!.invokeMethod('refresh_favorites');
-          } catch (_) {}
-        }
-        if (addedCount > 0) {
-          final msg = addedCount == 1
-              ? '已经添加该文件至未分类目录'
-              : '已经添加 $addedCount 个文件至未分类目录';
-          NotificationService.instance.show(
-            title: '收藏成功',
-            message: msg,
-            level: NotificationLevel.success,
-            duration: const Duration(seconds: 2),
-          );
-        }
+        // 文件拖放功能已随收藏模块移除。
         return;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
@@ -585,7 +584,7 @@ class _PetScreenState extends State<PetScreen> {
         await _showMenuWindow();
         if (_menuWindow != null) {
           try {
-            await _menuWindow!.invokeMethod('switch_tab', 2);
+          await _menuWindow!.invokeMethod('switch_tab', 1);
           } catch (_) {}
         }
         return;
@@ -603,6 +602,9 @@ class _PetScreenState extends State<PetScreen> {
             } catch (_) {}
           }
         }
+        return;
+      case 'toggle_app_bar':
+        await _toggleAppBarWindow();
         return;
       case 'show_clipboard':
         final settings = await SettingsService.load();
@@ -657,20 +659,6 @@ class _PetScreenState extends State<PetScreen> {
     }
   }
 
-  Future<void> _handleFavoritesEditEvent(MethodCall call) async {
-    switch (call.method) {
-      case 'favorites_changed':
-        if (_menuWindow != null) {
-          try {
-            await _menuWindow!.invokeMethod('refresh_favorites');
-          } catch (_) {}
-        }
-        return;
-      default:
-        throw MissingPluginException('Not implemented: ${call.method}');
-    }
-  }
-
   Future<void> _handleAppCenterEvent(MethodCall call) async {
     switch (call.method) {
       case 'panel_changed':
@@ -686,33 +674,6 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   // ─── 子窗口创建 ────────────────────────────────────────────────────────────
-
-  Future<void> _showFavoritesEditor(Map<String, dynamic> args) async {
-    try {
-      await _favoritesEditWindow?.hide();
-    } catch (_) {}
-    _favoritesEditWindow = null;
-
-    final display = await screenRetriever.getPrimaryDisplay();
-    final screenSize = display.visibleSize ?? display.size;
-    final left = (screenSize.width - _favoritesEditWidth) / 2;
-    final top = (screenSize.height - _favoritesEditHeight) / 2;
-
-    final createdWindow = await WindowController.create(
-      WindowConfiguration(
-        arguments: jsonEncode({
-          'type': 'favorites_edit',
-          'folderId': args['folderId'],
-          'folderName': args['folderName'],
-          'left': left,
-          'top': top,
-          'width': _favoritesEditWidth,
-          'height': _favoritesEditHeight,
-        }),
-      ),
-    );
-    _favoritesEditWindow = createdWindow;
-  }
 
   Future<void> _showAppCenter() async {
     try {
@@ -834,7 +795,8 @@ class _PetScreenState extends State<PetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return _PetBody(petStyle: _petStyle);
+    // 暂时关闭宠物 UI，但保留 PetScreen 用于快捷键和窗口控制。
+    return const SizedBox.shrink();
   }
 }
 

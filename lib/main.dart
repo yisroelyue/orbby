@@ -14,8 +14,8 @@ import 'app.dart';
 import 'config/constants.dart';
 import 'config/settings.dart';
 import 'screens/about_screen.dart';
+import 'screens/app_bar_screen.dart';
 import 'screens/app_center_screen.dart';
-import 'screens/favorites_edit_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/notification_screen.dart';
 import 'screens/todo_edit_screen.dart';
@@ -23,7 +23,6 @@ import 'screens/todo_item_popup.dart';
 import 'screens/clipboard_popup.dart';
 import 'services/llm_task.dart';
 import 'services/log_service.dart';
-import 'services/panel_data_service.dart';
 import 'services/weixin/weixin_clawbot_service.dart';
 
 import 'screens/vibe_task_screen.dart';
@@ -51,6 +50,21 @@ Future<void> main(List<String> args) async {
     runApp(const HomeScreen());
     return;
   }
+  if (windowArguments['type'] == 'app_bar') {
+    await Window.initialize();
+    await _configureAppBarWindow(windowController, windowArguments);
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          fontFamily: 'Microsoft YaHei',
+        ),
+        home: const AppBarScreen(),
+      ),
+    );
+    return;
+  }
   if (windowArguments['type'] == 'vibe_task') {
     await _configureVibeTaskWindow(windowController, windowArguments);
     runApp(const VibeTaskScreen());
@@ -66,17 +80,6 @@ Future<void> main(List<String> args) async {
     await Window.initialize();
     await _configureTodoItemPopupWindow(windowController, windowArguments);
     runApp(const TodoItemPopup());
-    return;
-  }
-  if (windowArguments['type'] == 'favorites_edit') {
-    await Window.initialize();
-    await _configureFavoritesEditWindow(windowController, windowArguments);
-    final fid = windowArguments['folderId'] as String?;
-    runApp(
-      FavoritesEditScreen(
-        initialFolderId: (fid != null && fid.isNotEmpty) ? fid : null,
-      ),
-    );
     return;
   }
   if (windowArguments['type'] == 'app_center') {
@@ -122,6 +125,8 @@ Future<void> main(List<String> args) async {
   }
   await Window.initialize();
   await _configurePetWindow();
+  // PetScreen 需要挂载以注册全局快捷键，但窗口保持隐藏。
+  await windowManager.hide();
   await _ensureSettingsFile();
 
   // 微信服务只在主窗口 Engine 中启动，避免多窗口产生重复长轮询。
@@ -261,25 +266,8 @@ Future<void> _configureMenuWindow(
         final args = call.arguments as Map;
         await _placeMenuWindow(_boundsFromArguments(args));
         return;
-      case 'refresh_balance':
-        PanelDataService.refreshBalance();
-        HomeScreen.triggerSettingsChange();
-        return;
-      case 'refresh_panel_apps':
-        PanelDataService.refreshApps();
-        HomeScreen.triggerSettingsChange();
-        return;
       case 'refresh_todos':
-        PanelDataService.refreshTodo();
-        return;
-      case 'refresh_schedules':
-        PanelDataService.refreshSchedule();
-        return;
-      case 'refresh_favorites':
-        PanelDataService.refreshFavorites();
-        return;
-      case 'refresh_scripts':
-        PanelDataService.refreshScripts();
+        HomeScreen.triggerSettingsChange();
         return;
       case 'switch_tab':
         final tabIndex = call.arguments as int;
@@ -315,6 +303,42 @@ Future<void> _configureMenuWindow(
         await windowManager.show(inactive: true);
       }
       await _applyMenuWindowEffects();
+    },
+  );
+}
+
+Future<void> _configureAppBarWindow(
+  WindowController windowController,
+  Map<String, dynamic> arguments,
+) async {
+  final bounds = _boundsFromArguments(arguments);
+  await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'place') {
+      await windowManager.setBounds(_boundsFromArguments(call.arguments as Map));
+      await windowManager.show();
+      return;
+    }
+    throw UnimplementedError('Not implemented: ${call.method}');
+  });
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: bounds.size,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: true,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      alwaysOnTop: true,
+    ),
+    () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setMinimumSize(bounds.size);
+      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setBounds(bounds);
+      await windowManager.setBackgroundColor(Colors.transparent);
+      await windowManager.setSkipTaskbar(true);
+      await windowManager.setAlwaysOnTop(true);
+      // 创建阶段保持隐藏，由 place 消息完成定位并显示，避免左上角闪烁。
     },
   );
 }
@@ -434,35 +458,6 @@ Future<void> _configureTodoItemPopupWindow(
       await windowManager.setSkipTaskbar(true);
       await windowManager.setTitle('编辑笔记');
       // Don't show yet — the popup screen will show itself after loading data.
-    },
-  );
-}
-
-Future<void> _configureFavoritesEditWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setTitle('Orbby Favorites');
-      await windowManager.show();
     },
   );
 }

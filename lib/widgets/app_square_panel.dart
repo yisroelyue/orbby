@@ -5,435 +5,243 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as img;
 
+import '../config/settings.dart';
 import '../screens/home_screen.dart';
-import '../services/panel_cache.dart';
-import '../services/panel_data_service.dart';
-import 'base_panel.dart';
 
 class AppInfo {
-  const AppInfo({
-    required this.id,
-    required this.name,
-    this.executable,
-    required this.icon,
-    this.description = '',
-    this.type = 'system',
-  });
-
+  const AppInfo({required this.id, required this.name, required this.icon, this.executable, this.description = '', this.type = 'system'});
   final String id;
   final String name;
-  final String? executable;
   final String icon;
+  final String? executable;
   final String description;
   final String type;
-
-  /// 是否配置了独立图标（默认 svg 占位不算）。
   bool get hasIcon => icon.isNotEmpty && icon != 'assets/svg/应用.svg';
 
-  factory AppInfo.fromJson(Map<String, dynamic> json) {
-    return AppInfo(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      executable: json['executable'] as String?,
-      icon: json['icon'] as String,
-      description: json['description'] as String? ?? '',
-      type: json['type'] as String? ?? 'system',
-    );
-  }
+  factory AppInfo.fromJson(Map<String, dynamic> json) => AppInfo(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        icon: json['icon'] as String,
+        executable: json['executable'] as String?,
+        description: json['description'] as String? ?? '',
+        type: json['type'] as String? ?? 'system',
+      );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'executable': executable,
-        'icon': icon,
-        'description': description,
-        'type': type,
+        'id': id, 'name': name, 'icon': icon, 'executable': executable,
+        'description': description, 'type': type,
       };
 }
 
-class AppSquarePanel extends BasePanel {
+class AppSquarePanel extends StatefulWidget {
   const AppSquarePanel({super.key});
-
-  @override
-  PanelSize get panelSize => PanelSize.full;
-
-  @override
-  String get panelName => 'app_square';
-
   @override
   State<AppSquarePanel> createState() => _AppSquarePanelState();
 }
 
-class _AppSquarePanelState extends BasePanelState<AppSquarePanel> {
-  bool _loading = true;
-  bool _panelHovered = false;
+class _AppSquarePanelState extends State<AppSquarePanel> {
+  static const _buttonSize = 56.0;
+  static const _iconSize = 36.0;
+  static const _textColor = Color(0xFFDDDDDD);
+  static const _hoverColor = Color(0x22333333);
+  static const _borderColor = Color(0x55888888);
+
+  final _scrollController = ScrollController();
   List<AppInfo> _apps = [];
   int? _hoveredIndex;
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  bool get panelHovered => _panelHovered;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadFromCache();
-    PanelCache.addListener(_onCacheChanged);
-    if (!PanelCache.has('app_square_apps')) {
-      setState(() => _loading = true);
-      PanelDataService.refreshApps();
-    }
+    _loadApps();
+    HomeScreen.settingsChangeNotifier.addListener(_loadApps);
   }
 
   @override
   void dispose() {
-    PanelCache.removeListener(_onCacheChanged);
+    HomeScreen.settingsChangeNotifier.removeListener(_loadApps);
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _onCacheChanged() => _loadFromCache();
+  Future<void> _loadApps() async {
+    final settings = await SettingsService.load();
+    final all = [...AppConfig.loadCustomApps(), ...AppConfig.loadSystemApps()];
+    final apps = settings.panelAppIds.isEmpty
+        ? all.take(8).toList()
+        : settings.panelAppIds.map((id) => all.where((app) => app.id == id)).expand((items) => items).take(8).toList();
+    if (mounted) setState(() { _apps = apps; _loading = false; });
+  }
 
-  void _loadFromCache() {
-    final cached = PanelCache.get<List<AppInfo>>('app_square_apps');
-    if (cached != null && mounted) {
-      setState(() {
-        _apps = cached;
-        _loading = false;
-      });
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: _loading ? const SizedBox(height: _buttonSize) : _buildList(),
+    );
+  }
+
+  Widget _buildList() {
+    return SizedBox(
+      height: _buttonSize,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        itemCount: _apps.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, index) => index == 0 ? _appCenterButton() : _appButton(_apps[index - 1], index - 1),
+      ),
+    );
+  }
+
+  Widget _button({required Widget child, required VoidCallback onTap, required bool hovered, required ValueChanged<bool> onHover}) {
+    const size = _buttonSize;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOutCubic,
+      width: size,
+      height: _buttonSize,
+      alignment: Alignment.center,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => onHover(true),
+        onExit: (_) => onHover(false),
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: size,
+            height: size,
+            padding: EdgeInsets.zero,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.transparent),
+            ),
+            child: Center(
+              child: Transform.scale(
+                scale: hovered ? 1.5 : 1.0,
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _appCenterButton() => _button(
+        hovered: _hoveredIndex == -1,
+        onHover: (v) => setState(() => _hoveredIndex = v ? -1 : null),
+        onTap: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
+        child: SvgPicture.asset('assets/svg/应用.svg', width: _iconSize, height: _iconSize),
+      );
+
+  Widget _appButton(AppInfo app, int index) => _button(
+        hovered: _hoveredIndex == index,
+        onHover: (v) => setState(() => _hoveredIndex = v ? index : null),
+        onTap: () => _launchApp(app),
+        child: app.hasIcon
+            ? _buildIcon(app)
+            : SizedBox(
+                width: _iconSize,
+                height: _iconSize,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _appColor(app.name),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    app.name.isEmpty ? '?' : app.name[0],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+      );
+
+  Widget _buildIcon(AppInfo app) {
+    if (app.icon.startsWith('assets/')) {
+      return app.icon.endsWith('.svg') ? SvgPicture.asset(app.icon, width: _iconSize, height: _iconSize) : Image.asset(app.icon, width: _iconSize, height: _iconSize);
     }
+    final file = File(AppConfig.resolvePath(app.icon));
+    if (!file.existsSync()) return const Icon(Icons.apps_rounded, color: _textColor, size: _iconSize);
+    return app.icon.endsWith('.svg') ? SvgPicture.file(file, width: _iconSize, height: _iconSize) : Image.file(file, width: _iconSize, height: _iconSize);
+  }
+
+  Color _appColor(String name) {
+    const colors = [
+      Color(0xFF3949AB), // indigo
+      Color(0xFF00897B), // teal
+      Color(0xFF7E57C2), // purple
+      Color(0xFFEC407A), // pink
+      Color(0xFFFB8C00), // orange
+      Color(0xFF43A047), // green
+      Color(0xFF039BE5), // light blue
+      Color(0xFFF4511E), // deep orange
+      Color(0xFF6D4C41), // brown
+      Color(0xFF546E7A), // blue grey
+      Color(0xFF7CB342), // light green
+      Color(0xFFE53935), // red
+      Color(0xFFFFB300), // amber
+      Color(0xFF8E24AA), // deep purple
+      Color(0xFF00ACC1), // cyan
+      Color(0xFF5C6BC0), // periwinkle
+    ];
+    var hash = 0;
+    for (final codeUnit in name.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+    return colors[hash % colors.length];
   }
 
   Future<void> _launchApp(AppInfo app) async {
-    if (app.executable != null) {
-      final exePath = AppConfig.resolvePath(app.executable!);
-      try {
-        if (Platform.isWindows) {
-          await Process.start('cmd', ['/c', 'start', '', exePath],
-              runInShell: false);
-        } else {
-          await Process.start(
-            exePath,
-            [],
-            runInShell: true,
-            workingDirectory: File(exePath).parent.path,
-          );
-        }
-      } catch (e) {
-        
-      }
+    if (app.executable == null) return;
+    final path = AppConfig.resolvePath(app.executable!);
+    if (Platform.isWindows) {
+      await Process.start('cmd', ['/c', 'start', '', path], runInShell: false);
+    } else {
+      await Process.start(path, [], runInShell: true, workingDirectory: File(path).parent.path);
     }
-  }
-
-  @override
-  EdgeInsetsGeometry get panelPadding => const EdgeInsets.symmetric(horizontal: 12, vertical: 10);
-
-  @override
-  double get panelBorderRadius => 8;
-
-  @override
-  BoxDecoration? get panelDecoration => BoxDecoration(
-        color: isDark ? Colors.black.withValues(alpha: 0.0) : Colors.white.withValues(alpha: 0.0),
-      );
-
-  @override
-  Widget buildContent(BuildContext context) {
-    if (_loading) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: tertiaryText,
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_apps.isEmpty) {
-      return Row(
-        children: [
-          _buildAppCenterButton(),
-          const SizedBox(width: 10),
-          Text(
-            '暂无应用',
-            style: TextStyle(color: tertiaryText, fontSize: 12),
-          ),
-        ],
-      );
-    }
-
-    return _buildHorizontalList();
-  }
-
-  Widget _buildAppIcon(AppInfo app, {double size = 28}) {
-    // 资源图标
-    if (app.icon.startsWith('assets/')) {
-      if (app.icon.endsWith('.svg')) {
-        return SvgPicture.asset(app.icon, width: size, height: size);
-      }
-      return Image.asset(
-        app.icon,
-        width: size,
-        height: size,
-        errorBuilder: (_, __, ___) =>
-            Icon(Icons.apps_rounded, color: secondaryText, size: size),
-      );
-    }
-
-    // 文件图标
-    final iconPath = AppConfig.resolvePath(app.icon);
-    final file = File(iconPath);
-    if (!file.existsSync()) {
-      return Icon(Icons.apps_rounded, color: secondaryText, size: size);
-    }
-    if (app.icon.endsWith('.svg')) {
-      return SvgPicture.file(file, width: size, height: size);
-    }
-    return Image.file(
-      file,
-      width: size,
-      height: size,
-      errorBuilder: (_, __, ___) =>
-          Icon(Icons.apps_rounded, color: secondaryText, size: size),
-    );
-  }
-
-  Widget _buildHorizontalList() {
-    return SizedBox(
-      height: 56,
-      child: Listener(
-        onPointerSignal: (event) {
-          try {
-            final delta = (event as dynamic).scrollDelta as Offset;
-            _scrollController.jumpTo(
-              (_scrollController.offset + delta.dy)
-                  .clamp(0.0, _scrollController.position.maxScrollExtent),
-            );
-          } catch (_) {
-            // 非滚轮事件，忽略
-          }
-        },
-        child: ListView.separated(
-          controller: _scrollController,
-          scrollDirection: Axis.horizontal,
-          itemCount: _apps.length + 1, // +1 for app center button
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return _buildAppCenterButton();
-            }
-            return _buildAppCard(_apps[index - 1], index - 1);
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppCenterButton() {
-    final isHovered = _hoveredIndex == -1;
-    return Tooltip(
-      message: '应用中心',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hoveredIndex = -1),
-        onExit: (_) => setState(() => _hoveredIndex = null),
-        child: GestureDetector(
-          onTap: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            width: 56,
-            height: 56,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isHovered ? hoverBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isHovered ? borderColor : Colors.transparent,
-                width: 1,
-              ),
-            ),
-            child: SvgPicture.asset(
-              'assets/svg/应用.svg',
-              width: 36,
-              height: 36,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppCard(AppInfo app, int index) {
-    final isHovered = _hoveredIndex == index;
-    final hasIcon = app.hasIcon;
-    return Tooltip(
-      message: app.name,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hoveredIndex = index),
-        onExit: (_) => setState(() => _hoveredIndex = null),
-        child: GestureDetector(
-          onTap: () => _launchApp(app),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            width: 56,
-            height: 56,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isHovered ? hoverBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isHovered ? borderColor : Colors.transparent,
-                width: 1,
-              ),
-            ),
-            child: hasIcon
-                ? _buildAppIcon(app, size: 36)
-                : Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: secondaryText.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: Text(
-                        app.name.isNotEmpty ? app.name[0] : '?',
-                        style: TextStyle(
-                          color: secondaryText,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
-/// Shared path/config helpers used by both the panel and the app-center screen.
 class AppConfig {
   AppConfig._();
-
   static String get projectRoot => Directory.current.path;
-
-  static String get systemConfigPath =>
-      '$projectRoot/lib/config/apps_config.json';
-
-  static String get _customConfigPath {
-    final home = Platform.environment['USERPROFILE'] ??
-        Platform.environment['HOME'] ??
-        '.';
-    return '$home/.orbby/custom_apps.json';
-  }
-
-  static String resolvePath(String raw) {
-    if (Platform.isWindows && raw.length >= 2 && raw[1] == ':') return raw;
-    if (raw.startsWith('/')) return raw;
-    return '$projectRoot/$raw';
-  }
-
-  static const _systemAppsJson = '''
-{
-  "apps": []
-}
-''';
-
-  static List<AppInfo> loadSystemApps() {
+  static String get systemConfigPath => '$projectRoot/lib/config/apps_config.json';
+  static String get _customPath => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/custom_apps.json';
+  static String resolvePath(String raw) => Platform.isWindows && raw.length > 1 && raw[1] == ':' || raw.startsWith('/') ? raw : '$projectRoot/$raw';
+  static List<AppInfo> _load(String path) {
     try {
-      final file = File(systemConfigPath);
-      if (file.existsSync()) {
-        final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-        final list = json['apps'] as List<dynamic>?;
-        if (list != null) {
-          return list
-              .map((e) => AppInfo.fromJson(e as Map<String, dynamic>))
-              .toList();
-        }
-      }
-    } catch (_) {}
-
-    try {
-      final json = jsonDecode(_systemAppsJson) as Map<String, dynamic>;
-      final list = json['apps'] as List<dynamic>?;
-      if (list != null) {
-        return list
-            .map((e) => AppInfo.fromJson(e as Map<String, dynamic>))
-            .toList();
-      }
-    } catch (e) {
-      
-    }
-    return [];
-  }
-
-  static List<AppInfo> loadCustomApps() {
-    try {
-      final file = File(_customConfigPath);
+      final file = File(path);
       if (!file.existsSync()) return [];
-      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      final list = json['apps'] as List<dynamic>?;
-      if (list == null) return [];
-      return list
-          .map((e) => AppInfo.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      
-    }
-    return [];
+      final list = (jsonDecode(file.readAsStringSync()) as Map)['apps'] as List?;
+      return list?.map((e) => AppInfo.fromJson(e as Map<String, dynamic>)).toList() ?? [];
+    } catch (_) { return []; }
   }
-
+  static List<AppInfo> loadSystemApps() => _load(systemConfigPath);
+  static List<AppInfo> loadCustomApps() => _load(_customPath);
   static Future<void> saveCustomApps(List<AppInfo> apps) async {
-    try {
-      final dir = Directory(_customConfigPath).parent;
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      final file = File(_customConfigPath);
-      await file.writeAsString(
-        const JsonEncoder.withIndent('  ').convert({
-          'apps': apps.map((a) => a.toJson()).toList(),
-        }),
-      );
-    } catch (e) {
-
-    }
+    final file = File(_customPath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert({'apps': apps.map((a) => a.toJson()).toList()}));
   }
-
-  /// 图标缓存目录：转换后的图标统一存放在 ~/.orbby/icons/ 下。
-  static String get iconsDir {
-    final home = Platform.environment['USERPROFILE'] ??
-        Platform.environment['HOME'] ??
-        '.';
-    return '$home/.orbby/icons';
-  }
-
-  /// 将 ICO 图标解码并转存为 PNG 到图标缓存目录，返回 PNG 路径；失败返回 null。
-  static String? convertIcoToPng(String icoPath, String appId) {
+  static String get iconsDir => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/icons';
+  static String? convertIcoToPng(String path, String id) {
     try {
-      final bytes = File(icoPath).readAsBytesSync();
-      final decoded = img.decodeImage(bytes);
+      final decoded = img.decodeImage(File(path).readAsBytesSync());
       if (decoded == null) return null;
-      final pngBytes = img.encodePng(decoded);
-      final dir = Directory(iconsDir);
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
-      final outPath = '${dir.path}/$appId.png';
-      File(outPath).writeAsBytesSync(pngBytes);
-      return outPath;
-    } catch (_) {
-      return null;
-    }
+      final dir = Directory(iconsDir)..createSync(recursive: true);
+      final output = '${dir.path}/$id.png';
+      File(output).writeAsBytesSync(img.encodePng(decoded));
+      return output;
+    } catch (_) { return null; }
   }
 }

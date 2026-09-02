@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../screens/home_screen.dart';
-import '../services/panel_cache.dart';
-import '../services/panel_data_service.dart';
 import '../services/todo_service.dart';
 import 'base_panel.dart';
 
@@ -31,25 +29,19 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
   @override
   void initState() {
     super.initState();
-    _loadFromCache();
-    PanelCache.addListener(_onCacheChanged);
-    if (!PanelCache.has('todo_items')) {
-      setState(() => _loading = true);
-      PanelDataService.refreshTodo();
-    }
+    _loadTodos();
+    HomeScreen.settingsChangeNotifier.addListener(_loadTodos);
   }
 
   @override
   void dispose() {
-    PanelCache.removeListener(_onCacheChanged);
+    HomeScreen.settingsChangeNotifier.removeListener(_loadTodos);
     super.dispose();
   }
 
-  void _onCacheChanged() => _loadFromCache();
-
-  void _loadFromCache() {
-    final cached = PanelCache.get<List<TodoItem>>('todo_items');
-    if (cached != null && mounted) {
+  Future<void> _loadTodos() async {
+    final cached = await TodoService.loadAll();
+    if (mounted) {
       final uncompleted = cached.where((t) => !t.completed).toList();
       setState(() {
         _normalTodos = uncompleted.where((t) => !t.important).toList();
@@ -76,7 +68,7 @@ class _TodoPanelState extends BasePanelState<TodoPanel> {
 
   Future<void> _toggleComplete(TodoItem item) async {
     await TodoService.toggle(item.id);
-    PanelDataService.refreshTodo();
+    _loadTodos();
   }
 
   void _openAllTodos() {

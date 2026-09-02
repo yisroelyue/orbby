@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -7,12 +5,10 @@ import 'package:window_manager/window_manager.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
-import '../services/panel_data_service.dart';
 import '../services/weixin/weixin_models.dart';
 import '../widgets/frosted_panel.dart';
 import '../widgets/interactive_icon.dart';
 import 'tab/agent_chat_tab.dart';
-import 'tab/dashboard_tab.dart';
 import 'tab/settings_tab.dart';
 
 // ---------------------------------------------------------------------------
@@ -87,36 +83,9 @@ class HomeScreen extends StatefulWidget {
     return weixinStatusNotifier.value;
   }
 
-  /// 面板数据刷新（统一通过 PanelDataService）
-  static void triggerRefresh() {
-    PanelDataService.refreshBalance();
-    PanelDataService.refreshWeather();
-    PanelDataService.refreshPhotoWall();
-    PanelDataService.refreshApps();
-  }
-
-  /// 主题变更通知器，仅用于通知主题颜色变化
-  static final themeNotifier = ValueNotifier<int>(0);
-  static void triggerThemeChange() => themeNotifier.value++;
-
-  static void triggerTodoRefresh() => PanelDataService.refreshTodo();
-  static void triggerScheduleRefresh() => PanelDataService.refreshSchedule();
-
-  /// 面板顺序变更通知器
-  static final panelOrderNotifier = ValueNotifier<int>(0);
-  static void triggerPanelOrderChange() => panelOrderNotifier.value++;
-
-  /// 编辑布局模式通知器
-  static final editModeNotifier = ValueNotifier<bool>(false);
-  static void toggleEditMode() =>
-      editModeNotifier.value = !editModeNotifier.value;
-
   /// 设置变更通知器（面板开关等设置变化时触发）
   static final settingsChangeNotifier = ValueNotifier<int>(0);
   static void triggerSettingsChange() => settingsChangeNotifier.value++;
-
-  static void triggerFavoritesRefresh() => PanelDataService.refreshFavorites();
-  static void triggerScriptRefresh() => PanelDataService.refreshScripts();
 
   /// Tab 切换通知器，value 为目标 tab 索引
   static final tabSwitchNotifier = ValueNotifier<int>(-1);
@@ -127,11 +96,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  Color _menuBgColor = const Color(0xFF9E9E9E);
   bool _isDark = true;
-  String _userName = '';
-  String _userAvatarPath = '';
-  String _menuBgImage = '';
   int _currentTab = 0;
 
   /// 菜单窗口是否曾获得焦点（用于失焦自动隐藏）
@@ -145,7 +110,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabs = [
-      HomeTab(svgName: 'dashboard', builder: (_) => const DashboardTab()),
       HomeTab(
         svgName: 'agent',
         builder: (_) => AgentChatTab(isDark: _isDark),
@@ -153,18 +117,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       HomeTab(svgName: 'setting', builder: (_) => const SettingsTab()),
     ];
     _loadSettings();
-    HomeScreen.themeNotifier.addListener(_onSettingsChanged);
     HomeScreen.settingsChangeNotifier.addListener(_onSettingsChanged);
-    HomeScreen.editModeNotifier.addListener(_onEditModeChanged);
     HomeScreen.tabSwitchNotifier.addListener(_onTabSwitch);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    HomeScreen.themeNotifier.removeListener(_onSettingsChanged);
     HomeScreen.settingsChangeNotifier.removeListener(_onSettingsChanged);
-    HomeScreen.editModeNotifier.removeListener(_onEditModeChanged);
     HomeScreen.tabSwitchNotifier.removeListener(_onTabSwitch);
     super.dispose();
   }
@@ -190,8 +150,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onSettingsChanged() => _loadSettings();
 
-  void _onEditModeChanged() => setState(() {});
-
   void _onTabSwitch() {
     final index = HomeScreen.tabSwitchNotifier.value;
     if (index >= 0 && index < _tabs.length) {
@@ -199,32 +157,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _toggleTheme() async {
-    final s = await SettingsService.load();
-    s.appTheme = _isDark ? 'light' : 'dark';
-    await SettingsService.save(s);
-    HomeScreen.triggerThemeChange();
-  }
-
   Future<void> _loadSettings() async {
     final s = await SettingsService.load();
     if (!mounted) return;
     setState(() {
       _isDark = s.appTheme == 'dark';
-      _userName = s.userName;
-      _userAvatarPath = s.userAvatarPath;
-      // menuBgImage 存储的是用户选择的背景（可以是 asset 路径或文件路径）
-      // 如果 menuBgImage 是文件路径但文件不存在，则显示无背景
-      if (s.menuBgImage.isEmpty ||
-          s.menuBgImage.startsWith('assets/') ||
-          (s.menuBgImage.isNotEmpty && File(s.menuBgImage).existsSync())) {
-        _menuBgImage = s.menuBgImage;
-      } else {
-        _menuBgImage = '';
-      }
-      _menuBgColor = _isDark
-          ? const Color(0xFF454545)
-          : const Color(0xEFE1E1E1);
     });
   }
 
@@ -244,53 +181,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.transparent,
         body: DragToResizeArea(
           enableResizeEdges: [ResizeEdge.top, ResizeEdge.bottom],
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: FrostedPanel(
-                color: _menuBgColor,
-                child: Stack(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: FrostedPanel(
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                child: Column(
                   children: [
-                    if (_menuBgImage.isNotEmpty)
-                      Positioned.fill(
-                        child: _menuBgImage.startsWith('assets/')
-                            ? Image.asset(
-                                _menuBgImage,
-                                key: ValueKey(_menuBgImage),
-                                fit: BoxFit.fitHeight,
-                                alignment: Alignment.center,
-                              )
-                            : Image.file(
-                                File(_menuBgImage),
-                                key: ValueKey(_menuBgImage),
-                                fit: BoxFit.fitHeight,
-                                alignment: Alignment.center,
-                                errorBuilder: (_, __, ___) =>
-                                    const SizedBox.shrink(),
-                              ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: 24,
-                        top: 12,
-                        bottom: 12,
-                        right: 0,
-                      ),
+                    DragToMoveArea(
                       child: Row(
                         children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                DragToMoveArea(child: _buildTopRow()),
-                                Expanded(child: _buildTabContent()),
-                              ],
-                            ),
-                          ),
+                          Expanded(child: _buildTopRow()),
                           _buildTabBar(),
                         ],
                       ),
                     ),
+                    Expanded(child: _buildTabContent()),
                   ],
                 ),
               ),
@@ -304,84 +211,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ---- Top Row ----
 
   Widget _buildTopRow() {
-    final hasUserInfo =
-        _userName.isNotEmpty ||
-        (_userAvatarPath.isNotEmpty && File(_userAvatarPath).existsSync());
-    final topIconColor = _isDark ? Colors.white : Colors.black87;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (hasUserInfo) ...[
-            const SizedBox(width: 4),
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.white24,
-              backgroundImage:
-                  _userAvatarPath.isNotEmpty &&
-                      File(_userAvatarPath).existsSync()
-                  ? FileImage(File(_userAvatarPath))
-                  : null,
-              child:
-                  _userAvatarPath.isEmpty || !File(_userAvatarPath).existsSync()
-                  ? const Icon(Icons.person, size: 22, color: Colors.white70)
-                  : null,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _userName,
-                style: TextStyle(
-                  color: _isDark ? Colors.white : Colors.black,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-                overflow: TextOverflow.ellipsis,
+          const SizedBox(width: 4),
+          Image.asset(PetConfig.logoSprite, width: 32, height: 32),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Orbby Assistant',
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ] else ...[
-            const SizedBox(width: 4),
-            Image.asset(PetConfig.logoSprite, width: 32, height: 32),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Orbby Assistant',
-                style: TextStyle(
-                  color: _isDark ? Colors.white : Colors.black,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-          ValueListenableBuilder<bool>(
-            valueListenable: HomeScreen.editModeNotifier,
-            builder: (_, editing, __) => InteractiveIcon(
-              size: 32,
-              onTap: HomeScreen.toggleEditMode,
-              child: Icon(
-                editing ? Icons.edit_off_rounded : Icons.edit_rounded,
-                color: editing ? Colors.amber : topIconColor,
-                size: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          InteractiveIcon(
-            size: 32,
-            onTap: _toggleTheme,
-            child: Icon(
-              _isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-              color: topIconColor,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 6),
-          InteractiveIcon(
-            size: 32,
-            onTap: () => HomeScreen.menuChannel.invokeMethod('close_menu'),
-            child: Icon(Icons.close_rounded, color: topIconColor, size: 20),
           ),
         ],
       ),
@@ -392,13 +238,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildTabBar() {
     return Container(
-      width: 36,
-      margin: const EdgeInsets.only(left: 8),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      margin: const EdgeInsets.only(left: 16),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           for (int i = 0; i < _tabs.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
+            if (i > 0) const SizedBox(width: 12),
             _buildTabButton(i, _tabs[i]),
           ],
         ],
@@ -419,16 +265,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           setState(() => _currentTab = index);
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isActive
-              ? (_isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.08))
-              : Colors.transparent,
+          color: isActive ? Colors.black.withValues(alpha: 0.08) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Padding(

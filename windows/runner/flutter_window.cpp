@@ -26,7 +26,7 @@ constexpr char kHotkeyChannelName[] = "orbby_hotkey";
 
 constexpr int kHotkeyIdToggleMenu = 1;
 constexpr int kHotkeyIdOpenSettings = 2;
-constexpr int kHotkeyIdToggleAgent = 3;
+constexpr int kHotkeyIdToggleAppBar = 3;
 constexpr int kHotkeyIdShowClipboard = 4;
 
 using WindowShapeChannel = flutter::MethodChannel<flutter::EncodableValue>;
@@ -257,7 +257,7 @@ bool FlutterWindow::OnCreate() {
   // Register global hotkey: Alt + Ctrl + ~
   RegisterHotKey(GetHandle(), kHotkeyIdOpenSettings, MOD_ALT | MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + ~
-  RegisterHotKey(GetHandle(), kHotkeyIdToggleAgent, MOD_ALT, VK_OEM_3);
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleAppBar, MOD_ALT, VK_OEM_3);
   // Register global hotkey: Shift + Ctrl + V
   RegisterHotKey(GetHandle(), kHotkeyIdShowClipboard, MOD_CONTROL | MOD_SHIFT, 0x56);
 
@@ -309,7 +309,7 @@ bool FlutterWindow::OnCreate() {
 void FlutterWindow::OnDestroy() {
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleMenu);
   UnregisterHotKey(GetHandle(), kHotkeyIdOpenSettings);
-  UnregisterHotKey(GetHandle(), kHotkeyIdToggleAgent);
+  UnregisterHotKey(GetHandle(), kHotkeyIdToggleAppBar);
   UnregisterHotKey(GetHandle(), kHotkeyIdShowClipboard);
   RemoveClipboardFormatListener(GetHandle());
   g_hotkey_channel = nullptr;
@@ -344,9 +344,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         } else if (wparam == kHotkeyIdOpenSettings) {
           g_hotkey_channel->InvokeMethod(
               "open_settings", std::make_unique<flutter::EncodableValue>());
-        } else if (wparam == kHotkeyIdToggleAgent) {
+        } else if (wparam == kHotkeyIdToggleAppBar) {
           g_hotkey_channel->InvokeMethod(
-              "toggle_agent", std::make_unique<flutter::EncodableValue>());
+              "toggle_app_bar", std::make_unique<flutter::EncodableValue>());
         } else if (wparam == kHotkeyIdShowClipboard) {
           g_hotkey_channel->InvokeMethod(
               "show_clipboard", std::make_unique<flutter::EncodableValue>());

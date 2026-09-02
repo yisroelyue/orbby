@@ -10,7 +10,6 @@ import 'tools/list_directory_tool.dart';
 import 'tools/search_files_tool.dart';
 import 'tools/execute_command_tool.dart';
 import 'tools/open_chrome_tool.dart';
-import 'tools/news_search_tool.dart';
 
 class ToolRegistry {
   final Map<String, ToolDefinition> _tools = {};
@@ -36,7 +35,6 @@ class ToolRegistry {
     searchFilesTool,
     executeCommandTool,
     openChromeTool,
-    newsSearchTool,
   ]);
 
   List<ToolCallDefinition> getToolDefinitions() => _tools.values

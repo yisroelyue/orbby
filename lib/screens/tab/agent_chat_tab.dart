@@ -21,7 +21,6 @@ class _AgentChatTabState extends State<AgentChatTab> {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _messages = <_ChatMessage>[];
-  String _mode = 'accept';
   String? _hoveredAction;
   String? _selectedAction;
   bool _isSending = false;
@@ -92,7 +91,7 @@ class _AgentChatTabState extends State<AgentChatTab> {
       AgentService.resetConversation();
       await for (final chunk in AgentService.chatStream(
         text,
-        mode: _mode,
+        mode: 'auto',
         history: history,
       )) {
         if (!mounted) return;
@@ -208,7 +207,6 @@ class _AgentChatTabState extends State<AgentChatTab> {
           ),
         ),
         const Spacer(flex: 3),
-        _buildBottomBar(),
       ],
     );
   }
@@ -273,7 +271,6 @@ class _AgentChatTabState extends State<AgentChatTab> {
         const SizedBox(height: 4),
         _buildInputArea(),
         const SizedBox(height: 6),
-        _buildBottomBar(),
       ],
     );
   }
@@ -409,52 +406,6 @@ class _AgentChatTabState extends State<AgentChatTab> {
   }
 
   // ─── 底栏 ──────────────────────────────────────────────────────────────
-
-  Widget _buildBottomBar() {
-    final chars = _messages.fold<int>(0, (sum, m) => sum + m.text.length);
-    final sizeStr = chars >= 1024
-        ? '${(chars / 1024).toStringAsFixed(chars >= 10240 ? 0 : 1)}k'
-        : '${chars}b';
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        children: [
-          _buildModeChip('accept', '审核模式'),
-          const SizedBox(width: 6),
-          _buildModeChip('plan', '计划模式'),
-          const SizedBox(width: 6),
-          _buildModeChip('auto', '自动模式'),
-          const Spacer(),
-          Text(
-            'context: $sizeStr',
-            style: TextStyle(color: _chipInactiveText, fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeChip(String value, String label) {
-    final isActive = _mode == value;
-    return GestureDetector(
-      onTap: () => setState(() => _mode = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: isActive ? _chipActiveBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? _chipActiveText : _chipInactiveText,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
 
   // ─── 消息列表 ──────────────────────────────────────────────────────────
 

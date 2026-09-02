@@ -54,12 +54,12 @@ mixin PanelThemeMixin<T extends StatefulWidget> on State<T> {
   void initState() {
     super.initState();
     _loadTheme();
-    HomeScreen.themeNotifier.addListener(_loadTheme);
+    HomeScreen.settingsChangeNotifier.addListener(_loadTheme);
   }
 
   @override
   void dispose() {
-    HomeScreen.themeNotifier.removeListener(_loadTheme);
+    HomeScreen.settingsChangeNotifier.removeListener(_loadTheme);
     super.dispose();
   }
 

@@ -26,7 +26,7 @@ class SettingsTab extends StatefulWidget {
 
 class _SettingsTabState extends State<SettingsTab> {
   final _detailScrollController = ScrollController();
-  _SettingCategory _selected = _SettingCategory.display;
+  _SettingCategory _selected = _SettingCategory.general;
 
   late final TextEditingController _apiKeyController;
   late final TextEditingController _balanceUrlController;
@@ -123,8 +123,6 @@ class _SettingsTabState extends State<SettingsTab> {
   ];
 
   static const _categoryItems = <(_SettingCategory, IconData, String)>[
-    (_SettingCategory.display, Icons.palette_outlined, '显示设置'),
-    (_SettingCategory.panel, Icons.dashboard_outlined, '面板设置'),
     (_SettingCategory.general, Icons.tune_rounded, '通用设置'),
     (_SettingCategory.api, Icons.smart_toy_outlined, '模型设置'),
     (_SettingCategory.log, Icons.article_outlined, '开发设置'),
@@ -336,7 +334,6 @@ class _SettingsTabState extends State<SettingsTab> {
       _buildBalanceSettingsCard(),
       _buildScheduleCard(),
       _buildNewsCard(),
-      _buildFavoritesCard(),
       _buildNotesCard(),
       _buildTranslateCard(),
       _buildScriptCard(),
