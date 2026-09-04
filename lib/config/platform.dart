@@ -19,20 +19,6 @@ class PlatformConfig {
     'zhipu': PlatformInfo('智谱 GLM', 'zhipu', 'assets/png/plugins/AI.png'),
   };
 
-  static String defaultBalanceUrl(String key) {
-    return switch (key) {
-      'deepseek' => 'https://api.deepseek.com/user/balance',
-      'openai' => 'https://api.openai.com/v1/usage',
-      'anthropic' => 'https://api.anthropic.com/v1/usage',
-      'doubao' => 'https://ark.cn-beijing.volces.com/api/v3/usage',
-      'mimo' => 'https://api.mimo.ai/v1/usage',
-      'qwen' => 'https://dashscope.aliyuncs.com/compatible-mode/v1/usage',
-      'kimi' => 'https://api.moonshot.cn/v1/usage',
-      'zhipu' => 'https://open.bigmodel.cn/api/paas/v4/usage',
-      _ => 'https://api.deepseek.com/user/balance',
-    };
-  }
-
   static String assetPath(String key) {
     return platforms[key]?.asset ?? 'assets/png/plugins/AI.png';
   }

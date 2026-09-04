@@ -12,15 +12,15 @@ import 'llm_service.dart';
 /// [T] 为 parseResponse 的返回类型，默认为 Map<String, dynamic>。
 ///
 /// ```dart
-/// class WeatherTask extends LlmTask<Map<String, dynamic>> {
+/// class TranslateTask extends LlmTask<Map<String, dynamic>> {
 ///   @override
-///   String buildSystemPrompt() => '你是一个天气助手，返回 JSON 格式的天气信息...';
+///   String buildSystemPrompt() => '你是一个翻译助手，返回 JSON 格式的翻译结果...';
 ///
 ///   @override
-///   String buildUserPrompt() => '上海今天天气怎么样？';
+///   String buildUserPrompt() => '翻译这段文字：...';
 /// }
 ///
-/// final result = await WeatherTask().execute();
+/// final result = await TranslateTask().execute();
 /// ```
 abstract class LlmTask<T> {
   /// 今天日期，由 main() 启动时设置，供子类 prompt 引用

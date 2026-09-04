@@ -2,6 +2,12 @@
 // 继承 LlmTask，无状态一次性请求，返回 JSON
 
 import 'llm_task.dart';
+import 'tencent_translate_service.dart';
+import '../config/settings.dart';
+
+abstract interface class TranslationProvider {
+  Future<String> translate(String text, {required TranslateLang lang});
+}
 
 /// 翻译语言对
 enum TranslateLang {
@@ -30,7 +36,7 @@ class TranslateTask extends LlmTask<Map<String, dynamic>> {
 
   @override
   String buildSystemPrompt() {
-    final toTarget = _isChinese(text);
+    final toTarget = isChinese(text);
     return '${_directionPrompt(lang, toTarget)}\n\n'
         '请严格以 JSON 格式输出，示例：{"translation":"翻译结果"}\n'
         '不要包含任何额外文字、解释或 Markdown 标记。';
@@ -59,7 +65,7 @@ class TranslateTask extends LlmTask<Map<String, dynamic>> {
   }
 
   /// 启发式检测是否为中文：有 CJK 字符且占比 ≥ 拉丁字母
-  static bool _isChinese(String text) {
+  static bool isChinese(String text) {
     int cjk = 0, latin = 0;
     for (final cp in text.runes) {
       if ((cp >= 0x4E00 && cp <= 0x9FFF) ||
@@ -138,6 +144,10 @@ class TranslateService {
     TranslateLang lang = TranslateLang.zhEn,
   }) async {
     try {
+      final settings = await SettingsService.load();
+      if (settings.translationProvider == 'tencent') {
+        return await TencentTranslateService().translate(text, lang: lang);
+      }
       return await TranslateTask.translate(text, lang: lang);
     } on FormatException catch (e) {
       throw TranslateException(e.message);

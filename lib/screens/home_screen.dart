@@ -5,9 +5,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../config/constants.dart';
 import '../config/settings.dart';
-import '../services/weixin/weixin_models.dart';
 import '../widgets/frosted_panel.dart';
-import '../widgets/interactive_icon.dart';
 import 'tab/agent_chat_tab.dart';
 import 'tab/settings_tab.dart';
 
@@ -39,49 +37,6 @@ class HomeScreen extends StatefulWidget {
     'orbby_menu_events',
     mode: ChannelMode.unidirectional,
   );
-
-  /// 微信服务由主窗口唯一持有；菜单窗口仅保存主窗口推送的状态快照。
-  static final weixinStatusNotifier = ValueNotifier(
-    const WeixinServiceStatus(),
-  );
-
-  static void applyWeixinStatus(Object? raw) {
-    if (raw is! Map) return;
-    weixinStatusNotifier.value = WeixinServiceStatus.fromJson(
-      Map<String, dynamic>.from(raw),
-    );
-  }
-
-  static Future<WeixinServiceStatus> queryWeixinStatus() async {
-    final raw = await menuChannel.invokeMethod('weixin_get_status');
-    applyWeixinStatus(raw);
-    return weixinStatusNotifier.value;
-  }
-
-  static Future<WeixinServiceStatus> setWeixinEnabled(bool enabled) async {
-    final raw = await menuChannel.invokeMethod('weixin_set_enabled', {
-      'enabled': enabled,
-    });
-    applyWeixinStatus(raw);
-    return weixinStatusNotifier.value;
-  }
-
-  static Future<WeixinServiceStatus> bindWeixinAccount(
-    ClawBotAccount account,
-  ) async {
-    final raw = await menuChannel.invokeMethod(
-      'weixin_bind_account',
-      account.toJson(),
-    );
-    applyWeixinStatus(raw);
-    return weixinStatusNotifier.value;
-  }
-
-  static Future<WeixinServiceStatus> logoutWeixin() async {
-    final raw = await menuChannel.invokeMethod('weixin_logout');
-    applyWeixinStatus(raw);
-    return weixinStatusNotifier.value;
-  }
 
   /// 设置变更通知器（面板开关等设置变化时触发）
   static final settingsChangeNotifier = ValueNotifier<int>(0);
@@ -119,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadSettings();
     HomeScreen.settingsChangeNotifier.addListener(_onSettingsChanged);
     HomeScreen.tabSwitchNotifier.addListener(_onTabSwitch);
+    HomeScreen.menuChannel.invokeMethod('ready');
   }
 
   @override
@@ -181,24 +137,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.transparent,
         body: DragToResizeArea(
           enableResizeEdges: [ResizeEdge.top, ResizeEdge.bottom],
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: FrostedPanel(
-              color: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-                child: Column(
-                  children: [
-                    DragToMoveArea(
-                      child: Row(
-                        children: [
-                          Expanded(child: _buildTopRow()),
-                          _buildTabBar(),
-                        ],
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FrostedPanel(
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                  child: Column(
+                    children: [
+                      DragToMoveArea(
+                        child: Row(
+                          children: [
+                            Expanded(child: _buildTopRow()),
+                            _buildTabBar(),
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(child: _buildTabContent()),
-                  ],
+                      Expanded(child: _buildTabContent()),
+                    ],
+                  ),
                 ),
               ),
             ),

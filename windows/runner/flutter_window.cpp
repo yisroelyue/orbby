@@ -5,6 +5,7 @@
 #include <flutter/encodable_value.h>
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
+#include <memory>
 #include <optional>
 #include <shellapi.h>
 #include <vector>
@@ -23,19 +24,91 @@ constexpr char kBottomRadiusArgument[] = "bottomRadius";
 
 constexpr char kDropChannelName[] = "orbby_file_drop";
 constexpr char kHotkeyChannelName[] = "orbby_hotkey";
+constexpr char kAppIconChannelName[] = "orbby_app_icon";
 
 constexpr int kHotkeyIdToggleMenu = 1;
 constexpr int kHotkeyIdOpenSettings = 2;
 constexpr int kHotkeyIdToggleAppBar = 3;
-constexpr int kHotkeyIdShowClipboard = 4;
+constexpr int kHotkeyIdToggleContent = 5;
 
 using WindowShapeChannel = flutter::MethodChannel<flutter::EncodableValue>;
 using DropChannel = flutter::MethodChannel<flutter::EncodableValue>;
 using HotkeyChannel = flutter::MethodChannel<flutter::EncodableValue>;
+using AppIconChannel = flutter::MethodChannel<flutter::EncodableValue>;
 
 std::vector<std::unique_ptr<WindowShapeChannel>> g_window_shape_channels;
 std::vector<std::unique_ptr<DropChannel>> g_drop_channels;
 std::unique_ptr<HotkeyChannel> g_hotkey_channel;
+std::unique_ptr<AppIconChannel> g_app_icon_channel;
+
+std::optional<flutter::EncodableMap> ExtractIconRgba(const std::wstring& path) {
+  SHFILEINFOW file_info{};
+  if (SHGetFileInfoW(path.c_str(), 0, &file_info, sizeof(file_info),
+                     SHGFI_ICON | SHGFI_LARGEICON) == 0 || !file_info.hIcon) {
+    return std::nullopt;
+  }
+
+  ICONINFO icon_info{};
+  BITMAP bitmap{};
+  std::optional<flutter::EncodableMap> output;
+  if (GetIconInfo(file_info.hIcon, &icon_info) &&
+      GetObject(icon_info.hbmColor, sizeof(bitmap), &bitmap) == sizeof(bitmap)) {
+    const int width = bitmap.bmWidth;
+    const int height = bitmap.bmHeight;
+    if (width > 0 && height > 0 && width <= 1024 && height <= 1024) {
+      BITMAPINFOHEADER header{};
+      header.biSize = sizeof(header);
+      header.biWidth = width;
+      header.biHeight = -height;
+      header.biPlanes = 1;
+      header.biBitCount = 32;
+      header.biCompression = BI_RGB;
+      std::vector<uint8_t> bgra(width * height * 4);
+      HDC dc = GetDC(nullptr);
+      if (dc && GetDIBits(dc, icon_info.hbmColor, 0, height, bgra.data(),
+                         reinterpret_cast<BITMAPINFO*>(&header),
+                         DIB_RGB_COLORS) != 0) {
+        // Flutter/image expects RGBA. Preserve the alpha channel from the
+        // icon bitmap and make fully transparent pixels safe.
+        for (size_t i = 0; i < bgra.size(); i += 4) {
+          std::swap(bgra[i], bgra[i + 2]);
+          if (bgra[i + 3] == 0) bgra[i] = bgra[i + 1] = bgra[i + 2] = 0;
+        }
+        flutter::EncodableMap map;
+        map[flutter::EncodableValue("width")] = width;
+        map[flutter::EncodableValue("height")] = height;
+        map[flutter::EncodableValue("rgba")] = std::move(bgra);
+        output = std::move(map);
+      }
+      if (dc) ReleaseDC(nullptr, dc);
+    }
+  }
+  if (icon_info.hbmColor) DeleteObject(icon_info.hbmColor);
+  if (icon_info.hbmMask) DeleteObject(icon_info.hbmMask);
+  DestroyIcon(file_info.hIcon);
+  return output;
+}
+
+void RegisterAppIconChannel(flutter::BinaryMessenger* messenger) {
+  g_app_icon_channel = std::make_unique<AppIconChannel>(
+      messenger, kAppIconChannelName, &flutter::StandardMethodCodec::GetInstance());
+  g_app_icon_channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() != "extract" || !call.arguments()) {
+          result->NotImplemented();
+          return;
+        }
+        const auto* path = std::get_if<std::string>(call.arguments());
+        if (!path) { result->Error("invalid_path", "Expected an executable path."); return; }
+        int length = MultiByteToWideChar(CP_UTF8, 0, path->c_str(), -1, nullptr, 0);
+        std::wstring wide(length, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, path->c_str(), -1, wide.data(), length);
+        auto icon = ExtractIconRgba(wide);
+        if (icon) result->Success(flutter::EncodableValue(*icon));
+        else result->Success(flutter::EncodableValue());
+      });
+}
 
 double GetNumberArgument(const flutter::EncodableValue& value,
                          double fallback) {
@@ -238,6 +311,7 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   RegisterWindowShapeChannel(flutter_controller_->engine()->messenger(),
                              GetHandle());
+  RegisterAppIconChannel(flutter_controller_->engine()->messenger());
 
   // Register file-drop channel so the pet window can receive dragged files.
   auto drop_channel = std::make_unique<DropChannel>(
@@ -253,16 +327,14 @@ bool FlutterWindow::OnCreate() {
   DragAcceptFiles(GetHandle(), TRUE);
 
   // Register global hotkey: Ctrl + ~ (backtick key above Tab)
-  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_CONTROL, VK_OEM_3);
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_WIN, VK_OEM_3);
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleContent, MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + Ctrl + ~
   RegisterHotKey(GetHandle(), kHotkeyIdOpenSettings, MOD_ALT | MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + ~
   RegisterHotKey(GetHandle(), kHotkeyIdToggleAppBar, MOD_ALT, VK_OEM_3);
   // Register global hotkey: Shift + Ctrl + V
-  RegisterHotKey(GetHandle(), kHotkeyIdShowClipboard, MOD_CONTROL | MOD_SHIFT, 0x56);
 
-  // Listen for clipboard content changes (event-driven, no polling).
-  AddClipboardFormatListener(GetHandle());
 
   // Create hotkey channel to notify Flutter of hotkey presses.
   g_hotkey_channel = std::make_unique<HotkeyChannel>(
@@ -270,14 +342,34 @@ bool FlutterWindow::OnCreate() {
       &flutter::StandardMethodCodec::GetInstance());
   g_hotkey_channel->SetMethodCallHandler(
       [](const flutter::MethodCall<flutter::EncodableValue>& call,
-         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
-             result) { result->NotImplemented(); });
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() == "copy_selection") {
+          INPUT inputs[4] = {};
+          inputs[0].type = INPUT_KEYBOARD;
+          inputs[0].ki.wVk = VK_CONTROL;
+          inputs[1].type = INPUT_KEYBOARD;
+          inputs[1].ki.wVk = 'C';
+          inputs[2].type = INPUT_KEYBOARD;
+          inputs[2].ki.wVk = 'C';
+          inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+          inputs[3].type = INPUT_KEYBOARD;
+          inputs[3].ki.wVk = VK_CONTROL;
+          inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+          SendInput(4, inputs, sizeof(INPUT));
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
 
   DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
     auto *flutter_view_controller =
         reinterpret_cast<flutter::FlutterViewController *>(controller);
     auto *registry = flutter_view_controller->engine();
     RegisterPlugins(registry);
+    // Child engines created by desktop_multi_window do not pass through
+    // FlutterWindow::OnCreate, so register custom channels for them too.
+    RegisterAppIconChannel(registry->messenger());
 
     // desktop_multi_window creates windows with WS_OVERLAPPEDWINDOW which
     // includes title bar and system buttons. Strip them to keep the window
@@ -310,9 +402,9 @@ void FlutterWindow::OnDestroy() {
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleMenu);
   UnregisterHotKey(GetHandle(), kHotkeyIdOpenSettings);
   UnregisterHotKey(GetHandle(), kHotkeyIdToggleAppBar);
-  UnregisterHotKey(GetHandle(), kHotkeyIdShowClipboard);
-  RemoveClipboardFormatListener(GetHandle());
+  UnregisterHotKey(GetHandle(), kHotkeyIdToggleContent);
   g_hotkey_channel = nullptr;
+  g_app_icon_channel = nullptr;
 
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -344,20 +436,13 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         } else if (wparam == kHotkeyIdOpenSettings) {
           g_hotkey_channel->InvokeMethod(
               "open_settings", std::make_unique<flutter::EncodableValue>());
+        } else if (wparam == kHotkeyIdToggleContent) {
+          g_hotkey_channel->InvokeMethod(
+              "toggle_content", std::make_unique<flutter::EncodableValue>());
         } else if (wparam == kHotkeyIdToggleAppBar) {
           g_hotkey_channel->InvokeMethod(
               "toggle_app_bar", std::make_unique<flutter::EncodableValue>());
-        } else if (wparam == kHotkeyIdShowClipboard) {
-          g_hotkey_channel->InvokeMethod(
-              "show_clipboard", std::make_unique<flutter::EncodableValue>());
         }
-      }
-      return 0;
-    }
-    case WM_CLIPBOARDUPDATE: {
-      if (g_hotkey_channel) {
-        g_hotkey_channel->InvokeMethod(
-            "clipboard_changed", std::make_unique<flutter::EncodableValue>());
       }
       return 0;
     }

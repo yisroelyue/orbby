@@ -17,15 +17,10 @@ import 'screens/about_screen.dart';
 import 'screens/app_bar_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/notification_screen.dart';
-import 'screens/todo_edit_screen.dart';
-import 'screens/todo_item_popup.dart';
-import 'screens/clipboard_popup.dart';
+import 'screens/content_screen.dart';
 import 'services/llm_task.dart';
 import 'services/log_service.dart';
-import 'services/weixin/weixin_clawbot_service.dart';
 
-import 'screens/vibe_task_screen.dart';
 
 const _windowShapeChannel = MethodChannel('orbby_window_shape');
 
@@ -65,21 +60,19 @@ Future<void> main(List<String> args) async {
     );
     return;
   }
-  if (windowArguments['type'] == 'vibe_task') {
-    await _configureVibeTaskWindow(windowController, windowArguments);
-    runApp(const VibeTaskScreen());
-    return;
-  }
-  if (windowArguments['type'] == 'todo_edit') {
+  if (windowArguments['type'] == 'content') {
     await Window.initialize();
-    await _configureTodoEditWindow(windowController, windowArguments);
-    runApp(const TodoEditScreen());
-    return;
-  }
-  if (windowArguments['type'] == 'todo_item_popup') {
-    await Window.initialize();
-    await _configureTodoItemPopupWindow(windowController, windowArguments);
-    runApp(const TodoItemPopup());
+    await _configureContentWindow(windowController, windowArguments);
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.light,
+          fontFamily: 'Microsoft YaHei',
+        ),
+        home: const ContentScreen(),
+      ),
+    );
     return;
   }
   if (windowArguments['type'] == 'app_center') {
@@ -103,38 +96,11 @@ Future<void> main(List<String> args) async {
     runApp(const AboutScreen());
     return;
   }
-  if (windowArguments['type'] == 'clipboard_popup') {
-    await Window.initialize();
-    await _configureClipboardPopupWindow(windowController, windowArguments);
-    runApp(const ClipboardPopup());
-    return;
-  }
-  if (windowArguments['type'] == 'notification') {
-    await _configureNotificationWindow(windowController, windowArguments);
-    runApp(
-      MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          fontFamily: 'Microsoft YaHei',
-        ),
-        home: const NotificationScreen(),
-      ),
-    );
-    return;
-  }
   await Window.initialize();
   await _configurePetWindow();
   // PetScreen 需要挂载以注册全局快捷键，但窗口保持隐藏。
   await windowManager.hide();
   await _ensureSettingsFile();
-
-  // 微信服务只在主窗口 Engine 中启动，避免多窗口产生重复长轮询。
-  try {
-    await WeixinClawbotService.instance.startup();
-  } catch (e, st) {
-    LogService.error('WeixinClawbot: 启动失败', exception: e, stack: st, category: 'weixin');
-  }
 
   runApp(const OrbbyApp());
   _initSystemTray();
@@ -266,15 +232,9 @@ Future<void> _configureMenuWindow(
         final args = call.arguments as Map;
         await _placeMenuWindow(_boundsFromArguments(args));
         return;
-      case 'refresh_todos':
-        HomeScreen.triggerSettingsChange();
-        return;
       case 'switch_tab':
         final tabIndex = call.arguments as int;
         HomeScreen.triggerTabSwitch(tabIndex);
-        return;
-      case 'weixin_status_changed':
-        HomeScreen.applyWeixinStatus(call.arguments);
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -318,6 +278,10 @@ Future<void> _configureAppBarWindow(
       await windowManager.show();
       return;
     }
+    if (call.method == 'refresh_apps') {
+      AppBarScreen.refreshNotifier.value++;
+      return;
+    }
     throw UnimplementedError('Not implemented: ${call.method}');
   });
   await windowManager.waitUntilReadyToShow(
@@ -343,123 +307,18 @@ Future<void> _configureAppBarWindow(
   );
 }
 
-Future<void> _configureSettingsWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: const Color(0xFFF5F5F5),
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(true);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(const Color(0xFFF5F5F5));
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setTitle('Orbby Settings');
-      if (arguments['hidden'] != true) {
-        await windowManager.show();
-      }
-    },
-  );
-}
-
-Future<void> _configureVibeTaskWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: true,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: true,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(true);
-      await windowManager.setTitle('Orbby Vibe Task');
-      await windowManager.show();
-    },
-  );
-}
-
-Future<void> _configureTodoEditWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setTitle('Orbby Todo Edit');
-      await windowManager.show();
-    },
-  );
-}
-
-Future<void> _configureTodoItemPopupWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  LogService.info('TodoItemPopup config | bounds: $bounds');
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: true,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: true,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(true);
-      await windowManager.setTitle('编辑笔记');
-      // Don't show yet — the popup screen will show itself after loading data.
-    },
-  );
+Future<void> _configureContentWindow(WindowController controller, Map<String, dynamic> args) async {
+  final bounds = _boundsFromArguments(args);
+  await windowManager.waitUntilReadyToShow(WindowOptions(
+    size: bounds.size, backgroundColor: Colors.transparent, skipTaskbar: true,
+    titleBarStyle: TitleBarStyle.hidden, windowButtonVisibility: false, alwaysOnTop: true,
+  ), () async {
+    await windowManager.setAsFrameless();
+    await windowManager.setBounds(bounds);
+    await windowManager.setSkipTaskbar(true);
+    await windowManager.setAlwaysOnTop(true);
+    await windowManager.hide();
+  });
 }
 
 Future<void> _configureAppCenterWindow(
@@ -518,82 +377,6 @@ Future<void> _configureAboutWindow(
       await windowManager.setPreventClose(true);
       await windowManager.show();
     },
-  );
-}
-
-Future<void> _configureClipboardPopupWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  final hidden = arguments['hidden'] == true;
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: true,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: true,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(true);
-      if (!hidden) {
-        await windowManager.show();
-      }
-    },
-  );
-}
-
-Future<void> _configureNotificationWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  await windowController.setWindowMethodHandler((call) async {
-    NotificationScreen.handleMessage(call.method, call.arguments);
-  });
-
-  final bounds = _boundsFromArguments(arguments);
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: true,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: true,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setSkipTaskbar(true);
-      await windowManager.setTitle('Orbby Notifications');
-      await windowManager.setBounds(bounds);
-      // Don't show initially — NotificationScreen shows itself when a notification arrives
-    },
-  );
-}
-
-Future<void> _applyPetAcrylic() async {
-  await Window.setEffect(
-    effect: WindowEffect.acrylic,
-    color: const Color(0x38BFBFBF),
-  );
-}
-
-Future<void> _applyMenuAcrylic() async {
-  await Window.setEffect(
-    effect: WindowEffect.acrylic,
-    color: const Color(0x1BBFBFBF),
   );
 }
 

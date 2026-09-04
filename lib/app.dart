@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/pet_screen.dart';
+import 'services/window_coordinator.dart';
 
 class OrbbyApp extends StatelessWidget {
   const OrbbyApp({super.key});
@@ -10,7 +10,7 @@ class OrbbyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(fontFamily: 'Microsoft YaHei'),
-      home: const PetScreen(),
+      home: const WindowCoordinator(),
     );
   }
 }

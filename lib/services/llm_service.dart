@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 
 import '../agent/llm_client.dart';
 import '../agent/types.dart';
@@ -63,6 +62,8 @@ class LlmService {
         apiKey: settings.apiKey,
         model: useModel,
         verbose: settings.llmLogEnabled,
+        // 重试由本服务统一处理，避免与 LLMClient 的内部重试叠加。
+        maxRetries: 0,
       );
 
       try {
@@ -92,6 +93,52 @@ class LlmService {
     }
 
     throw lastError ?? LlmException('请求失败');
+  }
+
+  /// 流式请求。每收到一段文本立即通过 [onToken] 返回，避免等待完整响应。
+  static Future<String> askStream(
+    String prompt, {
+    String? systemPrompt,
+    bool? searchEnable,
+    void Function(String token)? onToken,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final trimmed = prompt.trim();
+    if (trimmed.isEmpty) throw LlmException('请输入内容');
+
+    final settings = await SettingsService.load();
+    if (settings.apiKey.isEmpty) throw LlmException('请先在设置中配置 API Key');
+
+    final chatUrl = settings.chatUrl.isEmpty
+        ? PlatformConfig.defaultChatUrl(settings.platform)
+        : settings.chatUrl.trim();
+    final model = settings.model.isEmpty
+        ? PlatformConfig.defaultChatModel(settings.platform)
+        : settings.model;
+    final messages = <Message>[
+      if (systemPrompt != null) Message(role: 'system', content: systemPrompt),
+      Message(role: 'user', content: trimmed),
+    ];
+
+    final client = LLMClient(
+      baseURL: chatUrl,
+      apiKey: settings.apiKey,
+      model: model,
+      verbose: settings.llmLogEnabled,
+      maxRetries: 0,
+    );
+    var result = '';
+    final response = await client.chatStream(
+      messages,
+      searchEnable: searchEnable,
+      onToken: (token) {
+        result += token;
+        onToken?.call(token);
+      },
+    ).timeout(timeout, onTimeout: () => throw LlmException('请求超时，请稍后重试'));
+    if (result.trim().isEmpty) result = response.content?.trim() ?? '';
+    if (result.trim().isEmpty) throw LlmException('AI 返回为空');
+    return result.trim();
   }
 }
 

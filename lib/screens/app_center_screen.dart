@@ -8,8 +8,11 @@ import 'package:window_manager/window_manager.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import '../config/settings.dart';
+import '../services/windows_app_icon.dart';
+import '../services/log_service.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/interactive_icon.dart';
+import 'home_screen.dart';
 
 class AppCenterScreen extends StatefulWidget {
   const AppCenterScreen({super.key});
@@ -65,6 +68,39 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
 
   bool _isInPanel(String id) => _panelAppIds.contains(id);
 
+  Future<void> _showOrderMenu(BuildContext ctx, Offset position, AppInfo app) async {
+    final action = await showMenu<String>(
+      context: ctx,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'first', child: Text('移到最前')),
+        PopupMenuItem(value: 'up', child: Text('上移')),
+        PopupMenuItem(value: 'down', child: Text('下移')),
+        PopupMenuItem(value: 'last', child: Text('移到最后')),
+      ],
+    );
+    if (action == null) return;
+    final apps = [..._allApps];
+    final index = apps.indexWhere((item) => item.id == app.id);
+    if (index < 0) return;
+    final target = switch (action) {
+      'first' => 0,
+      'up' => index - 1,
+      'down' => index + 1,
+      'last' => apps.length - 1,
+      _ => index,
+    }.clamp(0, apps.length - 1);
+    if (target == index) return;
+    final moved = apps.removeAt(index);
+    apps.insert(target, moved);
+    setState(() {
+      _customApps = apps.where((item) => item.type == 'custom').toList();
+      _systemApps = apps.where((item) => item.type != 'custom').toList();
+      _panelAppIds = apps.map((item) => item.id).toList();
+    });
+    await _savePanel();
+  }
+
   void _showContextMenu(BuildContext ctx, Offset position, AppInfo app) {
     final alreadyIn = _isInPanel(app.id);
     showMenu<String>(
@@ -85,7 +121,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               ],
             ),
           )
-        else if (_panelApps.length < 8)
+        else if (!alreadyIn)
           const PopupMenuItem(
             value: 'add',
             child: Row(
@@ -96,7 +132,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               ],
             ),
           )
-        else
+        else if (false)
           const PopupMenuItem(
             enabled: false,
             child: Row(
@@ -131,15 +167,36 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     if (icon.toLowerCase().endsWith('.ico')) {
       icon = AppConfig.convertIcoToPng(icon, id) ?? 'assets/svg/应用.svg';
     }
+    final executable = result['path'];
+    LogService.info('添加应用：${result['name']}，可执行文件：$executable', category: 'system');
+    if (executable != null && Platform.isWindows) {
+      try {
+        final iconBytes = await WindowsAppIcon.fromExecutable(executable);
+        if (iconBytes != null) {
+          final iconFile = File('${AppConfig.iconsDir}/$id.png');
+          await iconFile.parent.create(recursive: true);
+          await iconFile.writeAsBytes(iconBytes);
+          icon = iconFile.path;
+        }
+      } catch (e, stack) {
+        // 图标读取失败时保留已选择的图标或默认图标。
+      }
+    }
+    final name = (result['name']?.trim().isNotEmpty == true)
+        ? result['name']!.trim()
+        : File(executable ?? '').uri.pathSegments.last
+            .replaceFirst(RegExp(r'\.[^.]+$'), '');
     final app = AppInfo(
       id: id,
-      name: result['name']!,
-      executable: result['path'],
+      name: name,
+      executable: executable,
       icon: icon,
       type: 'custom',
     );
     _customApps.add(app);
     await AppConfig.saveCustomApps(_customApps);
+    HomeScreen.triggerSettingsChange();
+    await AppCenterScreen.panelChannel.invokeMethod('panel_changed');
     setState(() {});
   }
 
@@ -212,8 +269,6 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildTitleBar(),
-                  if (!_loading) _buildPanelBar(),
                   if (_loading)
                     const Expanded(
                       child: Center(
@@ -228,15 +283,17 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                       child: ListView(
                         padding: const EdgeInsets.only(top: 8),
                         children: [
-                          _buildSection(
+                          _buildTitleBar(),
+                          const SizedBox(height: 16),
+                          if (false) _buildSection(
                             title: 'Orbby应用',
                             apps: _systemApps,
                             isSystem: true,
                           ),
                           _buildSection(
-                            title: '用户应用',
-                            apps: _customApps,
-                            isSystem: false,
+                            title: '',
+                            apps: _allApps,
+                            isSystem: true,
                           ),
                         ],
                       ),
@@ -259,7 +316,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
         const SizedBox(width: 8),
         const Expanded(
           child: Text(
-            '应用中心',
+            '应用',
             style: TextStyle(
               color: Colors.black87,
               fontSize: 18,
@@ -285,7 +342,6 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
   }
 
   Widget _buildPanelBar() {
-    const maxSlots = 8;
     final filled = _panelApps;
 
     return Column(
@@ -304,7 +360,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             ),
             const SizedBox(width: 6),
             Text(
-              '(${filled.length}/$maxSlots)',
+              '(${filled.length})',
               style: const TextStyle(color: Colors.black38, fontSize: 13),
             ),
           ],
@@ -326,20 +382,17 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
               ),
             )
           else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 20),
-                child: Row(
-                children: [
-                  for (int i = 0; i < filled.length; i++)
-                    Padding(
-                      padding: EdgeInsets.only(left: i > 0 ? 20 : 0),
-                      child: _buildSlot(i, filled),
-                    ),
-                ],
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 6,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.82,
               ),
-              ),
+              itemCount: filled.length,
+              itemBuilder: (_, index) => _buildSlot(index, filled),
             ),
         const SizedBox(height: 20),
       ],
@@ -410,14 +463,14 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     required List<AppInfo> apps,
     required bool isSystem,
   }) {
-    final tileCount = isSystem ? apps.length : apps.length + 1; // +1 for add tile
+    final tileCount = apps.length + 1; // 最后一格为添加应用
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text(
+            if (title.isNotEmpty) Text(
               title,
               style: const TextStyle(
                 color: Colors.black54,
@@ -425,8 +478,8 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(width: 6),
-            Text(
+            if (title.isNotEmpty) const SizedBox(width: 6),
+            if (title.isNotEmpty) Text(
               '(${apps.length})',
               style: const TextStyle(color: Colors.black38, fontSize: 13),
             ),
@@ -460,10 +513,15 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
             ),
             itemCount: tileCount,
             itemBuilder: (_, index) {
-              if (!isSystem && index == apps.length) {
+              if (index == apps.length) {
                 return _buildAddTile();
               }
-              return _buildAppTile(apps[index], isSystem: isSystem, index: index);
+              final app = apps[index];
+              return _buildAppTile(
+                app,
+                isSystem: app.type != 'custom',
+                index: index,
+              );
             },
           ),
       ],
@@ -474,9 +532,10 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => _launch(app),
-        onSecondaryTapUp: (details) =>
-            _showContextMenu(context, details.globalPosition, app),
+        onTap: () {
+          if (app.type == 'custom') _removeCustomApp(app);
+        },
+        onSecondaryTapUp: (details) => _showOrderMenu(context, details.globalPosition, app),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -676,7 +735,7 @@ class _AddAppDialogState extends State<_AddAppDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            if (false) TextField(
               controller: _nameCtrl,
               style: const TextStyle(color: Colors.black87, fontSize: 14),
               cursorColor: Colors.black54,
@@ -740,7 +799,7 @@ class _AddAppDialogState extends State<_AddAppDialog> {
         TextButton(
           onPressed: () {
             final name = _nameCtrl.text.trim();
-            if (name.isEmpty || _selectedPath == null) return;
+            if (_selectedPath == null) return;
             Navigator.of(context).pop({
               'name': name,
               'path': _selectedPath,

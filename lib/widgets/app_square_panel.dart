@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as img;
@@ -68,9 +69,11 @@ class _AppSquarePanelState extends State<AppSquarePanel> {
   Future<void> _loadApps() async {
     final settings = await SettingsService.load();
     final all = [...AppConfig.loadCustomApps(), ...AppConfig.loadSystemApps()];
-    final apps = settings.panelAppIds.isEmpty
-        ? all.take(8).toList()
-        : settings.panelAppIds.map((id) => all.where((app) => app.id == id)).expand((items) => items).take(8).toList();
+    final byId = {for (final app in all) app.id: app};
+    final apps = [
+      ...settings.panelAppIds.map((id) => byId[id]).whereType<AppInfo>(),
+      ...all.where((app) => !settings.panelAppIds.contains(app.id)),
+    ];
     if (mounted) setState(() { _apps = apps; _loading = false; });
   }
 
@@ -85,12 +88,25 @@ class _AppSquarePanelState extends State<AppSquarePanel> {
   Widget _buildList() {
     return SizedBox(
       height: _buttonSize,
-      child: ListView.separated(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        itemCount: _apps.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (_, index) => index == 0 ? _appCenterButton() : _appButton(_apps[index - 1], index - 1),
+      child: Listener(
+        onPointerSignal: (event) {
+          if (event is! PointerScrollEvent || !_scrollController.hasClients) return;
+          final delta = event.scrollDelta.dx != 0 ? event.scrollDelta.dx : event.scrollDelta.dy;
+          if (delta == 0) return;
+          final position = _scrollController.position;
+          _scrollController.animateTo(
+            (position.pixels + delta).clamp(0.0, position.maxScrollExtent).toDouble(),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+          );
+        },
+        child: ListView.separated(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          itemCount: _apps.length + 1,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (_, index) => index == 0 ? _appCenterButton() : _appButton(_apps[index - 1], index - 1),
+        ),
       ),
     );
   }

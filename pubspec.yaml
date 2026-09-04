@@ -39,7 +39,6 @@ dependencies:
   window_manager: ^0.4.3
   system_tray: ^2.0.3
   screen_retriever: ^0.2.0
-  shared_preferences: ^2.3.4
   path_provider: ^2.1.5
   desktop_multi_window: ^0.3.0
   flutter_svg: ^2.0.17
@@ -49,14 +48,7 @@ dependencies:
   file_picker: ^8.1.7
   ffi: ^2.1.0
   flutter_markdown: ^0.7.6
-  fl_chart:
-    git:
-      url: https://github.com/imaNNeo/fl_chart.git
-      ref: 1.2.0
   crypto: ^3.0.6
-  dart_jsonwebtoken: ^3.4.1
-  cryptography: ^2.9.0
-  qr_flutter: ^4.1.0
   image: ^4.9.1
 
 dependency_overrides:
@@ -88,13 +80,10 @@ flutter:
 
   assets:
     - assets/png/
-    - assets/png/photo/
-    - assets/png/menuBg/
     - assets/png/agentHint/
     - assets/png/plugins/
     - assets/svg/
     - assets/svg/home-tab/
-    - assets/svg/setting-panel-ic/
     - assets/scripts/
     - assets/logo_out.ico
 

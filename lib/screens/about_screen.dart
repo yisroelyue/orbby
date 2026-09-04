@@ -22,7 +22,6 @@ class _AboutScreenState extends State<AboutScreen> with WindowListener {
     _Feature(Icons.folder_special_rounded, '文件收藏', '好东西从不丢失', Color(0xFF2C9C81)),
     _Feature(Icons.smart_toy_rounded, 'Orbby agent', '快速解决你的烦恼问题', Color(0xFF425EE1)),
     _Feature(Icons.apps_rounded, '应用中心', '扩展你的工作方式', Color(0xFFB28CFF)),
-    _Feature(Icons.code_rounded, 'vibe coding 检测', '让 AI 持续工作', Color(0xFF62D5C8)),
     _Feature(Icons.translate_rounded, '翻译助手', '快速理解每句话', Color(0xFFFFB86B)),
     _Feature(Icons.content_paste_rounded, '快速剪切板', '加速工作效率', Color(0xFFB8879E)),
     _Feature(Icons.more_horiz_rounded, '更多功能', '更多能力开发中', Color(0xFF367340)),

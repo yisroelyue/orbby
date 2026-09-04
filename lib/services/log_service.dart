@@ -11,12 +11,11 @@ import '../config/settings.dart';
 /// ```dart
 /// LogService.init();                        // 在 main() 中尽早调用
 /// LogService.info('App started');
-/// LogService.warn('Something suspicious', category: 'weixin');
 /// LogService.error('Something broke', e, st, category: 'llm');
 /// ```
 ///
 /// 每个日志方法接受可选的 [category] 参数，对应设置中的日志分类
-/// （system / weixin / llm），默认为 'system'。
+/// （system / llm），默认为 'system'。
 /// 分类的输出开关由 [updateConfig] 动态设置。
 class LogService {
   LogService._();
@@ -29,7 +28,6 @@ class LogService {
   /// 当前日志分类配置（运行时由设置页同步）
   static Map<String, LogCategoryConfig> _config = {
     'system': const LogCategoryConfig(console: true, file: true),
-    'weixin': const LogCategoryConfig(console: true, file: true),
     'llm': const LogCategoryConfig(console: true, file: false),
   };
 
