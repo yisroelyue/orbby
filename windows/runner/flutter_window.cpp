@@ -326,13 +326,13 @@ bool FlutterWindow::OnCreate() {
   // Enable native file drag-and-drop on this window.
   DragAcceptFiles(GetHandle(), TRUE);
 
-  // Register global hotkey: Ctrl + ~ (backtick key above Tab)
-  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_WIN, VK_OEM_3);
+  // Register global hotkey: Alt + ~ (backtick key above Tab)
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleMenu, MOD_ALT, VK_OEM_3);
   RegisterHotKey(GetHandle(), kHotkeyIdToggleContent, MOD_CONTROL, VK_OEM_3);
   // Register global hotkey: Alt + Ctrl + ~
   RegisterHotKey(GetHandle(), kHotkeyIdOpenSettings, MOD_ALT | MOD_CONTROL, VK_OEM_3);
-  // Register global hotkey: Alt + ~
-  RegisterHotKey(GetHandle(), kHotkeyIdToggleAppBar, MOD_ALT, VK_OEM_3);
+  // Register global hotkey: Win + ~
+  RegisterHotKey(GetHandle(), kHotkeyIdToggleAppBar, MOD_WIN, VK_OEM_3);
   // Register global hotkey: Shift + Ctrl + V
 
 

@@ -146,7 +146,7 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     }
   }
 
-  Future<void> _showMenu() async {
+  Future<void> _showMenu({bool show = true}) async {
     _menuOperation = _menuOperation.then((_) async {
       final bounds = await _menuBounds();
       if (_menuWindow == null) {
@@ -158,8 +158,10 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
         try { await _menuReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
         _menuReady = null;
       }
-      await _menuWindow!.invokeMethod('place', _mapBounds(bounds));
-      _menuVisible = true;
+      if (show) {
+        await _menuWindow!.invokeMethod('place', _mapBounds(bounds));
+        _menuVisible = true;
+      }
     }).catchError((_) {});
     await _menuOperation;
   }
@@ -197,9 +199,7 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   }
 
   Future<void> _precreateWindows() async {
-    await _showMenu();
-    await _menuWindow?.hide();
-    _menuVisible = false;
+    await _showMenu(show: false);
   }
 
   Future<Size> _screenSize() async {
