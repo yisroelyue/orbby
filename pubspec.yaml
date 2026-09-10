@@ -48,6 +48,7 @@ dependencies:
   file_picker: ^8.1.7
   ffi: ^2.1.0
   flutter_markdown: ^0.7.6
+  markdown: ^7.3.1
   crypto: ^3.0.6
   image: ^4.9.1
 
@@ -83,7 +84,6 @@ flutter:
     - assets/png/agentHint/
     - assets/png/plugins/
     - assets/svg/
-    - assets/svg/home-tab/
     - assets/scripts/
     - assets/logo_out.ico
 
@@ -101,4 +101,9 @@ flutter:
       fonts:
         - asset: assets/fonts/SarasaMonoSC-Regular.ttf
         - asset: assets/fonts/SarasaMonoSC-Bold.ttf
+          weight: 700
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
           weight: 700

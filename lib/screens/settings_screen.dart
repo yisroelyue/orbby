@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../widgets/interactive_icon.dart';
-import 'tab/settings_tab.dart';
+import 'settings_view.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -45,7 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onPanStart: (_) => windowManager.startDragging(),
                     child: Row(
                       children: [
-                        SvgPicture.asset('assets/svg/home-tab/setting.svg',
+                        SvgPicture.asset('assets/svg/setting.svg',
                             width: 22, height: 22),
                         const SizedBox(width: 8),
                         const Expanded(
@@ -71,7 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Expanded(child: SettingsTab()),
+                  const Expanded(child: SettingsView()),
                 ],
               ),
             ),

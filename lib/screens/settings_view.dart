@@ -4,14 +4,14 @@ import '../../config/settings.dart';
 import '../../services/app_events.dart';
 import '../../widgets/app_toast.dart';
 
-class SettingsTab extends StatefulWidget {
-  const SettingsTab({super.key});
+class SettingsView extends StatefulWidget {
+  const SettingsView({super.key});
 
   @override
-  State<SettingsTab> createState() => _SettingsTabState();
+  State<SettingsView> createState() => _SettingsViewState();
 }
 
-class _SettingsTabState extends State<SettingsTab> {
+class _SettingsViewState extends State<SettingsView> {
   final _detailScrollController = ScrollController();
 
   late final TextEditingController _apiKeyController;
