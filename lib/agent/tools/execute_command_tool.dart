@@ -3,6 +3,7 @@
 
 import 'dart:io';
 import '../types.dart';
+import '../workspace.dart';
 
 /// 超时时间（毫秒），防止命令挂死
 const int _defaultTimeout = 30000;
@@ -20,13 +21,17 @@ final executeCommandTool = ToolDefinition(
         'type': 'string',
         'description': '要执行的命令，例如 "git status"、"npm test"、"dir C:\\Users"',
       },
-      'cwd': {'type': 'string', 'description': '命令执行的工作目录。不填则使用当前工作目录。'},
+      'cwd': {'type': 'string', 'description': '命令执行的工作目录。不填则使用工作区根目录（桌面）。'},
     },
     'required': ['command'],
   },
   execute: (args) async {
     final command = args['command'] as String?;
-    final cwd = args['cwd'] as String?;
+    final cwdArg = (args['cwd'] as String?)?.trim();
+    // 未指定时回落到工作区根目录（桌面）
+    final cwd = (cwdArg == null || cwdArg.isEmpty)
+        ? AgentWorkspace.current
+        : cwdArg;
 
     if (command == null || command.isEmpty) {
       return '错误：command 参数无效，需要提供有效的命令字符串';
@@ -34,9 +39,7 @@ final executeCommandTool = ToolDefinition(
 
     final parts = <String>[];
 
-    if (cwd != null && cwd.isNotEmpty) {
-      parts.add('工作目录: $cwd');
-    }
+    parts.add('工作目录: $cwd');
 
     try {
       String shell, shellArg;

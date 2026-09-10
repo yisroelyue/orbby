@@ -17,7 +17,12 @@ class LLMClient {
   String apiKey;
   String model;
   int maxRetries;
-  bool verbose;
+
+  /// 是否输出请求日志（URL 与请求体）
+  bool logRequest;
+
+  /// 是否输出回复日志（响应体与 token 用量）
+  bool logResponse;
 
   /// 日志中隐藏 tools 字段（工具定义列表很长，影响可读性）
   bool hideToolsInLog;
@@ -28,7 +33,8 @@ class LLMClient {
     required this.apiKey,
     required this.model,
     this.maxRetries = 2,
-    this.verbose = false,
+    this.logRequest = true,
+    this.logResponse = false,
     this.hideToolsInLog = true,
     this.provider = LLMProvider.openAICompatible,
   });
@@ -161,7 +167,7 @@ class LLMClient {
     }
 
     final url = baseURL;
-    if (verbose) {
+    if (logRequest) {
       LogService.info('━━━ LLM 请求 ━━━', category: 'llm');
       LogService.info('URL: $url', category: 'llm');
       LogService.info(_formatBodyForLog(body), category: 'llm');
@@ -191,7 +197,7 @@ class LLMClient {
             throw HttpException('LLM API 错误 (${response.statusCode}): $raw');
           }
 
-          if (verbose) {
+          if (logResponse) {
             LogService.info('━━━ LLM 响应 ━━━', category: 'llm');
             LogService.info(raw, category: 'llm');
           }
@@ -220,7 +226,7 @@ class LLMClient {
           );
 
           // 打印 token 使用情况
-          if (verbose && json['usage'] != null) {
+          if (logResponse && json['usage'] != null) {
             final usage = json['usage'] as Map<String, dynamic>;
             LogService.info(
               '  Token: prompt=${usage['prompt_tokens']}, completion=${usage['completion_tokens']}, total=${usage['total_tokens']}',
@@ -271,7 +277,7 @@ class LLMClient {
     }
 
     final url = baseURL;
-    if (verbose) {
+    if (logRequest) {
       LogService.info('━━━ LLM 流式请求 ━━━', category: 'llm');
       LogService.info('URL: $url', category: 'llm');
       LogService.info(_formatBodyForLog(body), category: 'llm');
@@ -373,6 +379,21 @@ class LLMClient {
             }
           }
 
+          if (logResponse) {
+            LogService.info('━━━ LLM 流式回复 ━━━', category: 'llm');
+            if (content.isNotEmpty) {
+              LogService.info(content, category: 'llm');
+            }
+            if (reasoningContent.isNotEmpty) {
+              LogService.info('思考过程: $reasoningContent', category: 'llm');
+            }
+            if (finalToolCalls != null) {
+              LogService.info(
+                '工具调用: ${finalToolCalls.map((t) => t.name).join(', ')}',
+                category: 'llm',
+              );
+            }
+          }
           return LLMResponse(
             role: 'assistant',
             content: content.isEmpty ? null : content,
@@ -436,7 +457,7 @@ class LLMClient {
     }
 
     final url = baseURL;
-    if (verbose) {
+    if (logRequest) {
       LogService.info('━━━ Anthropic 请求 ━━━', category: 'llm');
       LogService.info('URL: $url', category: 'llm');
       LogService.info(_formatBodyForLog(body), category: 'llm');
@@ -469,7 +490,7 @@ class LLMClient {
             );
           }
 
-          if (verbose) {
+          if (logResponse) {
             LogService.info('━━━ Anthropic 响应 ━━━', category: 'llm');
             LogService.info(raw, category: 'llm');
           }
@@ -561,7 +582,7 @@ class LLMClient {
     }
 
     final url = baseURL;
-    if (verbose) {
+    if (logRequest) {
       LogService.info('━━━ Anthropic 流式请求 ━━━', category: 'llm');
       LogService.info('URL: $url', category: 'llm');
       LogService.info(_formatBodyForLog(body), category: 'llm');
@@ -658,6 +679,18 @@ class LLMClient {
             );
           }
 
+          if (logResponse) {
+            LogService.info('━━━ Anthropic 流式回复 ━━━', category: 'llm');
+            if (content.isNotEmpty) {
+              LogService.info(content, category: 'llm');
+            }
+            if (toolCalls.isNotEmpty) {
+              LogService.info(
+                '工具调用: ${toolCalls.map((t) => t.name).join(', ')}',
+                category: 'llm',
+              );
+            }
+          }
           return LLMResponse(
             role: 'assistant',
             content: content.isEmpty ? null : content,

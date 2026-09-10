@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as img;
 
 import '../config/settings.dart';
+import '../services/app_events.dart';
 import '../screens/home_screen.dart';
 
 class AppInfo {
@@ -56,12 +57,12 @@ class _AppSquarePanelState extends State<AppSquarePanel> {
   void initState() {
     super.initState();
     _loadApps();
-    HomeScreen.settingsChangeNotifier.addListener(_loadApps);
+    AppEvents.addListener(AppEvents.panelAppsChanged, _loadApps);
   }
 
   @override
   void dispose() {
-    HomeScreen.settingsChangeNotifier.removeListener(_loadApps);
+    AppEvents.removeListener(AppEvents.panelAppsChanged, _loadApps);
     _scrollController.dispose();
     super.dispose();
   }

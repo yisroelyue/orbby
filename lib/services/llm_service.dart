@@ -61,7 +61,8 @@ class LlmService {
         baseURL: chatUrl,
         apiKey: settings.apiKey,
         model: useModel,
-        verbose: settings.llmLogEnabled,
+        logRequest: settings.llmLogRequest,
+        logResponse: settings.llmLogResponse,
         // 重试由本服务统一处理，避免与 LLMClient 的内部重试叠加。
         maxRetries: 0,
       );
@@ -124,7 +125,8 @@ class LlmService {
       baseURL: chatUrl,
       apiKey: settings.apiKey,
       model: model,
-      verbose: settings.llmLogEnabled,
+      logRequest: settings.llmLogRequest,
+      logResponse: settings.llmLogResponse,
       maxRetries: 0,
     );
     var result = '';

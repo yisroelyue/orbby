@@ -4,6 +4,7 @@ import 'dart:async';
 import '../agent/agent_core.dart';
 import '../agent/llm_client.dart';
 import '../agent/tool_registry.dart';
+import '../agent/workspace.dart';
 
 import '../agent/types.dart' as agent_types;
 import '../config/platform.dart';
@@ -24,6 +25,8 @@ class AgentService {
 
   /// 获取或创建 Agent 实例
   static Future<Agent> _getAgent({bool forceRecreate = false}) async {
+    // Agent 创建前确保工作目录（桌面）已解析完成
+    await AgentWorkspace.resolve();
     final settings = await SettingsService.load();
     final platform = settings.platform;
     final model = settings.model.isEmpty
@@ -44,7 +47,8 @@ class AgentService {
         baseURL: chatUrl,
         apiKey: settings.apiKey,
         model: model,
-        verbose: settings.llmLogEnabled,
+        logRequest: settings.llmLogRequest,
+        logResponse: settings.llmLogResponse,
         provider: platform == 'anthropic'
             ? LLMProvider.anthropic
             : LLMProvider.openAICompatible,
@@ -84,7 +88,8 @@ class AgentService {
   static Future<void> syncLogSettings() async {
     if (_agent == null) return;
     final settings = await SettingsService.load();
-    _agent!.llm.verbose = settings.llmLogEnabled;
+    _agent!.llm.logRequest = settings.llmLogRequest;
+    _agent!.llm.logResponse = settings.llmLogResponse;
   }
 
   /// 发送消息到 AI，返回回复文本（非流式，一次性返回）

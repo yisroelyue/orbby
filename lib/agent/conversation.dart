@@ -5,12 +5,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'types.dart';
+import 'workspace.dart';
 
 /// 默认系统提示
 String _defaultSystemPrompt() {
   final homeDir =
       Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
-  final cwd = Directory.current.path;
+  final cwd = AgentWorkspace.current;
   return '你是一个能通过调用工具完成任务的 AI 助手。\n'
       '你的工作方式：理解需求，调用工具执行，返回结果\n'
       '- 当前系统: ${Platform.operatingSystem}，用户主目录: $homeDir\n'

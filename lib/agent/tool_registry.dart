@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'types.dart';
 import 'tool_policy.dart';
+import 'workspace.dart';
 import 'tools/create_file_tool.dart';
 import 'tools/read_file_tool.dart';
 import 'tools/edit_file_tool.dart';
@@ -16,7 +15,7 @@ class ToolRegistry {
   final ToolPolicy policy;
 
   ToolRegistry({ToolPolicy? policy})
-    : policy = policy ?? ToolPolicy(workspaceRoot: Directory.current.path);
+    : policy = policy ?? ToolPolicy(workspaceRoot: AgentWorkspace.current);
   Map<String, ToolDefinition> get tools => Map.unmodifiable(_tools);
 
   void register(ToolDefinition tool) => _tools[tool.name] = tool;

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../services/translate_service.dart';
 import 'platform.dart';
 
 /// 单类日志的开关配置
@@ -65,21 +64,17 @@ class AppSettings {
     this.platform = 'deepseek',
     String apiKey = '',
     String chatUrl = '',
-    this.appTheme = 'light',
-    this.showTranslateLangSelector = true,
+    this.llmLogRequest = true,
+    this.llmLogResponse = false,
     this.translationProvider = 'llm',
     this.tencentSecretId = '',
     this.tencentSecretKey = '',
     this.tencentRegion = 'ap-guangzhou',
     this.tencentProjectId = 0,
     this.panelAppIds = const [],
-    List<String>? translateEnabledLangs,
     Map<String, PlatformApiConfig>? apiConfigs,
     Map<String, LogCategoryConfig>? logCategories,
-  }) : translateEnabledLangs =
-           translateEnabledLangs ??
-           TranslateLang.values.map((e) => e.name).toList(),
-       apiConfigs =
+  }) : apiConfigs =
            apiConfigs ??
            {
              'deepseek': PlatformApiConfig(
@@ -97,15 +92,16 @@ class AppSettings {
 
   String platform;
   Map<String, LogCategoryConfig> logCategories;
-  String appTheme;
-  bool showTranslateLangSelector; // 是否显示翻译面板的语言选择器
+
+  /// LLM 日志细粒度开关：请求 / 回复单独控制（作用于 LLMClient）
+  bool llmLogRequest;
+  bool llmLogResponse;
   String translationProvider;
   String tencentSecretId;
   String tencentSecretKey;
   String tencentRegion;
   int tencentProjectId;
   List<String> panelAppIds; // 服务面板展示的应用 id 列表
-  List<String> translateEnabledLangs; // 启用的翻译语言对（TranslateLang.name 列表）
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -124,13 +120,6 @@ class AppSettings {
 
   String get model => currentApi.model;
   set model(String v) => currentApi.model = v;
-
-  /// 向后兼容：LLM 日志开关 → 映射到 logCategories['llm'].console
-  bool get llmLogEnabled => logCategories['llm']?.console ?? false;
-  set llmLogEnabled(bool v) {
-    final cur = logCategories['llm'] ?? const LogCategoryConfig();
-    logCategories['llm'] = cur.copyWith(console: v);
-  }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     final platform = json['platform'] as String? ?? 'deepseek';
@@ -163,10 +152,9 @@ class AppSettings {
 
     return AppSettings(
       platform: platform,
-      logCategories: _parseLogCategories(json),
-      appTheme: json['appTheme'] as String? ?? 'light',
-      showTranslateLangSelector:
-          json['showTranslateLangSelector'] as bool? ?? true,
+      logCategories: _withLlmConsoleAlwaysOn(_parseLogCategories(json)),
+      llmLogRequest: json['llmLogRequest'] as bool? ?? true,
+      llmLogResponse: json['llmLogResponse'] as bool? ?? false,
       translationProvider: json['translationProvider'] as String? ?? 'llm',
       tencentSecretId: json['tencentSecretId'] as String? ?? '',
       tencentSecretKey: json['tencentSecretKey'] as String? ?? '',
@@ -177,15 +165,12 @@ class AppSettings {
               ?.map((e) => e as String)
               .toList() ??
           [],
-      translateEnabledLangs:
-          (json['translateEnabledLangs'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList(),
       apiConfigs: configs,
     );
   }
 
-  /// 从 JSON 解析 logCategories，兼容旧的 llmLogEnabled 字段
+  /// 从 JSON 解析 logCategories（旧版的 llmLogEnabled 开关已由
+  /// llmLogRequest/llmLogResponse 接管，不再读取）
   static Map<String, LogCategoryConfig> _parseLogCategories(
     Map<String, dynamic> json,
   ) {
@@ -198,27 +183,35 @@ class AppSettings {
         ),
       );
     }
-    // 从旧格式迁移：只有 llmLogEnabled 布尔值
-    final oldLlmLog = json['llmLogEnabled'] as bool? ?? false;
+    // 从旧格式迁移：llm 的输出控制已由 llmLogRequest/llmLogResponse 接管
     return {
       'system': const LogCategoryConfig(console: true, file: true),
-      'llm': LogCategoryConfig(console: oldLlmLog, file: false),
+      'llm': const LogCategoryConfig(console: true, file: false),
     };
+  }
+
+  /// llm 分类的输出由"请求日志/回复日志"细粒度开关控制（LLMClient 层），
+  /// LogService 层面对 llm 分类恒开，避免这里关掉导致细粒度开关失效。
+  static Map<String, LogCategoryConfig> _withLlmConsoleAlwaysOn(
+    Map<String, LogCategoryConfig> categories,
+  ) {
+    final cur = categories['llm'] ?? const LogCategoryConfig();
+    categories['llm'] = cur.copyWith(console: true);
+    return categories;
   }
 
   Map<String, dynamic> toJson() => {
     'platform': platform,
     'apiConfigs': apiConfigs.map((k, v) => MapEntry(k, v.toJson())),
     'logCategories': logCategories.map((k, v) => MapEntry(k, v.toJson())),
-    'appTheme': appTheme,
-    'showTranslateLangSelector': showTranslateLangSelector,
+    'llmLogRequest': llmLogRequest,
+    'llmLogResponse': llmLogResponse,
     'translationProvider': translationProvider,
     'tencentSecretId': tencentSecretId,
     'tencentSecretKey': tencentSecretKey,
     'tencentRegion': tencentRegion,
     'tencentProjectId': tencentProjectId,
     'panelAppIds': panelAppIds,
-    'translateEnabledLangs': translateEnabledLangs,
   };
 }
 

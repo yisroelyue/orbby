@@ -5,22 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:window_manager/window_manager.dart';
 
-import 'package:desktop_multi_window/desktop_multi_window.dart';
-
 import '../config/settings.dart';
 import '../services/windows_app_icon.dart';
 import '../services/log_service.dart';
+import '../services/app_events.dart';
 import '../widgets/app_square_panel.dart';
 import '../widgets/interactive_icon.dart';
-import 'home_screen.dart';
 
 class AppCenterScreen extends StatefulWidget {
   const AppCenterScreen({super.key});
-
-  static const panelChannel = WindowMethodChannel(
-    'orbby_app_center_events',
-    mode: ChannelMode.unidirectional,
-  );
 
   @override
   State<AppCenterScreen> createState() => _AppCenterScreenState();
@@ -63,7 +56,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     final settings = await SettingsService.load();
     settings.panelAppIds = _panelAppIds;
     await SettingsService.save(settings);
-    AppCenterScreen.panelChannel.invokeMethod('panel_changed');
+    AppEvents.emit(AppEvents.panelAppsChanged);
   }
 
   bool _isInPanel(String id) => _panelAppIds.contains(id);
@@ -195,8 +188,7 @@ class _AppCenterScreenState extends State<AppCenterScreen> {
     );
     _customApps.add(app);
     await AppConfig.saveCustomApps(_customApps);
-    HomeScreen.triggerSettingsChange();
-    await AppCenterScreen.panelChannel.invokeMethod('panel_changed');
+    await AppEvents.emit(AppEvents.panelAppsChanged);
     setState(() {});
   }
 

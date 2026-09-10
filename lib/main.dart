@@ -17,9 +17,13 @@ import 'screens/about_screen.dart';
 import 'screens/app_bar_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/content_screen.dart';
 import 'services/llm_task.dart';
+import 'services/menu_window_signals.dart';
 import 'services/log_service.dart';
+import 'services/agent_service.dart';
+import 'services/app_events.dart';
 
 
 const _windowShapeChannel = MethodChannel('orbby_window_shape');
@@ -42,7 +46,21 @@ Future<void> main(List<String> args) async {
   if (windowArguments['type'] == 'menu') {
     await Window.initialize();
     await _configureMenuWindow(windowController, windowArguments);
+    // 设置保存后同步本窗口的日志与 Agent 配置
+    AppEvents.addListener(AppEvents.settingsChanged, _syncMenuServices);
     runApp(const HomeScreen());
+    return;
+  }
+  if (windowArguments['type'] == 'settings') {
+    await Window.initialize();
+    await _configureSettingsWindow(windowController, windowArguments);
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(fontFamily: 'Microsoft YaHei'),
+        home: const SettingsScreen(),
+      ),
+    );
     return;
   }
   if (windowArguments['type'] == 'app_bar') {
@@ -106,6 +124,13 @@ Future<void> main(List<String> args) async {
   _initSystemTray();
 }
 
+/// menu 窗口收到设置变更后，同步本 engine 的日志与 LLM Agent 配置
+Future<void> _syncMenuServices() async {
+  final s = await SettingsService.load();
+  LogService.updateConfig(s.logCategories);
+  await AgentService.syncLogSettings();
+}
+
 Future<void> _initSystemTray() async {
   try {
     final tmpDir = await getTemporaryDirectory();
@@ -125,6 +150,11 @@ Future<void> _initSystemTray() async {
 
     final menu = Menu();
     await menu.buildFrom([
+      MenuItemLabel(
+        label: '设置',
+        onClicked: (_) =>
+            HomeScreen.menuChannel.invokeMethod('open_settings'),
+      ),
       MenuItemLabel(label: '关于', onClicked: (_) => _openAboutFromTray()),
       MenuItemLabel(
         label: '退出',
@@ -227,14 +257,14 @@ Future<void> _configureMenuWindow(
 ) async {
   final bounds = _boundsFromArguments(arguments);
   await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
     switch (call.method) {
       case 'place':
         final args = call.arguments as Map;
         await _placeMenuWindow(_boundsFromArguments(args));
-        return;
-      case 'switch_tab':
-        final tabIndex = call.arguments as int;
-        HomeScreen.triggerTabSwitch(tabIndex);
         return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
@@ -273,13 +303,13 @@ Future<void> _configureAppBarWindow(
 ) async {
   final bounds = _boundsFromArguments(arguments);
   await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
     if (call.method == 'place') {
       await windowManager.setBounds(_boundsFromArguments(call.arguments as Map));
       await windowManager.show();
-      return;
-    }
-    if (call.method == 'refresh_apps') {
-      AppBarScreen.refreshNotifier.value++;
       return;
     }
     throw UnimplementedError('Not implemented: ${call.method}');
@@ -307,8 +337,55 @@ Future<void> _configureAppBarWindow(
   );
 }
 
+Future<void> _configureSettingsWindow(
+  WindowController windowController,
+  Map<String, dynamic> arguments,
+) async {
+  final bounds = _boundsFromArguments(arguments);
+  await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
+    if (call.method == 'place') {
+      await windowManager.setBounds(_boundsFromArguments(call.arguments as Map));
+      await windowManager.show();
+      return;
+    }
+    throw UnimplementedError('Not implemented: ${call.method}');
+  });
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: bounds.size,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      alwaysOnTop: false,
+    ),
+    () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setMinimumSize(bounds.size);
+      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setBounds(bounds);
+      await windowManager.setAlwaysOnTop(false);
+      await windowManager.setBackgroundColor(Colors.transparent);
+      await windowManager.setTitle('Orbby Settings');
+      // 创建阶段保持隐藏，由 place 消息完成定位并显示。
+    },
+  );
+}
+
 Future<void> _configureContentWindow(WindowController controller, Map<String, dynamic> args) async {
   final bounds = _boundsFromArguments(args);
+  await controller.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
+    throw UnimplementedError('Not implemented: ${call.method}');
+  });
   await windowManager.waitUntilReadyToShow(WindowOptions(
     size: bounds.size, backgroundColor: Colors.transparent, skipTaskbar: true,
     titleBarStyle: TitleBarStyle.hidden, windowButtonVisibility: false, alwaysOnTop: true,
@@ -326,6 +403,13 @@ Future<void> _configureAppCenterWindow(
   Map<String, dynamic> arguments,
 ) async {
   final bounds = _boundsFromArguments(arguments);
+  await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
+    throw UnimplementedError('Not implemented: ${call.method}');
+  });
   await windowManager.waitUntilReadyToShow(
     WindowOptions(
       size: bounds.size,
@@ -392,7 +476,9 @@ Future<void> _placeMenuWindow(Rect bounds) async {
   await windowManager.setBounds(bounds);
   // 特效已在 _configureMenuWindow 中应用，hide/show 不会清除，
   // 无需重复设置，避免 setEffect + show 时序竞争导致毛玻璃不生效。
-  await windowManager.show(inactive: true);
+  // 显示即激活窗口（不再 inactive），配合输入框自动聚焦。
+  await windowManager.show();
+  menuWindowShown.value++;
 }
 
 Rect _boundsFromArguments(Map arguments) {

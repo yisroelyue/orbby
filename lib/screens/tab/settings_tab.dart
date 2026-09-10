@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:orbby/services/log_service.dart';
 import '../../config/platform.dart';
 import '../../config/settings.dart';
-import '../../services/agent_service.dart';
-import '../../services/translate_service.dart';
-import '../../screens/home_screen.dart';
+import '../../services/app_events.dart';
 import '../../widgets/app_toast.dart';
 
 class SettingsTab extends StatefulWidget {
@@ -30,8 +27,8 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _obscureTencentSecretKey = true;
   String _translationProvider = 'llm';
   Map<String, LogCategoryConfig> _logCategories = {};
-  bool _showTranslateLangSelector = true;
-  List<String> _translateEnabledLangs = [];
+  bool _llmLogRequest = true;
+  bool _llmLogResponse = false;
   bool _loading = true;
 
   @override
@@ -62,13 +59,13 @@ class _SettingsTabState extends State<SettingsTab> {
           ? PlatformConfig.defaultChatModel(s.platform)
           : cfg.model;
       _logCategories = Map.of(s.logCategories);
+      _llmLogRequest = s.llmLogRequest;
+      _llmLogResponse = s.llmLogResponse;
       _translationProvider = s.translationProvider;
       _tencentSecretIdController.text = s.tencentSecretId;
       _tencentSecretKeyController.text = s.tencentSecretKey;
       _tencentRegionController.text = s.tencentRegion;
       _tencentProjectIdController.text = '${s.tencentProjectId}';
-      _showTranslateLangSelector = s.showTranslateLangSelector;
-      _translateEnabledLangs = List.of(s.translateEnabledLangs);
       _loading = false;
     });
   }
@@ -115,13 +112,6 @@ class _SettingsTabState extends State<SettingsTab> {
         controller: _detailScrollController,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(4, 4, 4, 14),
-            child: Text(
-              '设置',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-          ),
           ..._buildApiSettings(),
           ..._buildTranslateSettings(),
           ..._buildLogSettings(),
@@ -134,7 +124,7 @@ class _SettingsTabState extends State<SettingsTab> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
+        color: const Color(0xFFECECEC),
         borderRadius: BorderRadius.circular(10),
       ),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
@@ -185,62 +175,59 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 
-  /// 日志分类的显示名称
-  static const _logCategoryNames = <String, String>{
-    'system': '系统日志',
-    'llm': 'LLM 日志',
-  };
-
   List<Widget> _buildLogSettings() {
-    final categories = ['system', 'llm'];
     final widgets = <Widget>[
       _buildSectionTitle('日志设置'),
       _buildThinDivider(),
+      _buildLogCategoryLabel('系统日志'),
+      _buildLogToggleRow(
+        label: '控制台输出',
+        value: _logCategories['system']?.console ?? true,
+        onChanged: (v) {
+          setState(() {
+            final cur = _logCategories['system'] ?? const LogCategoryConfig();
+            _logCategories['system'] = cur.copyWith(console: v);
+          });
+        },
+      ),
+      _buildLogToggleRow(
+        label: '日志文件',
+        value: _logCategories['system']?.file ?? true,
+        onChanged: (v) {
+          setState(() {
+            final cur = _logCategories['system'] ?? const LogCategoryConfig();
+            _logCategories['system'] = cur.copyWith(file: v);
+          });
+        },
+      ),
+      _buildThinDivider(),
+      _buildLogCategoryLabel('LLM 日志'),
+      _buildLogToggleRow(
+        label: '请求日志',
+        value: _llmLogRequest,
+        onChanged: (v) => setState(() => _llmLogRequest = v),
+      ),
+      _buildLogToggleRow(
+        label: '回复日志',
+        value: _llmLogResponse,
+        onChanged: (v) => setState(() => _llmLogResponse = v),
+      ),
     ];
-    for (int i = 0; i < categories.length; i++) {
-      final cat = categories[i];
-      if (i > 0) {
-        widgets.add(_buildThinDivider());
-      }
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(
-            _logCategoryNames[cat] ?? cat,
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      );
-      widgets.add(
-        _buildLogToggleRow(
-          label: '控制台输出',
-          value: _logCategories[cat]?.console ?? true,
-          onChanged: (v) {
-            setState(() {
-              final cur = _logCategories[cat] ?? const LogCategoryConfig();
-              _logCategories[cat] = cur.copyWith(console: v);
-            });
-          },
-        ),
-      );
-      widgets.add(
-        _buildLogToggleRow(
-          label: '日志文件',
-          value: _logCategories[cat]?.file ?? true,
-          onChanged: (v) {
-            setState(() {
-              final cur = _logCategories[cat] ?? const LogCategoryConfig();
-              _logCategories[cat] = cur.copyWith(file: v);
-            });
-          },
-        ),
-      );
-    }
     return [_buildCard(children: widgets)];
+  }
+
+  Padding _buildLogCategoryLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFF888888),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
   }
 
   Widget _buildLogToggleRow({
@@ -433,74 +420,11 @@ class _SettingsTabState extends State<SettingsTab> {
       ],
       _buildThinDivider(),
     ];
-    final allLangs = TranslateLang.values;
-    // 确保 _translateEnabledLangs 有默认值
-    if (_translateEnabledLangs.isEmpty) {
-      _translateEnabledLangs = allLangs.map((e) => e.name).toList();
-    }
     return _buildCard(
       children: [
         _buildSectionTitle('翻译设置'),
         _buildThinDivider(),
         ...providerSettings,
-        // 是否显示翻译选项
-        _buildLogToggleRow(
-          label: '显示翻译选项',
-          value: _showTranslateLangSelector,
-          onChanged: (v) {
-            setState(() => _showTranslateLangSelector = v);
-          },
-        ),
-        _buildThinDivider(),
-        // 可选语言
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(
-            '可选语言',
-            style: TextStyle(
-              color: Colors.black.withValues(alpha: 0.4),
-              fontSize: 12,
-            ),
-          ),
-        ),
-        ...allLangs.map((lang) {
-          final enabled = _translateEnabledLangs.contains(lang.name);
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                if (enabled) {
-                  _translateEnabledLangs.remove(lang.name);
-                } else {
-                  _translateEnabledLangs.add(lang.name);
-                }
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  Icon(
-                    enabled
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
-                    size: 20,
-                    color: enabled
-                        ? const Color(0xFF66BB6A)
-                        : const Color(0xFFBBBBBB),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    lang.label,
-                    style: const TextStyle(
-                      color: Color(0xFF555555),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
       ],
     );
   }
@@ -580,8 +504,8 @@ class _SettingsTabState extends State<SettingsTab> {
     existing.platform = _platform;
     existing.apiConfigs = _apiConfigs;
     existing.logCategories = Map.of(_logCategories);
-    existing.showTranslateLangSelector = _showTranslateLangSelector;
-    existing.translateEnabledLangs = List.of(_translateEnabledLangs);
+    existing.llmLogRequest = _llmLogRequest;
+    existing.llmLogResponse = _llmLogResponse;
     existing.translationProvider = _translationProvider;
     existing.tencentSecretId = _tencentSecretIdController.text.trim();
     existing.tencentSecretKey = _tencentSecretKeyController.text.trim();
@@ -591,13 +515,8 @@ class _SettingsTabState extends State<SettingsTab> {
     existing.tencentProjectId = int.tryParse(_tencentProjectIdController.text.trim()) ?? 0;
     await SettingsService.save(existing);
 
-    // 通知设置变更
-    HomeScreen.triggerSettingsChange();
-    AgentService.syncLogSettings();
-    LogService.updateConfig(Map.of(_logCategories));
-
-    // 通知悬浮球窗口刷新
-    HomeScreen.menuChannel.invokeMethod('settings_saved');
+    // 通知所有窗口设置已变更（各窗口自行同步本地服务）
+    AppEvents.emit(AppEvents.settingsChanged);
 
     if (!mounted) return;
     AppToast.show(context, message: '设置已保存');
