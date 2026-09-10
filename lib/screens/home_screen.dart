@@ -7,9 +7,12 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../services/agent_service.dart';
 import '../services/chat_command.dart';
+import '../services/chat_storage_service.dart';
+import '../services/file_undo_service.dart';
 import '../services/menu_window_signals.dart';
 import '../widgets/command_palette.dart';
 import '../widgets/frosted_panel.dart';
+import '../widgets/session_picker_dialog.dart';
 import '../widgets/typing_indicator.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -51,8 +54,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _selectedAction;
   bool _isSending = false;
 
+  /// 当前会话（持久化）；null = 新对话尚未落盘，首轮发送时创建
+  ChatConversation? _conversation;
+  Future<void> _saveChain = Future<void>.value();
+
   /// '/' 命令面板：命令注册表见 [_buildCommands]
   late final _palette = CommandPaletteController(commands: _buildCommands());
+
+  /// MaterialApp 内部的 Navigator context：
+  /// HomeScreen 自身在 MaterialApp 之上，它的 context 弹窗找不到 MaterialLocalizations
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   /// 列表区主题固定，缓存避免每次 build 重建 ThemeData
   static final _listTheme = ThemeData(
@@ -152,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: _theme,
+      navigatorKey: _navigatorKey,
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
@@ -349,29 +361,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         name: 'help',
         description: '查看所有命令',
         execute: () {
-          if (!mounted) return;
           final buf = StringBuffer('可用命令：');
           for (final c in _palette.commands) {
             buf.write('\n- `/${c.name}` — ${c.description}');
           }
-          setState(() {
-            _messages.add(_ChatMessage(text: buf.toString(), isUser: false));
-          });
-          _scrollToBottom(force: true);
+          _addLocalMessage(buf.toString());
         },
       ),
       ChatCommand(
+        name: 'session',
+        description: '查看并切换历史会话',
+        execute: () => _showSessionPicker(),
+      ),
+      ChatCommand(
         name: 'clear',
-        description: '清空当前对话',
+        description: '清空当前对话（旧会话保留在历史中）',
         execute: () {
           if (!mounted) return;
-          setState(_messages.clear);
+          // 旧会话文件保留，下次发送创建新会话
+          setState(() {
+            _conversation = null;
+            _messages.clear();
+          });
         },
       ),
       ChatCommand(
         name: 'compact',
         description: '压缩对话上下文',
         execute: () => _runCompact(),
+      ),
+      ChatCommand(
+        name: 'rollback',
+        description: '回滚上一次文件改动',
+        execute: () => _addLocalMessage(FileUndoService.undoLast()),
       ),
       ChatCommand(
         name: 'retry',
@@ -403,12 +425,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _runCompact() async {
     if (!mounted || _isSending) return;
     if (_messages.isEmpty) {
-      setState(() {
-        _messages.add(
-          _ChatMessage(text: '当前没有对话可压缩。', isUser: false),
-        );
-      });
-      _scrollToBottom(force: true);
+      _addLocalMessage('当前没有对话可压缩。');
       return;
     }
     setState(() {
@@ -430,6 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isSending = false;
       });
     }
+    _saveConversation();
     _focusInput();
   }
 
@@ -440,6 +458,91 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (cmd == null) return;
     _inputController.clear();
     cmd.execute();
+  }
+
+  // ─── 会话持久化 ─────────────────────────────────────────────────────────
+
+  /// 当前对话落盘（~/.orbby/claude_task/task）；空对话不创建文件。
+  /// 首轮发送时创建会话，标题取第一条用户消息。
+  /// 保存请求串行执行（_saveChain），避免两次快照交错落盘；
+  /// 链内吞错——一环失败不能毒化后续所有保存。
+  Future<void> _saveConversation() {
+    _saveChain = _saveChain.then((_) async {
+      try {
+        final msgs = <Map<String, String>>[
+          for (final m in _messages)
+            // local 消息（命令结果）是瞬时提示，不落盘：
+            // 否则重载会话后 local 标志丢失，会混进下次发送的 history
+            if (m.text.isNotEmpty && !m.local)
+              {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
+        ];
+        if (msgs.isEmpty) return;
+        _conversation ??= ChatConversation(
+          id: '${DateTime.now().millisecondsSinceEpoch}',
+          title: _messages
+              .firstWhere((m) => m.isUser && !m.local,
+                  orElse: () => _messages.first)
+              .text,
+        );
+        final conv = _conversation!;
+        if (conv.title.isEmpty) {
+          conv.title = msgs.first['content'] ?? '未命名会话';
+        }
+        conv.messages
+          ..clear()
+          ..addAll(msgs);
+        await ChatStorageService.save(conv);
+      } catch (_) {
+        // 落盘失败静默跳过，聊天主流程不受影响
+      }
+    });
+    return _saveChain;
+  }
+
+  /// 插入一条本地 assistant 消息（命令结果等），并落盘
+  void _addLocalMessage(String text) {
+    if (!mounted) return;
+    setState(() {
+      _messages.add(_ChatMessage(text: text, isUser: false, local: true));
+    });
+    _scrollToBottom(force: true);
+    _saveConversation();
+  }
+
+  /// /session：打开历史会话弹窗，选择后切换（切换前自动保存当前会话）
+  Future<void> _showSessionPicker() async {
+    if (!mounted) return;
+    if (_isSending) {
+      _addLocalMessage('回复进行中，结束后再切换会话。');
+      return;
+    }
+    await _saveConversation();
+    final conversations = await ChatStorageService.loadAll();
+    if (!mounted) return;
+    final navContext = _navigatorKey.currentContext;
+    if (navContext == null) return;
+    final selected = await showDialog<ChatConversation>(
+      context: navContext,
+      barrierColor: Colors.black54,
+      builder: (_) => SessionPickerDialog(conversations: conversations),
+    );
+    if (selected == null || !mounted) return;
+    final conv = await ChatStorageService.load(selected.id) ?? selected;
+    // agent 上下文由下次发送携带的 history 重建
+    AgentService.resetConversation();
+    setState(() {
+      _conversation = conv;
+      _messages
+        ..clear()
+        ..addAll([
+          for (final m in conv.messages)
+            _ChatMessage(
+              text: m['content'] ?? '',
+              isUser: m['role'] == 'user',
+            ),
+        ]);
+    });
+    _scrollToBottom(force: true);
   }
 
   // ─── 发送消息 ──────────────────────────────────────────────────────────
@@ -467,7 +570,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 构建历史消息（不含当前用户消息）
     final history = <Map<String, String>>[];
     for (final msg in _messages) {
-      if (msg.text.isEmpty) continue;
+      if (msg.text.isEmpty || msg.local) continue;
       history.add({
         'role': msg.isUser ? 'user' : 'assistant',
         'content': msg.text,
@@ -478,6 +581,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _isSending = true;
     });
+    _saveConversation();
     _scrollToBottom(force: true);
 
     // 添加空的 AI 消息用于流式填充
@@ -488,14 +592,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       // 重置 agent 对话并传入历史，避免与旧 popup 状态冲突
       AgentService.resetConversation();
-      await for (final chunk in AgentService.chatStream(
+      await for (final event in AgentService.chatStream(
         text,
         mode: 'auto',
         history: history,
       )) {
         if (!mounted) return;
         setState(() {
-          _messages.last.text += chunk;
+          switch (event) {
+            case AgentRoundEvent():
+              // 中间轮过程文字结束，插分隔线区分轮次
+              if (_messages.last.text.isNotEmpty) {
+                _messages.last.text += '\n\n---\n\n';
+              }
+            case AgentTokenEvent(:final text):
+              _messages.last.text += text;
+          }
         });
         _scrollToBottom();
       }
@@ -519,6 +631,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (mounted) setState(() => _isSending = false);
+    _saveConversation();
   }
 
   void _scrollToBottom({bool force = false}) {
@@ -786,11 +899,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 class _ChatMessage {
-  _ChatMessage({required this.text, required this.isUser, this.streaming = false});
+  _ChatMessage({required this.text, required this.isUser, this.streaming = false, this.local = false});
 
   String text;
   final bool isUser;
   bool streaming;
+  final bool local;
 }
 
 /// 代码块文字：只重写 visitText 换颜色，块的外层样式仍由样式表渲染
