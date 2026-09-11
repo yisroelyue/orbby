@@ -71,6 +71,8 @@ class AppSettings {
     this.tencentSecretKey = '',
     this.tencentRegion = 'ap-guangzhou',
     this.tencentProjectId = 0,
+    this.agentSystemPrompt = '',
+    this.agentUsageRules = '',
     this.panelAppIds = const [],
     Map<String, PlatformApiConfig>? apiConfigs,
     Map<String, LogCategoryConfig>? logCategories,
@@ -101,6 +103,8 @@ class AppSettings {
   String tencentSecretKey;
   String tencentRegion;
   int tencentProjectId;
+  String agentSystemPrompt;
+  String agentUsageRules;
   List<String> panelAppIds; // 服务面板展示的应用 id 列表
   Map<String, PlatformApiConfig> apiConfigs;
 
@@ -160,6 +164,8 @@ class AppSettings {
       tencentSecretKey: json['tencentSecretKey'] as String? ?? '',
       tencentRegion: json['tencentRegion'] as String? ?? 'ap-guangzhou',
       tencentProjectId: json['tencentProjectId'] as int? ?? 0,
+      agentSystemPrompt: json['agentSystemPrompt'] as String? ?? '',
+      agentUsageRules: json['agentUsageRules'] as String? ?? '',
       panelAppIds:
           (json['panelAppIds'] as List<dynamic>?)
               ?.map((e) => e as String)
@@ -211,6 +217,8 @@ class AppSettings {
     'tencentSecretKey': tencentSecretKey,
     'tencentRegion': tencentRegion,
     'tencentProjectId': tencentProjectId,
+    'agentSystemPrompt': agentSystemPrompt,
+    'agentUsageRules': agentUsageRules,
     'panelAppIds': panelAppIds,
   };
 }
@@ -223,7 +231,7 @@ class SettingsService {
         Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
-    final dir = Directory('$home/.orbby');
+    final dir = Directory('$home/.orbby/setting');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

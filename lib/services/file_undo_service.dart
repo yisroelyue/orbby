@@ -9,6 +9,10 @@ import 'dart:io';
 class FileUndoService {
   FileUndoService._();
 
+  // 每个 Flutter engine/窗口拥有独立的撤销栈，避免不同窗口互相回滚文件。
+  static final String _scopeId =
+      '${DateTime.now().microsecondsSinceEpoch}_${Object().hashCode}';
+
   /// 最多保留的记录数，超出淘汰最旧（连同其备份文件）
   static const _maxRecords = 50;
 
@@ -80,6 +84,7 @@ class FileUndoService {
     records.add({
       'path': path,
       'type': type,
+      'scope': _scopeId,
       if (backupPath != null) 'backup': backupPath,
       'time': DateTime.now().toIso8601String(),
     });
@@ -93,8 +98,10 @@ class FileUndoService {
   /// 还原最近一次改动，返回结果描述（直接作为聊天消息展示）
   static String undoLast() {
     final records = _recordList;
-    if (records.isEmpty) return '没有可回滚的文件改动。';
-    final rec = records.removeLast();
+    final index = records.lastIndexWhere((record) =>
+        record['scope'] == _scopeId);
+    if (index < 0) return '当前窗口没有可回滚的文件改动。';
+    final rec = records.removeAt(index);
     _flush();
 
     final path = rec['path'] as String? ?? '';

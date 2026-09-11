@@ -39,7 +39,7 @@
 - `lib/models/agent_question.dart`：AgentQuestion/Option 模型，fromJson 容错（type 缺省按 options 是否为空推断，解析失败降级为 text 问题）。
 - `lib/widgets/agent_question_panel.dart` 三件套：`AgentQuestionPanelController`（纯逻辑 ChangeNotifier：扁平导航游标、选择状态、answers 组装）+ `AgentQuestionPanel`（纯展示，配色抄 CommandPalette；单问题单选点击选项行即提交，多选/text 走底部按钮）+ `QuestionRecordCard`（已回答留痕卡，只读）。与 CommandPalette 同构的 controller+展示模式，新增问题类型扩展 controller 与 `_buildQuestion` 分支，勿在 home_screen 内联。
 - home_screen 接入：`_questionCtrl`/`_questionId` 挂起状态（卡片插在 `_buildInputArea` 的 CommandPalette 之后，null 时不占位）；`_handleKeyEvent` 在命令面板分支**之后**接管 ↑↓/Enter/Esc（**输入框非空时不接管**，防拦截用户排队发送；Esc 始终跳过）；`chatStream` 流结束（完成/取消/断连）与 `/new`、`/clear` 统一走 `_dismissQuestionCard()` 收起卡片。
-- 留痕：`_QuestionPanel`（home_screen_models.dart）挂在**对应 `ask_user_question` 的 `_ToolEvent.questionPanels` 上**（渲染在工具行下面，与 FileChangesPanel 同级），随 toolEvents 落盘/还原；定位规则 = 最后一条含 running ask_user_question 工具行的消息；中断（Ctrl+C/断连）时不留痕。
+- 留痕：`_QuestionPanel`（home_screen_models.dart）随会话落盘（消息 map 的 `questionPanels` 键），重载经 `_decodeQuestionPanels` 还原，渲染在气泡 MarkdownBody 之后；旧会话 JSON 无此键自然兼容。
 
 ## 聊天会话持久化与文件回滚
 

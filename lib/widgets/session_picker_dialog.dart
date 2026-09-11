@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/chat_storage_service.dart';
 
@@ -15,6 +16,8 @@ class SessionPickerDialog extends StatefulWidget {
 
 class _SessionPickerDialogState extends State<SessionPickerDialog> {
   static const _fontFamily = 'Sarasa Mono SC';
+  // 预留标题、副标题及上下内边距，避免固定行高造成 RenderFlex 溢出。
+  static const _itemExtent = 60.0;
 
   static const _bg = Color(0xFF1E1E1E);
   static const _border = Color(0x1AFFFFFF);
@@ -24,12 +27,73 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
   static const _subText = Color(0x73FFFFFF);
 
   int? _hoverIndex;
+  late int _selectedIndex;
+  final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.conversations.isEmpty ? -1 : 0;
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _selectIndex(int index) {
+    setState(() => _selectedIndex = index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final centeredOffset = index * _itemExtent -
+          (position.viewportDimension - _itemExtent) / 2;
+      final targetOffset = centeredOffset.clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
+      if ((position.pixels - targetOffset).abs() > 0.5) {
+        _scrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || widget.conversations.isEmpty) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _selectIndex((_selectedIndex + 1) % widget.conversations.length);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _selectIndex((_selectedIndex - 1 + widget.conversations.length) %
+          widget.conversations.length);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      Navigator.pop(context, widget.conversations[_selectedIndex]);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Container(
+      child: Focus(
+        autofocus: true,
+        focusNode: _focusNode,
+        onKeyEvent: _handleKey,
+        child: Container(
         width: 460,
         constraints: const BoxConstraints(maxHeight: 420),
         decoration: BoxDecoration(
@@ -45,6 +109,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
             Container(height: 1, color: _divider),
             Flexible(child: _buildList()),
           ],
+        ),
         ),
       ),
     );
@@ -106,7 +171,9 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
       );
     }
     return ListView.builder(
+      controller: _scrollController,
       shrinkWrap: true,
+      itemExtent: _itemExtent,
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: widget.conversations.length,
       itemBuilder: (_, index) => _buildItem(index),
@@ -116,16 +183,20 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
   Widget _buildItem(int index) {
     final conv = widget.conversations[index];
     final hovered = _hoverIndex == index;
+    final selected = _selectedIndex == index;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hoverIndex = index),
+      onEnter: (_) => setState(() {
+        _hoverIndex = index;
+        _selectedIndex = index;
+      }),
       onExit: (_) => setState(() => _hoverIndex = null),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.pop(context, conv),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: hovered ? _hoverBg : Colors.transparent,
+          color: hovered || selected ? _hoverBg : Colors.transparent,
           child: Row(
             children: [
               Expanded(

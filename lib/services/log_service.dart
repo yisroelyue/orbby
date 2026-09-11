@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
 import '../config/settings.dart';
 
-/// 将运行日志写入 ~/.orbby/orbby.log。
+/// 将运行日志写入 ~/.orbby/log/orbby.log。
 ///
 /// 使用方式：
 /// ```dart
@@ -54,7 +55,7 @@ class LogService {
     _initialized = true;
 
     try {
-      final dir = Directory('${await _logDir()}/.orbby');
+      final dir = Directory('${await _logDir()}/.orbby/log');
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
@@ -142,7 +143,7 @@ class LogService {
 
   static void _writeLine(String line, {String category = 'system'}) {
     try {
-      _file!.writeAsStringSync('$line\n', mode: FileMode.append);
+      _file!.writeAsStringSync('$line\n', mode: FileMode.append, encoding: utf8);
     } catch (_) {
       // 静默失败，不阻塞主流程
     }

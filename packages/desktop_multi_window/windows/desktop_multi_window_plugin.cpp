@@ -9,6 +9,10 @@
 #include <memory>
 #include <string>
 
+#ifdef _WIN32
+#include <direct.h>
+#endif
+
 #include "flutter_window_wrapper.h"
 #include "multi_window_manager.h"
 #include "window_channel_plugin.h"
@@ -18,7 +22,11 @@ namespace {
     // Use the same directory as the Dart LogService
     const char* home = getenv("USERPROFILE");
     if (!home) home = getenv("HOME");
-    std::string path = std::string(home ? home : ".") + "/.orbby/cpp_debug.log";
+    const std::string dir = std::string(home ? home : ".") + "/.orbby/log";
+#ifdef _WIN32
+    _mkdir(dir.c_str());
+#endif
+    std::string path = dir + "/cpp_debug.log";
     FILE* f = fopen(path.c_str(), "a");
     if (f) {
       fprintf(f, "%s\n", msg);

@@ -53,11 +53,18 @@ class ChatConversation {
 class ChatStorageService {
   ChatStorageService._();
 
+  static String newConversationId() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return 'task_${now.year}${two(now.month)}${two(now.day)}'
+        '${two(now.hour)}${two(now.minute)}';
+  }
+
   static Future<String> get _taskDir async {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
-    final dir = Directory('$home/.orbby/claude_task/task');
+    final dir = Directory('$home/.orbby/task');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

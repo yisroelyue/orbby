@@ -8,7 +8,7 @@ import 'package:image/image.dart' as img;
 
 import '../config/settings.dart';
 import '../services/app_events.dart';
-import '../screens/home_screen.dart';
+import '../screens/home_screen/home_screen.dart';
 
 class AppInfo {
   const AppInfo({required this.id, required this.name, required this.icon, this.executable, this.description = '', this.type = 'system'});
@@ -233,7 +233,7 @@ class AppConfig {
   AppConfig._();
   static String get projectRoot => Directory.current.path;
   static String get systemConfigPath => '$projectRoot/lib/config/apps_config.json';
-  static String get _customPath => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/custom_apps.json';
+  static String get _customPath => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/setting/custom_apps.json';
   static String resolvePath(String raw) => Platform.isWindows && raw.length > 1 && raw[1] == ':' || raw.startsWith('/') ? raw : '$projectRoot/$raw';
   static List<AppInfo> _load(String path) {
     try {
@@ -250,7 +250,7 @@ class AppConfig {
     await file.parent.create(recursive: true);
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert({'apps': apps.map((a) => a.toJson()).toList()}));
   }
-  static String get iconsDir => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/icons';
+  static String get iconsDir => '${Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.'}/.orbby/setting/icons';
   static String? convertIcoToPng(String path, String id) {
     try {
       final decoded = img.decodeImage(File(path).readAsBytesSync());

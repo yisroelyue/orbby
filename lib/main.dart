@@ -16,7 +16,7 @@ import 'config/settings.dart';
 import 'screens/about_screen.dart';
 import 'screens/app_bar_screen.dart';
 import 'screens/app_center_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/home_screen/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/content_screen.dart';
 import 'services/llm_task.dart';
@@ -48,7 +48,13 @@ Future<void> main(List<String> args) async {
     await _configureMenuWindow(windowController, windowArguments);
     // 设置保存后同步本窗口的日志与 Agent 配置
     AppEvents.addListener(AppEvents.settingsChanged, _syncMenuServices);
-    runApp(const HomeScreen());
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(fontFamily: 'Microsoft YaHei'),
+        home: const HomeScreen(),
+      ),
+    );
     return;
   }
   if (windowArguments['type'] == 'settings') {
@@ -234,9 +240,11 @@ Future<void> _configurePetWindow() async {
       // 初始位置：屏幕右下角可见区域
       final display = await screenRetriever.getPrimaryDisplay();
       final screenSize = display.visibleSize ?? display.size;
-      final x = screenSize.width - PetConfig.windowWidth - 5;
-      final y = screenSize.height - PetConfig.windowHeight - 5;
+      final x = screenSize.width - PetConfig.windowWidth;
+      final y = screenSize.height - PetConfig.windowHeight;
       await windowManager.setPosition(Offset(x, y));
+      final actualPosition = await windowManager.getPosition();
+      final actualSize = await windowManager.getSize();
 
       // 透明背景
       await windowManager.setBackgroundColor(Colors.transparent);
