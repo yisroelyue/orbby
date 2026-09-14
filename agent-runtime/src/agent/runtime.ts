@@ -2,8 +2,10 @@ import { ToolRegistry } from '../tools/types.js';
 import { AgentSession } from './session.js';
 import { executeToolCalls } from './tool-scheduler.js';
 import { streamComplete, LlmConfig } from '../llm/client.js';
+import { toPlainText, toUserContent } from '../llm/content-adapter.js';
+import { extractAttachments } from '../llm/attachment-extractor.js';
 import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
-import { AgentQuestion } from '../protocol.js';
+import { AgentQuestion, WsAttachment } from '../protocol.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,17 +15,20 @@ export class AgentRuntime {
   private readonly sessions = new Map<string, AgentSession>();
   constructor(private readonly registry: ToolRegistry) {}
   session(id: string) { let value = this.sessions.get(id); if (!value) { value = new AgentSession(id); this.sessions.set(id, value); } return value; }
-  async chat(sessionId: string, message: string, config: LlmConfig, onEvent: (type:string,payload:Record<string,unknown>) => void, signal: AbortSignal, history: Array<{role:string;content:string}> = [], askUser?: (questions:AgentQuestion[])=>Promise<string[][]>) {
+  async chat(sessionId: string, message: string, attachments: WsAttachment[], config: LlmConfig, onEvent: (type:string,payload:Record<string,unknown>) => void, signal: AbortSignal, history: Array<{role:string;content:unknown}> = [], askUser?: (questions:AgentQuestion[])=>Promise<string[][]>) {
     const session = this.session(sessionId);
     return session.runExclusive(async () => {
       session.turn++; session.step = 0; session.append('turn/start',{message}); onEvent('turn.start',{turn:session.turn});
-      if (session.messages.length === 0 && history.length) session.messages.push(...history.map(item => ({role:item.role,content:serializeToolResult(item.content)})));
+      // 历史轮只回放文本（多模态块经 toPlainText 归一化），图片仅当前轮发送
+      if (session.messages.length === 0 && history.length) session.messages.push(...history.map(item => ({role:item.role,content:toPlainText(item.content)})));
       session.messages.push({role:'system',content:AGENT_SYSTEM_PROMPT});
       if (config.systemPrompt || config.usageRules) {
         const custom = [config.systemPrompt, config.usageRules ? `使用规范：\n${config.usageRules}` : ''].filter(Boolean).join('\n\n');
         session.messages.push({role:'system',content:custom});
       }
-      session.messages.push({role:'user',content:message});
+      // 文本/PDF 附件先在 Node 侧提取为文本，再统一多模态组装（图片在前、文字在后）
+      await extractAttachments(attachments, signal);
+      session.messages.push({role:'user',content:toUserContent(message, attachments)});
       for (let iteration=1; iteration<=30; iteration++) {
         signal.throwIfAborted(); session.step=iteration; session.append('step/start'); onEvent('step.start',{turn:session.turn,step:iteration});
         const response = await streamComplete(config, session.messages, this.registry.definitions().map(tool => ({type:'function',function:tool})), signal, text => onEvent('llm.token',{text}));

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ContentPart } from '../llm/content-adapter.js';
 
 export type SessionEvent = { type: string; turn: number; step?: number; at: number; payload?: Record<string, unknown> };
 export class AgentSession {
@@ -6,7 +7,7 @@ export class AgentSession {
   readonly events: SessionEvent[] = [];
   turn = 0;
   step = 0;
-  readonly messages: Array<{role:string;content:string|null;tool_call_id?:string;tool_calls?:unknown[]}> = [];
+  readonly messages: Array<{role:string;content:string|null|ContentPart[];tool_call_id?:string;tool_calls?:unknown[]}> = [];
   private active: Promise<unknown> | undefined;
   constructor(id = `session-${randomUUID()}`) { this.id = id; }
   append(type: string, payload?: Record<string, unknown>) { this.events.push({type, turn:this.turn, ...(this.step ? {step:this.step} : {}), at:Date.now(), ...(payload ? {payload} : {})}); }

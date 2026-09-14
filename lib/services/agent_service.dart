@@ -4,6 +4,7 @@ import '../agent/types.dart' as agent_types;
 import '../config/settings.dart';
 import '../config/platform.dart';
 import '../models/agent_question.dart';
+import '../models/chat_attachment.dart';
 
 class AgentService {
   AgentService._();
@@ -32,7 +33,7 @@ class AgentService {
     return ((result['payload'] as Map?)?['content'] ?? '').toString();
   }
 
-  static Stream<AgentStreamEvent> chatStream(String text, {String mode = 'accept', List<Map<String, String>> history = const [], String? conversationId, void Function(Map<String, dynamic>)? onEvent}) async* {
+  static Stream<AgentStreamEvent> chatStream(String text, {String mode = 'accept', List<Map<String, String>> history = const [], String? conversationId, List<ChatAttachment> attachments = const [], void Function(Map<String, dynamic>)? onEvent}) async* {
     final id = _id();
     _activeRequestId = id;
     await _client.connect();
@@ -51,7 +52,7 @@ class AgentService {
         case 'agent.error': queue.addError(Exception((event['error'] as Map)['message'])); queue.close();
       }
     }, onError: (Object error, StackTrace stack) { if (!queue.isClosed) { queue.addError(error, stack); queue.close(); } }, onDone: () { if (!queue.isClosed) { queue.addError(AgentException('Agent 服务连接已断开')); queue.close(); } });
-    final payload = await chatPayload(text, mode: mode, history: history);
+    final payload = await chatPayload(text, mode: mode, history: history, attachments: attachments);
     if (conversationId != null) payload['conversationId'] = conversationId;
     _client.send('chat.start', id, payload, _sessionId);
     try { yield* queue.stream; } finally {
@@ -60,8 +61,19 @@ class AgentService {
     }
   }
 
-  static Future<Map<String, dynamic>> chatPayload(String text, {String mode = 'accept', List<Map<String, String>> history = const []}) async {
-    return {'message': text, 'mode': mode, 'history': history, 'llm': await _llmPayload()};
+  static Future<Map<String, dynamic>> chatPayload(String text, {String mode = 'accept', List<Map<String, String>> history = const [], List<ChatAttachment> attachments = const []}) async {
+    return {
+      'message': text,
+      'mode': mode,
+      'history': history,
+      // 附件 payload（含 Base64）由 ChatAttachmentController.ensurePayload 预先填好
+      if (attachments.isNotEmpty)
+        'attachments': [
+          for (final a in attachments)
+            if (a.sendPayload != null) a.sendPayload!,
+        ],
+      'llm': await _llmPayload(),
+    };
   }
 
   static void resetConversation() { final id = _id(); _client.send('session.reset', id, const {}, _sessionId); }
@@ -84,6 +96,8 @@ class AgentService {
       'url': url,
       'apiKey': settings.apiKey,
       'model': model,
+      // provider 类型由 Flutter 侧告知（Node 不解析平台配置）
+      'platform': settings.platform,
       'systemPrompt': settings.agentSystemPrompt,
       'usageRules': settings.agentUsageRules,
     };

@@ -1,5 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+/// 命令确认后的行为：
+/// - immediate：立即执行（现有全部命令）
+/// - prepareInput：不执行动作，只把 `/命令名 ` 写入输入框，
+///   让用户补充内容后再发送（如 /image-analyze 后补图片与说明）
+enum ChatCommandBehavior { immediate, prepareInput }
+
 /// 单条聊天命令：输入 '/' 前缀触发的快捷指令。
 /// 新增命令只需向 [CommandPaletteController] 注册一个实例，不涉及 UI 改动。
 class ChatCommand {
@@ -7,6 +13,7 @@ class ChatCommand {
     required this.name,
     required this.description,
     required this.execute,
+    this.behavior = ChatCommandBehavior.immediate,
   });
 
   /// 命令名（不含前导 '/'），同时也是输入过滤的关键词
@@ -17,6 +24,9 @@ class ChatCommand {
 
   /// 命令被确认（Enter/Tab/点击）后执行
   final VoidCallback execute;
+
+  /// 确认后的行为（见 [ChatCommandBehavior]）
+  final ChatCommandBehavior behavior;
 }
 
 /// 命令面板状态：持有命令注册表，按输入 query 过滤并维护键盘选中项。
@@ -74,7 +84,8 @@ class CommandPaletteController extends ChangeNotifier {
     return null;
   }
 
-  /// 输入文本变化时调用：'/' 之后的词作前缀过滤（不区分大小写）
+  /// 输入文本变化时调用：支持命令名前缀和分隔词首字母缩写（不区分大小写）。
+  /// 例如输入 `/cs` 可匹配 `/clear-session`。
   void updateQuery(String text) {
     if (text == _query) return;
     _query = text;
@@ -113,8 +124,21 @@ class CommandPaletteController extends ChangeNotifier {
     _filtered
       ..clear()
       ..addAll(
-        _commands.where((c) => c.name.toLowerCase().startsWith(keyword)),
+        _commands.where((c) => _matches(c.name, keyword)),
       );
     _selectedIndex = 0;
+  }
+
+  bool _matches(String name, String keyword) {
+    if (keyword.isEmpty) return true;
+    final normalized = name.toLowerCase();
+    if (normalized.startsWith(keyword)) return true;
+
+    final initials = normalized
+        .split(RegExp(r'[-_\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0])
+        .join();
+    return initials.startsWith(keyword);
   }
 }

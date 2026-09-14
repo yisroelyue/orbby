@@ -1,5 +1,8 @@
 part of 'home_screen.dart';
 
+/// 聊天消息数据模型：随会话 JSON 落盘（ChatStorageService），
+/// toJson/fromJson 需与既有会话文件格式保持兼容，勿改动字段名。
+
 class _ToolEvent {
   _ToolEvent(this.id, this.name, {required this.running, this.error = false, this.parameters, this.result, this.errorMessage, List<FileChangePreview>? changes}) : changes = List<FileChangePreview>.from(changes ?? const []);
   final String id;
@@ -58,7 +61,8 @@ class _QuestionPanel {
 }
 
 class _ChatMessage {
-  _ChatMessage({required this.text, required this.isUser, this.streaming = false, this.local = false, this.terminated = false});
+  _ChatMessage({required this.text, required this.isUser, this.streaming = false, this.local = false, this.terminated = false, List<ChatAttachment>? attachments})
+      : attachments = List<ChatAttachment>.from(attachments ?? const []);
   String text;
   final bool isUser;
   bool streaming;
@@ -66,4 +70,6 @@ class _ChatMessage {
   bool terminated;
   final List<_ToolEvent> toolEvents = [];
   final List<FileChangePreview> fileChanges = [];
+  /// 用户消息的图片附件（引用元数据 + 本地路径，随会话落盘；不含 Base64）
+  final List<ChatAttachment> attachments;
 }

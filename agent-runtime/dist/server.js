@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { reply } from './protocol.js';
 import { ToolRegistry } from './tools/types.js';
+import { sanitizeAttachments } from './llm/content-adapter.js';
 import { AgentRuntime } from './agent/runtime.js';
 import { registerFilesystemTools } from './tools/fs-tools.js';
 import { registerShellTools } from './tools/shell-tools.js';
@@ -55,8 +56,10 @@ async function handle(socket, agent, active, answers, message) {
             const controller = new AbortController();
             active.set(message.requestId, controller);
             const cfg = message.payload.llm ?? {};
+            // 附件经 Node 侧兜底校验（数量/mime/大小），Flutter 已限一层
+            const attachments = sanitizeAttachments(message.payload.attachments);
             const askUser = (questions) => new Promise((resolve, reject) => { const questionId = `question-${Date.now()}-${Math.random().toString(16).slice(2)}`; answers.set(questionId, { requestId: message.requestId, resolve, reject }); void conversationLog(conversationId, 'event', { type: 'user.question', payload: { questionId, questions } }); send(socket, reply('user.question', message.requestId, sessionId, { questionId, questions })); });
-            const result = await agent.chat(sessionId, message.payload.message, { url: String(cfg.url ?? ''), apiKey: String(cfg.apiKey ?? ''), model: String(cfg.model ?? ''), systemPrompt: String(cfg.systemPrompt ?? ''), usageRules: String(cfg.usageRules ?? ''), conversationId }, (type, payload) => { if (type !== 'llm.token')
+            const result = await agent.chat(sessionId, message.payload.message, attachments, { url: String(cfg.url ?? ''), apiKey: String(cfg.apiKey ?? ''), model: String(cfg.model ?? ''), platform: String(cfg.platform ?? ''), systemPrompt: String(cfg.systemPrompt ?? ''), usageRules: String(cfg.usageRules ?? ''), conversationId }, (type, payload) => { if (type !== 'llm.token')
                 void conversationLog(conversationId, 'event', { type, payload }); send(socket, reply(type === 'llm.token' ? 'agent.token' : type, message.requestId, sessionId, payload)); }, controller.signal, message.payload.history ?? [], askUser);
             active.delete(message.requestId);
             return send(socket, reply('agent.done', message.requestId, sessionId, { content: result }));

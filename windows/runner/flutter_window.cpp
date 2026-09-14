@@ -10,6 +10,7 @@
 #include <shellapi.h>
 #include <vector>
 
+#include "clipboard_image_channel.h"
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
 #include "flutter/generated_plugin_registrant.h"
 
@@ -312,6 +313,8 @@ bool FlutterWindow::OnCreate() {
   RegisterWindowShapeChannel(flutter_controller_->engine()->messenger(),
                              GetHandle());
   RegisterAppIconChannel(flutter_controller_->engine()->messenger());
+  clipboard_image::RegisterClipboardImageChannel(
+      flutter_controller_->engine()->messenger());
 
   // Register file-drop channel so the pet window can receive dragged files.
   auto drop_channel = std::make_unique<DropChannel>(
@@ -370,6 +373,7 @@ bool FlutterWindow::OnCreate() {
     // Child engines created by desktop_multi_window do not pass through
     // FlutterWindow::OnCreate, so register custom channels for them too.
     RegisterAppIconChannel(registry->messenger());
+    clipboard_image::RegisterClipboardImageChannel(registry->messenger());
 
     // desktop_multi_window creates windows with WS_OVERLAPPEDWINDOW which
     // includes title bar and system buttons. Strip them to keep the window

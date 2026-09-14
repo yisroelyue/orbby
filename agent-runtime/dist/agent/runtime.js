@@ -1,6 +1,8 @@
 import { AgentSession } from './session.js';
 import { executeToolCalls } from './tool-scheduler.js';
 import { streamComplete } from '../llm/client.js';
+import { toPlainText, toUserContent } from '../llm/content-adapter.js';
+import { extractAttachments } from '../llm/attachment-extractor.js';
 import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -15,21 +17,24 @@ export class AgentRuntime {
         value = new AgentSession(id);
         this.sessions.set(id, value);
     } return value; }
-    async chat(sessionId, message, config, onEvent, signal, history = [], askUser) {
+    async chat(sessionId, message, attachments, config, onEvent, signal, history = [], askUser) {
         const session = this.session(sessionId);
         return session.runExclusive(async () => {
             session.turn++;
             session.step = 0;
             session.append('turn/start', { message });
             onEvent('turn.start', { turn: session.turn });
+            // 历史轮只回放文本（多模态块经 toPlainText 归一化），图片仅当前轮发送
             if (session.messages.length === 0 && history.length)
-                session.messages.push(...history.map(item => ({ role: item.role, content: serializeToolResult(item.content) })));
+                session.messages.push(...history.map(item => ({ role: item.role, content: toPlainText(item.content) })));
             session.messages.push({ role: 'system', content: AGENT_SYSTEM_PROMPT });
             if (config.systemPrompt || config.usageRules) {
                 const custom = [config.systemPrompt, config.usageRules ? `使用规范：\n${config.usageRules}` : ''].filter(Boolean).join('\n\n');
                 session.messages.push({ role: 'system', content: custom });
             }
-            session.messages.push({ role: 'user', content: message });
+            // 文本/PDF 附件先在 Node 侧提取为文本，再统一多模态组装（图片在前、文字在后）
+            await extractAttachments(attachments, signal);
+            session.messages.push({ role: 'user', content: toUserContent(message, attachments) });
             for (let iteration = 1; iteration <= 30; iteration++) {
                 signal.throwIfAborted();
                 session.step = iteration;

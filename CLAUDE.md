@@ -28,11 +28,22 @@
 
 输入框输入 `/` 弹出命令提示（HomeScreen 输入框上方），分三层，新增命令不碰 UI：
 
-- `lib/services/chat_command.dart`：`ChatCommand`（name/description/execute）+ `CommandPaletteController`（命令注册表、query 前缀过滤、键盘选中项，纯逻辑 ChangeNotifier）。
+- `lib/services/chat_command.dart`：`ChatCommand`（name/description/execute/behavior）+ `CommandPaletteController`（命令注册表、query 前缀过滤、键盘选中项，纯逻辑 ChangeNotifier）。`ChatCommandBehavior`：`immediate`（确认即执行，默认）/ `prepareInput`（确认后只把 `/命令名 ` 写回输入框，不执行动作；宿主按 behavior 分派 `_prepareInputCommand`，勿在 UI 硬编码判断具体命令名）。
 - `lib/widgets/command_palette.dart`：纯展示列表，只读 controller 状态，确认回调交回宿主。
 - `lib/screens/home_screen.dart` `_buildCommands()`：命令注册表。**新增命令 = 在这里加一条 `ChatCommand`**；execute 里操作 HomeScreen 状态需自行 mounted 保护。
 - 交互：↑/↓ 选择、Enter/Tab 确认（清空输入并执行）、Esc 收起、点击行确认；`/` 开头的输入不作为普通消息发送，按命令精确匹配执行。
-- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/image-analyze`（prepareInput，见"图片附件"节）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+
+## 附件（图片/文本/PDF）与 /image-analyze
+
+- 附件三类 mime：图片（png/jpeg/webp/gif，原样 Base64 直传）、文本类（**统一记 `text/plain`**，真实类型看扩展名，覆盖 txt/md/csv/json/代码/配置等）、`application/pdf`。**设计原则：在 Node 边界把一切归一化为 text/image 两种内容块**（各 provider 最大公约数），client.ts 的协议分支不感知具体文件类型；新格式（docx/xlsx…）= `attachment-extractor.ts` 加一个提取器条目，其余层不动。
+- 粘贴链路：`windows/runner/clipboard_image_channel.cpp`（`orbby_clipboard_image` 通道 `readImage`：CF_HDROP→支持扩展名的文件路径（`IsSupportedFileExtension`）；**有文件但类型不支持且无可粘贴内容时返回 `kind=file-unsupported`+路径**；CF_DIBV5/CF_DIB/CF_BITMAP→WIC 编码 PNG 临时文件；每个 engine 注册一次，注释纯 ASCII）→ `lib/services/clipboard_image_service.dart`（`readFromClipboard` 返回 `ClipboardImageReadResult{read, unsupportedFileName}`；mime 白名单、分类型大小上限：图片 10MB/文本 5MB/PDF 20MB、图片缩略图/尺寸解码）→ `lib/services/chat_attachment_controller.dart`（sha256 去重、上限 4 个、非图片不解码直接就绪、发送编码、持久化保留原扩展名）→ `lib/widgets/chat_attachment_preview.dart`（图片缩略图三态；非图片图标+文件名+大小）。
+- 输入框接管 Ctrl+V（优先附件、无图回退手动文本插入，**不支持文件且无文本可粘时提示「暂不支持」**）与 Alt+V（仅图片，不支持文件直接提示）；**请求进行中禁止追加附件**。`/clear`、`/new`、切换会话统一 `_attachmentCtrl.clear()`。
+- **发送编码跑在 isolate**（controller 的 `_encodeForPayload`）：非图片原样 Base64 透传不转码；图片 Base64 ≤6MB 原样透传（GIF 动画保留），超限先缩到长边 4096 转 PNG，仍超限转 JPEG 92。编码结果缓存在 `ChatAttachment.sendPayload`（内存态，重载会话后由 `ensurePayload` 补算）。
+- **Base64 绝不入会话 JSON**：附件文件随发送持久化到 `~/.orbby/attachments/{conversationId}/`（`persistAll`），消息落盘只存引用元数据；history 历史轮只有 `[图片: 文件名]`/`[附件: 文件名]` 引用（`_historyContent`），仅当前轮经 `chat.start` 的 `attachments` 发完整 Base64；取消/失败附件保留在消息上，`/retry` 恢复。
+- 非图片附件点击**调系统默认程序打开**（`openAttachment`，explorer.exe），不做应用内文档渲染；`/image-analyze` 仍是图片专用命令。
+- **不做本地视觉能力判断**（名单式判断必然误杀迭代太快的新模型）：带附件直接发送，模型不支持时由 API 报错兜底，错误信息原样展示。`settings.platform` 随 `llm` payload 传给 Node 用于选 provider 格式。
+- Node 侧：`agent-runtime/src/llm/content-adapter.ts` 定义统一 `LlmContent` + `attachmentKind(mime)` 分类 + `sanitizeAttachments`（分类型 Base64 上限：图片 14M/文本 7M/PDF 28M）；**`attachment-extractor.ts` 在 `runtime.chat` 组装内容前把文本/PDF 提取为文本**写入 `WsAttachment.extractedText/extractedInfo`（unpdf 按页提取带页码、BOM 嗅探 UTF-8/16、单文件 5 万字符 + 总量 12 万字符预算、超限显式标注"内容不完整"、失败以文本呈现不静默丢）；`toUserContent` 图片块+文档文本块在前、正文（含附件说明，防模型去本地搜"源文件"）在后；`client.ts` 按 `platform` 分支 OpenAI-compatible（image_url）/ Anthropic（image block，system 提顶级、tool 结果合并 tool_result、input_json_delta 流式解析）；历史轮 `toPlainText` 只回放文本。Anthropic 原生 PDF document block 留作后续 platform 增强。
 
 ## Agent 提问卡片（输入框上方，非模态）
 
