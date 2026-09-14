@@ -2,6 +2,9 @@ import { AgentSession } from './session.js';
 import { executeToolCalls } from './tool-scheduler.js';
 import { streamComplete } from '../llm/client.js';
 import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+function defaultWorkspacePath() { return join(homedir(), 'Desktop'); }
 export class AgentRuntime {
     registry;
     sessions = new Map();
@@ -44,7 +47,7 @@ export class AgentRuntime {
                     return response.content;
                 }
                 const { WorkspacePermissionService } = await import('../services/workspace-permission.js');
-                const workspacePath = process.env.ORBBY_WORKSPACE ?? process.cwd();
+                const workspacePath = process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath();
                 const permissions = new WorkspacePermissionService();
                 await permissions.grant(workspacePath, ['read', 'write', 'execute']);
                 await permissions.grantFromExplicitIntent(message, workspacePath);
@@ -61,7 +64,7 @@ export class AgentRuntime {
     compact(sessionId) { return `会话 ${sessionId} 当前有 ${this.session(sessionId).events.length} 条事件，压缩器尚未接入`; }
     stats(sessionId) { const s = this.session(sessionId); return { messagesCount: s.events.length, totalTokens: 0, maxTokens: 32000, usagePercent: 0, turn: s.turn, step: s.step }; }
     tools() { return this.registry.definitions(); }
-    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: process.env.ORBBY_WORKSPACE ?? process.cwd(), sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
+    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath(), sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
 }
 function serializeToolResult(value) {
     if (typeof value === 'string')

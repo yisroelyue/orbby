@@ -18,6 +18,8 @@
 
 ## Agent 流式协议
 
+- Agent Runtime 未设置 `ORBBY_WORKSPACE` 时，初始工作区默认为当前用户的桌面目录；显式设置 `ORBBY_WORKSPACE` 时优先使用该目录。
+
 - Agent 的 ReAct 工具循环运行在 `agent-runtime/` Node.js 子进程中，通过 localhost WebSocket 与 Flutter 通信。每轮文本经 `agent.token` 流式发出，工具循环最多 30 个 step；Flutter 的 `AgentService.chatStream` 继续转换为 `AgentTokenEvent`/`AgentRoundEvent`，Dart 侧不再运行 Agent 核心。
 - **流式契约：processMessage 正常完成时返回值 = 最后一轮已流出的 content，chatStream 对已流出过 token 的会话只关流不补发返回值（防整段重复）。因此 processMessage 内所有"额外兜底文案"（超轮次/上下文超硬限/空回复）必须自行经 `onToken` 发出再 return，否则 UI 会在已有文字后静默收尾，看起来像卡死。**
 - HomeScreen 收到 `AgentRoundEvent` 时在气泡内插 `\n\n---\n\n` 分隔轮次；该拼接文本随会话落盘、也作为 history 发回 LLM。**新增事件类型（如工具调用进度）时扩展 AgentStreamEvent 子类 + 各消费方 switch**，不要回退成裸字符串流（多轮文字会粘成一坨）。
@@ -32,7 +34,7 @@
 - `lib/widgets/command_palette.dart`：纯展示列表，只读 controller 状态，确认回调交回宿主。
 - `lib/screens/home_screen.dart` `_buildCommands()`：命令注册表。**新增命令 = 在这里加一条 `ChatCommand`**；execute 里操作 HomeScreen 状态需自行 mounted 保护。
 - 交互：↑/↓ 选择、Enter/Tab 确认（清空输入并执行）、Esc 收起、点击行确认；`/` 开头的输入不作为普通消息发送，按命令精确匹配执行。
-- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
 
 ## Agent 提问卡片（输入框上方，非模态）
 

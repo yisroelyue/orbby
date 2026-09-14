@@ -97,7 +97,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         controller: _scrollController,
         shrinkWrap: true,
         itemExtent: _rowHeight,
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 0),
         itemCount: rows.length,
         itemBuilder: (_, index) =>
             _buildRow(rows[index], index, index == controller.selectedIndex),

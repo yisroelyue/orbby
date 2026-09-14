@@ -476,6 +476,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         execute: _copyConversationJson,
       ),
       ChatCommand(
+        name: 'copy-txt',
+        description: '复制当前会话的文本内容',
+        execute: _copyConversationText,
+      ),
+      ChatCommand(
         name: 'apps',
         description: '打开应用中心',
         execute: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
@@ -598,6 +603,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final json = const JsonEncoder.withIndent('  ').convert(_conversation!.toJson());
     await Clipboard.setData(ClipboardData(text: json));
     _addLocalMessage('当前会话已复制到剪贴板。');
+  }
+
+  Future<void> _copyConversationText() async {
+    if (!mounted) return;
+    final messages = _messages.where((message) => !message.local && message.text.isNotEmpty).toList();
+    if (messages.isEmpty) {
+      _addLocalMessage('当前还没有可复制的会话。');
+      return;
+    }
+    final text = messages.map((message) {
+      final role = message.isUser ? '用户' : '助手';
+      return '$role：\n${message.text}';
+    }).join('\n\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    _addLocalMessage('当前会话文本已复制到剪贴板。');
   }
 
   Future<void> _showSessionPicker() async {
@@ -950,12 +970,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _scrollToBottom({bool force = false}) {
+    // 在当前帧提交前判断是否跟随，避免内容增长后 maxScrollExtent 变化导致
+    // 原本在底部的用户被误判为“已滚动到前面”。
+    final shouldFollow = force ||
+        !_scrollController.hasClients ||
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 50;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        if (!force) {
-          final pos = _scrollController.position;
-          if (pos.pixels < pos.maxScrollExtent - 50) return;
-        }
+      if (_scrollController.hasClients && shouldFollow) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
