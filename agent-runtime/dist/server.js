@@ -9,6 +9,8 @@ import { registerTerminalTools } from './tools/terminal-tools.js';
 import { registerSkillTools } from './tools/skill-tools.js';
 import { registerAskUserTool } from './tools/ask-user.js';
 import { conversationLog } from './conversation-log.js';
+import { loadPermissionMode, savePermissionMode } from './services/permission-storage.js';
+let permissionMode = loadPermissionMode();
 export function startServer(port = Number(process.env.ORBBY_AGENT_PORT ?? 43127)) {
     const registry = new ToolRegistry();
     registerFilesystemTools(registry);
@@ -43,6 +45,20 @@ async function handle(socket, agent, active, answers, message) {
     try {
         if (message.type === 'hello')
             return send(socket, reply('hello.ok', message.requestId, undefined, { protocolVersion: 1 }));
+        if (message.type === 'permission.mode') {
+            const mode = String(message.payload?.mode ?? 'ask');
+            if (mode === 'ask' || mode === 'read' || mode === 'all') {
+                permissionMode = mode;
+                savePermissionMode(mode);
+                if (mode === 'ask') {
+                    const permissions = new (await import('./services/workspace-permission.js')).WorkspacePermissionService();
+                    await permissions.clear();
+                }
+            }
+            return send(socket, reply('permission.mode.accepted', message.requestId, sessionId));
+        }
+        if (message.type === 'permission.status')
+            return send(socket, reply('permission.status', message.requestId, sessionId, { mode: permissionMode }));
         if (message.type === 'user.answer') {
             const entry = answers.get(message.payload.questionId);
             if (entry) {
@@ -60,7 +76,7 @@ async function handle(socket, agent, active, answers, message) {
             const attachments = sanitizeAttachments(message.payload.attachments);
             const askUser = (questions) => new Promise((resolve, reject) => { const questionId = `question-${Date.now()}-${Math.random().toString(16).slice(2)}`; answers.set(questionId, { requestId: message.requestId, resolve, reject }); void conversationLog(conversationId, 'event', { type: 'user.question', payload: { questionId, questions } }); send(socket, reply('user.question', message.requestId, sessionId, { questionId, questions })); });
             const result = await agent.chat(sessionId, message.payload.message, attachments, { url: String(cfg.url ?? ''), apiKey: String(cfg.apiKey ?? ''), model: String(cfg.model ?? ''), platform: String(cfg.platform ?? ''), systemPrompt: String(cfg.systemPrompt ?? ''), usageRules: String(cfg.usageRules ?? ''), conversationId }, (type, payload) => { if (type !== 'llm.token')
-                void conversationLog(conversationId, 'event', { type, payload }); send(socket, reply(type === 'llm.token' ? 'agent.token' : type, message.requestId, sessionId, payload)); }, controller.signal, message.payload.history ?? [], askUser);
+                void conversationLog(conversationId, 'event', { type, payload }); send(socket, reply(type === 'llm.token' ? 'agent.token' : type, message.requestId, sessionId, payload)); }, controller.signal, message.payload.history ?? [], askUser, permissionMode);
             active.delete(message.requestId);
             return send(socket, reply('agent.done', message.requestId, sessionId, { content: result }));
         }
@@ -76,8 +92,11 @@ async function handle(socket, agent, active, answers, message) {
         }
         if (message.type === 'session.reset')
             agent.reset(sessionId);
-        if (message.type === 'agent.compact')
-            return send(socket, reply('agent.done', message.requestId, sessionId, { content: agent.compact(sessionId) }));
+        if (message.type === 'agent.compact') {
+            const cfg = message.payload?.llm ?? {};
+            const content = await agent.compact(sessionId, { url: String(cfg.url ?? ''), apiKey: String(cfg.apiKey ?? ''), model: String(cfg.model ?? ''), platform: String(cfg.platform ?? ''), systemPrompt: String(cfg.systemPrompt ?? ''), usageRules: String(cfg.usageRules ?? '') });
+            return send(socket, reply('agent.done', message.requestId, sessionId, { content }));
+        }
         if (message.type === 'session.stats')
             return send(socket, reply('session.stats', message.requestId, sessionId, agent.stats(sessionId)));
         if (message.type === 'tools.list')

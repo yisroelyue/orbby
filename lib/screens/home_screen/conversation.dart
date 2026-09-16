@@ -14,7 +14,7 @@ extension _HomeScreenConversation on _HomeScreenState {
           for (final m in _messages)
             // local 消息（命令结果）是瞬时提示，不落盘：
             // 否则重载会话后 local 标志丢失，会混进下次发送的 history
-            if ((m.text.isNotEmpty || m.toolEvents.isNotEmpty || m.attachments.isNotEmpty) && !m.local)
+            if ((m.text.isNotEmpty || m.toolEvents.isNotEmpty || m.attachments.isNotEmpty) && !m.local && !m.pending)
               {
                 'role': m.isUser ? 'user' : 'assistant',
                 'content': m.text,

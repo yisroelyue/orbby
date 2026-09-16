@@ -23,7 +23,7 @@ function diff(path, before, after, operation) {
     return { output: `${operation}d ${path}`, changes: [{ path, operation, diff: lines.join('\n'), additions: added.length, deletions: removed.length }] };
 }
 function displayPath(path, workspace) { const value = relative(workspace, path).replaceAll(sep, '/'); return value.startsWith('../') ? path.replaceAll(sep, '/') : value; }
-async function change(path, operation, before, action) { await action(); const after = operation === 'delete' ? null : await fs.readFile(path, 'utf8'); return diff(path, before, after, operation); }
+async function change(path, display, operation, before, action) { await action(); const after = operation === 'delete' ? null : await fs.readFile(path, 'utf8'); return diff(display, before, after, operation); }
 export function registerFilesystemTools(registry) {
     const text = { type: 'string' };
     registry.register({ name: 'read', description: 'Read a text file with optional line range.', parameters: params({ path: text, startLine: { type: 'integer' }, endLine: { type: 'integer' } }, ['path']), async execute(args, ctx) {
@@ -43,7 +43,7 @@ export function registerFilesystemTools(registry) {
                 before = await fs.readFile(path, 'utf8');
             }
             catch { }
-            return change(displayPath(path, ctx.workspacePath), before === null ? 'create' : 'edit', before, async () => { await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, String(args.content), 'utf8'); });
+            return change(path, displayPath(path, ctx.workspacePath), before === null ? 'create' : 'edit', before, async () => { await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, String(args.content), 'utf8'); });
         } });
     registry.register({ name: 'edit', description: 'Replace an exact string in a UTF-8 text file.', parameters: params({ path: text, oldString: text, newString: text, replaceAll: { type: 'boolean' } }, ['path', 'oldString', 'newString']), async execute(args, ctx) {
             const path = safePath(String(args.path), ctx.workspacePath);
@@ -110,6 +110,17 @@ export function registerFilesystemTools(registry) {
                 return registry.execute('write', { path: args.path, content: args.file_text ?? '' }, ctx);
             if (command === 'str_replace')
                 return registry.execute('edit', { path: args.path, oldString: args.old_str, newString: args.new_str ?? '', replaceAll: false }, ctx);
+            if (command === 'insert') {
+                const path = safePath(String(args.path), ctx.workspacePath);
+                await ctx.permissions?.ensure(path, 'write', ctx.askUser);
+                const before = await fs.readFile(path, 'utf8');
+                const lines = before.split(/\r?\n/);
+                const line = Math.max(0, Math.min(lines.length, Number(args.insert_line ?? lines.length)));
+                lines.splice(line, 0, String(args.new_str ?? ''));
+                const after = lines.join('\n');
+                await fs.writeFile(path, after, 'utf8');
+                return diff(displayPath(path, ctx.workspacePath), before, after, 'edit');
+            }
             throw new Error(`Unsupported editor command: ${command}`);
         } });
 }

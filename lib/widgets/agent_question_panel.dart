@@ -457,75 +457,74 @@ class QuestionRecordCard extends StatelessWidget {
         children: [
           for (var qi = 0; qi < questions.length; qi++) ...[
             if (qi > 0) const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (questions[qi].header != null && questions[qi].header!.isNotEmpty) ...[
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 120),
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.07),
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                    ),
-                    child: Text(
-                      questions[qi].header!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.68), fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Sarasa Mono SC'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      text: questions[qi].question,
-                      children: [TextSpan(text: skipped ? '  ·  skipped' : '  ·  ${_answerText(qi)}')],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 12,
-                      fontFamily: 'Sarasa Mono SC',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (false) ...[
-            const SizedBox(height: 2),
-            Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Text.rich(
-                TextSpan(
-                  text: skipped ? '已跳过' : '回答：',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: skipped ? 0.35 : 0.45),
-                    fontSize: 12,
-                    fontFamily: 'Sarasa Mono SC',
-                  ),
-                  children: [
-                    if (!skipped)
-                      TextSpan(
-                        text: _answerText(qi),
-                        style: const TextStyle(
-                          color: Color(0xFFEAEAEA),
-                          fontSize: 12,
-                          fontFamily: 'Sarasa Mono SC',
-                        ),
-                      ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            ],
+            _buildQuestionRow(qi),
+            const SizedBox(height: 3),
+            _buildAnswerRow(qi),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 问题行：问题全文（最多两行）+ header 标签靠右上角
+  Widget _buildQuestionRow(int qi) {
+    final header = questions[qi].header;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text(
+              questions[qi].question,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 11,
+                height: 1.4,
+                fontFamily: 'Sarasa Mono SC',
+              ),
+            ),
+          ),
+        ),
+        if (header != null && header.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Container(
+            constraints: const BoxConstraints(maxWidth: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              // 彩色标签底：低饱和蓝，与聊天内代码/链接蓝同系
+              color: const Color(0xFF56A8F5).withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text(
+              header,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFF7CB9F8), fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.3, fontFamily: 'Sarasa Mono SC'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 答案行：「用户回复：」前缀 + 答案（与问题同色）；跳过置灰
+  Widget _buildAnswerRow(int qi) {
+    final answer = _answerText(qi);
+    final skippedThis = answer == '已跳过';
+    return Text.rich(
+      TextSpan(
+        text: '用户回复：',
+        children: [TextSpan(text: answer)],
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: skippedThis ? Colors.white.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.62),
+        fontSize: 11,
+        fontFamily: 'Sarasa Mono SC',
       ),
     );
   }

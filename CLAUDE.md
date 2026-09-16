@@ -50,9 +50,18 @@
 - `lib/models/agent_question.dart`：AgentQuestion/Option 模型，fromJson 容错（type 缺省按 options 是否为空推断，解析失败降级为 text 问题）。
 - `lib/widgets/agent_question_panel.dart` 三件套：`AgentQuestionPanelController`（纯逻辑 ChangeNotifier：扁平导航游标、选择状态、answers 组装）+ `AgentQuestionPanel`（纯展示，配色抄 CommandPalette；单问题单选点击选项行即提交，多选/text 走底部按钮）+ `QuestionRecordCard`（已回答留痕卡，只读）。与 CommandPalette 同构的 controller+展示模式，新增问题类型扩展 controller 与 `_buildQuestion` 分支，勿在 home_screen 内联。
 - home_screen 接入：`_questionCtrl`/`_questionId` 挂起状态（卡片插在 `_buildInputArea` 的 CommandPalette 之后，null 时不占位）；`_handleKeyEvent` 在命令面板分支**之后**接管 ↑↓/Enter/Esc（**输入框非空时不接管**，防拦截用户排队发送；Esc 始终跳过）；`chatStream` 流结束（完成/取消/断连）与 `/new`、`/clear` 统一走 `_dismissQuestionCard()` 收起卡片。
+- 键盘终止兜底：`input.dart` 的 `_handleWindowKeyEvent` 挂在 build 最外层 `Focus`（`canRequestFocus: false, skipTraversal: true`，只监听不抢焦点）上：焦点不在输入框时 Ctrl+C 终止任务、Esc 取消提问/终止任务。按键沿焦点链从 primaryFocus 向上冒泡，输入框 handler 与 SelectionArea 复制快捷键都在更内层、先 handled 先生效，本层只兜底，新增全局按键优先考虑挂这里。
 - 留痕：`_QuestionPanel`（home_screen_models.dart）挂在**对应 `ask_user_question` 的 `_ToolEvent.questionPanels` 上**（渲染在工具行下面，与 FileChangesPanel 同级），随 toolEvents 落盘/还原；定位规则 = 最后一条含 running ask_user_question 工具行的消息；中断（Ctrl+C/断连）时不留痕。
 
+## 工具步骤折叠组（聊天 UI）
+
+- 一条消息气泡内 ≥2 个工具调用渲染为折叠组（`lib/screens/home_screen/tool_steps.dart` 的 `_ToolStepsGroup`）：默认**全部折叠只显示概览头** = 运行状态前缀（任一运行中"正在执行"/全部完成"已执行"）+ 项数 + **去重操作名列表**（同名只显示一次、全部列出，超长 ellipsis）+ 失败数红字，圆点闪烁表示运行中，点击头部展开/收起（头部包 `SelectionContainer.disabled`，防 SelectionArea 吞点击）；展开的行整体缩进（left 16）。单工具仍原样直出。
+- 行渲染统一走 `messages.dart` 的 `_buildToolRow`（直出与折叠详情共用，勿复制行 UI）；折叠状态在 `_ChatMessage.toolsExpanded`（**瞬态不落盘**，重载会话默认折叠）。工具名中文映射 `toolDisplayName` 是 helpers.dart 的**库级顶层函数**（折叠组与状态类共用，勿移回 extension）。
+- 不变式：气泡内工具行始终连续位于正文之前（agent.dart 切泡逻辑保证），一条消息至多一个折叠组；分组按消息内 toolEvents 整体折叠，不做条级部分折叠。
+
 ## 聊天会话持久化与文件回滚
+
+会话存储目录为 `~/.orbby/task/`；新会话 ID 使用随机 UUID，不再使用时间戳或 `task_` 前缀。会话目录内的会话数据固定保存为 `conversation.json`，交互请求/响应日志为 `request.log`，事件日志为 `events.log`。不兼容旧的 `<id>.json` 文件。
 
 - **会话持久化**：HomeScreen 持有 `ChatConversation? _conversation`，经 `ChatStorageService` 落盘到 `~/.orbby/claude_task/task/`。落盘点：用户消息加入后、回复/压缩完成后、命令本地消息后。首轮发送时才创建会话（id 为毫秒时间戳，标题取首条用户消息）；切换会话（`_showSessionPicker` → `SessionPickerDialog`）前自动保存当前会话，agent 上下文由下次发送的 history 重建。**保存经 `_saveChain` 串行执行且链内吞错**（防快照交错、防一环失败毒化后续保存）；**`local` 消息（命令结果）不落盘也不进 history**——落盘会丢标志、重载后污染上下文。
 - **文件改动回滚**：`lib/services/file_undo_service.dart`（`FileUndoService`）备份到 `~/.orbby/undo/`（manifest.json + 字节级 .bin 备份，上限 50 条）。写类工具挂钩：`edit_file`/`create_file`(overwrite) 写前 `recordEdit`，`create_file` 新建 `recordCreate`，`delete_file` 文件分支 `recordDelete`；**目录删除不备份，rollback 覆盖不到**。仅在 menu 窗口 engine 内使用（静态缓存安全，同 engine 工具与命令共享）。

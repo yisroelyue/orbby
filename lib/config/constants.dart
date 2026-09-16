@@ -17,6 +17,5 @@ class PetConfig {
   static const double windowHeight = innerHeight + windowPaddingV * 2;
 
   /// 悬浮球图标资源路径
-  static const String logoSprite = 'assets/png/logo.png';
+  static const String logoSprite = 'assets/logo.png';
 }
-

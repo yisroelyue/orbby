@@ -18,6 +18,7 @@ import '../../services/file_undo_service.dart';
 import '../../services/menu_window_signals.dart';
 import '../../services/chat_attachment_controller.dart';
 import '../../services/clipboard_image_service.dart';
+import '../../services/personality_service.dart';
 import '../../config/settings.dart';
 import '../../config/platform.dart';
 import '../../widgets/command_palette.dart';
@@ -39,6 +40,7 @@ import '../../models/chat_attachment.dart';
 // - conversation.dart 会话创建/保存/切换/复制/解码
 // - agent.dart       消息发送、Agent 流处理、提问卡片应答
 // - messages.dart    聊天列表与消息气泡渲染
+// - tool_steps.dart  工具步骤折叠组（多工具调用默认折叠，概览头 + 可展开详情）
 // - markdown.dart    Markdown 样式表与代码块渲染
 // - widgets.dart     页面骨架、欢迎页、聊天区域
 // - models.dart      _ChatMessage/_ToolEvent/_QuestionPanel 数据模型
@@ -49,6 +51,7 @@ part 'input.dart';
 part 'conversation.dart';
 part 'agent.dart';
 part 'messages.dart';
+part 'tool_steps.dart';
 part 'markdown.dart';
 part 'widgets.dart';
 part 'models.dart';
@@ -143,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _queuedTexts = <String>[];
   Timer? _toolBlinkTimer;
   bool _toolBlinkOn = true;
+  bool _showScrollToBottom = false;
 
   // 输入历史：按上/下键浏览已发送的消息，向下越过最新记录时恢复草稿。
   final _inputHistory = <String>[];
@@ -193,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     menuWindowShown.addListener(_focusInput);
     // 输入内容驱动命令面板的过滤
     _inputController.addListener(_onInputChanged);
+    _scrollController.addListener(_onChatScroll);
   }
 
   void _onInputChanged() => _palette.updateQuery(_inputController.text);
@@ -210,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _palette.dispose();
     _questionCtrl?.dispose();
     _attachmentCtrl.dispose();
+    _scrollController.removeListener(_onChatScroll);
     _scrollController.dispose();
     _inputController.dispose();
     _inputFocus.dispose();
@@ -245,7 +251,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: _theme,
       navigatorKey: _navigatorKey,
-      home: Scaffold(
+      // 窗口级按键兜底（_handleWindowKeyEvent）：焦点不在输入框时也能 Ctrl+C/Esc 终止。
+      // 只监听不抢焦点（canRequestFocus: false），不参与 tab 遍历。
+      home: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _handleWindowKeyEvent,
+        child: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
           decoration: BoxDecoration(
@@ -263,11 +275,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: FrostedPanel(
               color: _panelBg,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 25),
-                child: _buildChatBody(),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 25),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildChatBody()),
+                  ],
+                ),
               ),
             ),
           ),
+        ),
         ),
       ),
     );

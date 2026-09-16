@@ -39,7 +39,25 @@ extension _HomeScreenInput on _HomeScreenState {
                 fontSize: 14,
                 fontFamily: _fontFamily),
             decoration: InputDecoration(
-              hintText: _isSending ? '' : 'Type something or use /help to list commands',
+              hint: _isSending
+                  ? null
+                  : RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          color: _inputHint,
+                          fontSize: 14,
+                          fontFamily: _fontFamily,
+                        ),
+                        children: const [
+                          TextSpan(text: 'Type something or use '),
+                          TextSpan(
+                            text: '/help',
+                            style: TextStyle(color: Colors.orangeAccent),
+                          ),
+                          TextSpan(text: ' to list commands'),
+                        ],
+                      ),
+                    ),
               hintStyle: TextStyle(
                   color: _inputHint,
                   fontSize: 14,
@@ -135,7 +153,7 @@ extension _HomeScreenInput on _HomeScreenState {
       return KeyEventResult.handled;
     }
 
-    // Ctrl+V：优先尝试剪贴板图片（/image-analyze 准备态的关键入口），
+    // Ctrl+V：优先尝试剪贴板图片，
     // 无图片回退普通文本粘贴；Alt+V：仅尝试图片。须在命令面板分支之前
     // 判断——准备态输入框里是 '/' 前缀文本，粘贴图片仍要生效。
     if (key == LogicalKeyboardKey.keyV) {
@@ -178,7 +196,7 @@ extension _HomeScreenInput on _HomeScreenState {
     // 输入框正在打字时不接管 ↑↓/Enter，避免拦截用户排队发送的消息；Esc 始终可跳过提问。
     if (_questionCtrl != null) {
       if (key == LogicalKeyboardKey.escape) {
-        _skipAgentQuestion();
+        _cancelAgentQuestion();
         return KeyEventResult.handled;
       }
       if (_inputController.text.isEmpty) {
@@ -211,6 +229,32 @@ extension _HomeScreenInput on _HomeScreenState {
         !HardwareKeyboard.instance.isShiftPressed) {
       _sendMessage();
       return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// 窗口级按键兜底：焦点不在输入框时（点过聊天区其他可聚焦控件等）也能终止。
+  /// 按键事件沿焦点链从 primaryFocus 向上冒泡，输入框 handler 在更内层、
+  /// 已 handled 的键不会到这一层；SelectionArea 的复制快捷键同样在更内层，
+  /// 先于本层生效。此处只兜底：Ctrl+C 终止任务、Esc 取消提问/终止任务。
+  KeyEventResult _handleWindowKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (_isSending &&
+        key == LogicalKeyboardKey.keyC &&
+        HardwareKeyboard.instance.isControlPressed) {
+      AgentService.cancelCurrent();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      if (_questionCtrl != null) {
+        _cancelAgentQuestion();
+        return KeyEventResult.handled;
+      }
+      if (_isSending) {
+        AgentService.cancelCurrent();
+        return KeyEventResult.handled;
+      }
     }
     return KeyEventResult.ignored;
   }

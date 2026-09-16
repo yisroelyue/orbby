@@ -3,7 +3,7 @@ part of 'home_screen.dart';
 /// Agent 链路：消息发送入口、核心发送流程（chatStream 消费）、
 /// /compact 上下文压缩、提问卡片的提交/跳过/收起。
 extension _HomeScreenAgent on _HomeScreenState {
-  /// /compact：压缩上下文，摘要作为一条本地回复显示
+  /// /compact：压缩上下文；摘要只写入 Agent 上下文，不展示摘要正文
   Future<void> _runCompact() async {
     if (!mounted || _isSending) return;
     if (_messages.isEmpty) {
@@ -11,25 +11,22 @@ extension _HomeScreenAgent on _HomeScreenState {
       return;
     }
     setState(() {
-      _messages.add(_ChatMessage(text: '', isUser: false, streaming: true));
       _isSending = true;
     });
-    _scrollToBottom(force: true);
+    _addLocalMessage('正在压缩上下文…');
     try {
-      final summary = await AgentService.compact();
-      if (!mounted) return;
-      setState(() => _messages.last.text = summary);
+      await AgentService.compact();
+      if (mounted) _addLocalMessage('上下文已压缩');
     } catch (e) {
       if (!mounted) return;
+      _messages.add(_ChatMessage(text: '压缩失败: $e', isUser: false));
       setState(() => _messages.last.text = '压缩失败: $e');
     }
     if (mounted) {
       setState(() {
-        _messages.last.streaming = false;
         _isSending = false;
       });
     }
-    _saveConversation();
     _focusInput();
   }
 
@@ -39,14 +36,13 @@ extension _HomeScreenAgent on _HomeScreenState {
     if (text.isEmpty && _attachmentCtrl.isEmpty) return;
 
     if (text.startsWith('/')) {
-      // prepareInput 命令带后缀（如 `/image-analyze 找出布局问题`）：
-      // 剥离前缀走图片分析发送流程（精确匹配不到，须在 findExact 之前判断）
-      final prepare = _matchPrepareCommand(text);
-      if (prepare != null) {
-        await _sendImageAnalyze(prepare.$2);
+      _addInputHistory(text);
+      const prefix = '/personality ';
+      if (text.toLowerCase().startsWith(prefix)) {
+        _inputController.clear();
+        await _setPersonality(text.substring(prefix.length).trim());
         return;
       }
-      _addInputHistory(text);
       // '/' 开头按命令处理：精确匹配则按 behavior 分派，否则丢弃（不把命令残片发给 AI）
       final cmd = _palette.findExact(text.substring(1));
       _inputController.clear();
@@ -78,25 +74,14 @@ extension _HomeScreenAgent on _HomeScreenState {
 
     _inputController.clear();
     if (_isSending) {
+      setState(() {
+        _messages.add(_ChatMessage(text: '->next task: $text', isUser: true, pending: true));
+      });
       setState(() => _queuedTexts.add(text));
+      _scrollToBottom(force: true);
       return;
     }
     await _sendText(text);
-  }
-
-  /// /image-analyze 发送流程：说明可空（用默认文案）；无附件提示先粘贴，
-  /// 不调用 AI
-  Future<void> _sendImageAnalyze(String instruction) async {
-    if (_attachmentCtrl.isEmpty) {
-      _attachmentCtrl.showHint('请先粘贴图片（Ctrl+V），再执行图片分析');
-      _inputFocus.requestFocus();
-      return;
-    }
-    if (_isSending) {
-      _attachmentCtrl.showHint('回复进行中，请等待当前回复完成再发送图片');
-      return;
-    }
-    await _sendWithAttachments(instruction.isEmpty ? _defaultImagePrompt : instruction);
   }
 
   /// 带附件发送的统一入口：附件编码并转移 → _sendText。
@@ -114,8 +99,19 @@ extension _HomeScreenAgent on _HomeScreenState {
   /// 核心发送流程：追加用户消息并流式请求回复（输入发送与 /retry 共用）
   Future<void> _sendText(String text, {List<ChatAttachment> attachments = const []}) async {
     if (_isSending) {
+      setState(() {
+        _messages.add(_ChatMessage(text: '->next task: $text', isUser: true, pending: true));
+      });
       _queuedTexts.add(text);
+      _scrollToBottom(force: true);
       return;
+    }
+
+    final pendingIndex = _messages.indexWhere((m) => m.isUser && m.pending && (m.text == text || m.text == '->next task: $text'));
+    final reusedPendingMessage = pendingIndex >= 0;
+    if (pendingIndex >= 0) {
+      _messages[pendingIndex].text = text;
+      _messages[pendingIndex].pending = false;
     }
 
     // 剔除文件已失效的附件（重载会话后可能被清理）
@@ -142,7 +138,7 @@ extension _HomeScreenAgent on _HomeScreenState {
     // 构建历史消息（不含当前用户消息）
     final history = <Map<String, String>>[];
     for (final msg in _messages) {
-      if (msg.text.isEmpty || msg.local) continue;
+      if (msg.text.isEmpty || msg.local || msg.pending) continue;
       history.add({
         'role': msg.isUser ? 'user' : 'assistant',
         'content': _historyContent(msg),
@@ -151,7 +147,11 @@ extension _HomeScreenAgent on _HomeScreenState {
 
 
     setState(() {
-      _messages.add(_ChatMessage(text: text, isUser: true, attachments: valid));
+      if (!reusedPendingMessage) {
+        _messages.add(_ChatMessage(text: text, isUser: true, attachments: valid));
+      } else if (valid.isNotEmpty) {
+        _messages[pendingIndex].attachments.addAll(valid);
+      }
       _isSending = true;
     });
     _saveConversation();
@@ -211,10 +211,12 @@ extension _HomeScreenAgent on _HomeScreenState {
                 );
                 if (index >= 0) {
                   final tool = _messages.last.toolEvents[index];
+                  final cancelledQuestion = error &&
+                      details?.toString().toLowerCase().contains('question cancelled') == true;
                   tool.running = false;
                   tool.error = error;
                   if (!error) tool.result = details;
-                  if (error) tool.errorMessage = details?.toString();
+                  if (error) tool.errorMessage = cancelledQuestion ? '提问已搁置' : details?.toString();
                   if (!error && changes is List) {
                     for (final raw in changes.whereType<Map>()) {
                       final change = FileChangePreview.fromJson(Map<String, dynamic>.from(raw));
@@ -309,6 +311,13 @@ extension _HomeScreenAgent on _HomeScreenState {
     final ctrl = _questionCtrl;
     if (ctrl == null || _questionId == null) return;
     _answerAgentQuestion(ctrl.questions, ctrl.skippedAnswers, skipped: true);
+  }
+
+  /// Esc 退出提问：取消当前 Agent 请求，不向挂起的工具发送空答案。
+  void _cancelAgentQuestion() {
+    if (_questionCtrl == null || _questionId == null) return;
+    AgentService.cancelCurrent();
+    setState(_dismissQuestionCard);
   }
 
   void _answerAgentQuestion(List<AgentQuestion> questions, List<List<String>> answers, {required bool skipped}) {

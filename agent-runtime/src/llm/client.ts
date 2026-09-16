@@ -4,7 +4,7 @@ import { ContentPart, LlmContent, toOpenAiContent, toAnthropicBlocks } from './c
 export interface LlmMessage { role: string; content: string | null | ContentPart[]; tool_call_id?: string; tool_calls?: unknown[] }
 export interface LlmToolCall { id: string; name: string; arguments: Record<string, unknown> }
 export interface LlmResponse { content: string; toolCalls: LlmToolCall[] }
-export interface LlmConfig { url: string; apiKey: string; model: string; platform?: string; systemPrompt?: string; usageRules?: string; conversationId?: string }
+export interface LlmConfig { url: string; apiKey: string; model: string; platform?: string; systemPrompt?: string; usageRules?: string; personality?: string; conversationId?: string }
 
 /** Anthropic Messages API 的 max_tokens 必填；4096 与 Dart 侧 LLMClient 一致 */
 const ANTHROPIC_MAX_TOKENS = 4096;

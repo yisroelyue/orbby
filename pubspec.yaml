@@ -85,6 +85,8 @@ flutter:
     - assets/png/plugins/
     - assets/svg/
     - assets/scripts/
+    - assets/logo.png
+    - assets/logo.svg
     - assets/logo_out.ico
 
   # An image asset can refer to one or more resolution-specific "variants", see

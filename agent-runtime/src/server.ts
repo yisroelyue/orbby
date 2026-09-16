@@ -9,9 +9,11 @@ import { registerTerminalTools } from './tools/terminal-tools.js';
 import { registerSkillTools } from './tools/skill-tools.js';
 import { registerAskUserTool } from './tools/ask-user.js';
 import { conversationLog } from './conversation-log.js';
+import { loadPermissionMode, savePermissionMode, PermissionMode } from './services/permission-storage.js';
 
 /** 挂起中的用户提问：cancel/断连时经 reject 唤醒卡在 await 上的工具 worker */
 type PendingQuestion = { requestId: string; resolve: (value: string[][]) => void; reject: (error: Error) => void };
+let permissionMode: PermissionMode = loadPermissionMode();
 
 export function startServer(port = Number(process.env.ORBBY_AGENT_PORT ?? 43127)) {
   const registry = new ToolRegistry();
@@ -43,6 +45,8 @@ async function handle(socket: WebSocket, agent: AgentRuntime, active: Map<string
   void conversationLog(conversationId, 'request', message);
   try {
     if (message.type === 'hello') return send(socket, reply('hello.ok', message.requestId, undefined, {protocolVersion:1}));
+    if ((message as any).type === 'permission.mode') { const mode = String((message as any).payload?.mode ?? 'ask'); if (mode === 'ask' || mode === 'read' || mode === 'all') { permissionMode = mode; savePermissionMode(mode); if (mode === 'ask') { const permissions = new (await import('./services/workspace-permission.js')).WorkspacePermissionService(); await permissions.clear(); } } return send(socket, reply('permission.mode.accepted', message.requestId, sessionId)); }
+    if ((message as any).type === 'permission.status') return send(socket, reply('permission.status', message.requestId, sessionId, {mode: permissionMode}));
     if (message.type === 'user.answer') {
       const entry = answers.get(message.payload.questionId);
       if (entry) { answers.delete(message.payload.questionId); entry.resolve(message.payload.answers); void conversationLog(conversationId, 'event', {type:'user.answer', payload:{questionId:message.payload.questionId, answers:message.payload.answers}}); }
@@ -54,7 +58,7 @@ async function handle(socket: WebSocket, agent: AgentRuntime, active: Map<string
       // 附件经 Node 侧兜底校验（数量/mime/大小），Flutter 已限一层
       const attachments = sanitizeAttachments((message.payload as any).attachments);
       const askUser = (questions: AgentQuestion[]) => new Promise<string[][]>((resolve, reject) => { const questionId=`question-${Date.now()}-${Math.random().toString(16).slice(2)}`; answers.set(questionId,{requestId:message.requestId,resolve,reject}); void conversationLog(conversationId, 'event', {type:'user.question', payload:{questionId, questions}}); send(socket,reply('user.question',message.requestId,sessionId,{questionId,questions})); });
-      const result = await agent.chat(sessionId!, message.payload.message, attachments, {url:String(cfg.url ?? ''),apiKey:String(cfg.apiKey ?? ''),model:String(cfg.model ?? ''),platform:String(cfg.platform ?? ''),systemPrompt:String(cfg.systemPrompt ?? ''),usageRules:String(cfg.usageRules ?? ''),conversationId}, (type, payload) => { if (type !== 'llm.token') void conversationLog(conversationId, 'event', {type, payload}); send(socket, reply(type === 'llm.token' ? 'agent.token' : type, message.requestId, sessionId, payload)); }, controller.signal, message.payload.history ?? [], askUser);
+      const result = await agent.chat(sessionId!, message.payload.message, attachments, {url:String(cfg.url ?? ''),apiKey:String(cfg.apiKey ?? ''),model:String(cfg.model ?? ''),platform:String(cfg.platform ?? ''),systemPrompt:String(cfg.systemPrompt ?? ''),usageRules:String(cfg.usageRules ?? ''),conversationId}, (type, payload) => { if (type !== 'llm.token') void conversationLog(conversationId, 'event', {type, payload}); send(socket, reply(type === 'llm.token' ? 'agent.token' : type, message.requestId, sessionId, payload)); }, controller.signal, message.payload.history ?? [], askUser, permissionMode);
       active.delete(message.requestId);
       return send(socket, reply('agent.done', message.requestId, sessionId, {content:result}));
     }
@@ -65,7 +69,7 @@ async function handle(socket: WebSocket, agent: AgentRuntime, active: Map<string
       return send(socket, reply('agent.cancelled', message.requestId, sessionId));
     }
     if (message.type === 'session.reset') agent.reset(sessionId!);
-    if (message.type === 'agent.compact') return send(socket, reply('agent.done', message.requestId, sessionId, {content:agent.compact(sessionId!)}));
+    if (message.type === 'agent.compact') { const cfg = message.payload?.llm ?? {}; const content = await agent.compact(sessionId!, {url:String(cfg.url ?? ''),apiKey:String(cfg.apiKey ?? ''),model:String(cfg.model ?? ''),platform:String(cfg.platform ?? ''),systemPrompt:String(cfg.systemPrompt ?? ''),usageRules:String(cfg.usageRules ?? '')}); return send(socket, reply('agent.done', message.requestId, sessionId, {content})); }
     if (message.type === 'session.stats') return send(socket, reply('session.stats', message.requestId, sessionId, agent.stats(sessionId!)));
     if (message.type === 'tools.list') return send(socket, reply('tools.list', message.requestId, sessionId, {tools:agent.tools()}));
     send(socket, reply('ack', message.requestId, sessionId));

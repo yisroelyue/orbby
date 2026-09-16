@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// 命令确认后的行为：
 /// - immediate：立即执行（现有全部命令）
 /// - prepareInput：不执行动作，只把 `/命令名 ` 写入输入框，
-///   让用户补充内容后再发送（如 /image-analyze 后补图片与说明）
+///   让用户补充内容后再发送。
 enum ChatCommandBehavior { immediate, prepareInput }
 
 /// 单条聊天命令：输入 '/' 前缀触发的快捷指令。
@@ -84,8 +84,9 @@ class CommandPaletteController extends ChangeNotifier {
     return null;
   }
 
-  /// 输入文本变化时调用：支持命令名前缀和分隔词首字母缩写（不区分大小写）。
-  /// 例如输入 `/cs` 可匹配 `/clear-session`。
+  /// 输入文本变化时调用：支持命令名前缀、分隔词首字母缩写，以及命令名字符顺序匹配
+  /// （不区分大小写）。例如输入 `/cs` 可匹配 `/clear-session`，输入 `/st` 可匹配
+  /// `/setting`。
   void updateQuery(String text) {
     if (text == _query) return;
     _query = text;
@@ -125,20 +126,42 @@ class CommandPaletteController extends ChangeNotifier {
       ..clear()
       ..addAll(
         _commands.where((c) => _matches(c.name, keyword)),
-      );
+      )
+      ..sort((a, b) {
+        final rank = _matchRank(a.name, keyword).compareTo(
+          _matchRank(b.name, keyword),
+        );
+        return rank != 0 ? rank : _byName(a, b);
+      });
     _selectedIndex = 0;
   }
 
   bool _matches(String name, String keyword) {
     if (keyword.isEmpty) return true;
+    return _matchRank(name, keyword) < 3;
+  }
+
+  /// 匹配优先级：命令名前缀 > 分隔词首字母缩写 > 命令名字符顺序匹配。
+  int _matchRank(String name, String keyword) {
+    if (keyword.isEmpty) return 0;
     final normalized = name.toLowerCase();
-    if (normalized.startsWith(keyword)) return true;
+    if (normalized.startsWith(keyword)) return 0;
 
     final initials = normalized
         .split(RegExp(r'[-_\s]+'))
         .where((part) => part.isNotEmpty)
         .map((part) => part[0])
         .join();
-    return initials.startsWith(keyword);
+    if (initials.startsWith(keyword)) return 1;
+
+    // 允许输入的字符按顺序出现在命令名中，例如 `st` -> `setting`。
+    var keywordIndex = 0;
+    for (final character in normalized.split('')) {
+      if (character == keyword[keywordIndex]) {
+        keywordIndex++;
+        if (keywordIndex == keyword.length) return 2;
+      }
+    }
+    return 3;
   }
 }

@@ -61,13 +61,17 @@ class _QuestionPanel {
 }
 
 class _ChatMessage {
-  _ChatMessage({required this.text, required this.isUser, this.streaming = false, this.local = false, this.terminated = false, List<ChatAttachment>? attachments})
+  _ChatMessage({required this.text, required this.isUser, this.streaming = false, this.local = false, this.terminated = false, this.pending = false, List<ChatAttachment>? attachments})
       : attachments = List<ChatAttachment>.from(attachments ?? const []);
   String text;
   final bool isUser;
   bool streaming;
   final bool local;
   bool terminated;
+  bool pending;
+  /// 工具步骤组（≥2 个工具调用）是否展开；瞬态 UI 状态，不落盘，重载会话后默认折叠。
+  /// 一条消息内的工具行始终连续位于正文之前（agent.dart 切泡逻辑保证），至多一个组。
+  bool toolsExpanded = false;
   final List<_ToolEvent> toolEvents = [];
   final List<FileChangePreview> fileChanges = [];
   /// 用户消息的图片附件（引用元数据 + 本地路径，随会话落盘；不含 Base64）

@@ -23,7 +23,7 @@ class AgentWsClient {
     await connect();
     final completer = Completer<Map<String, dynamic>>();
     late StreamSubscription<Map<String, dynamic>> subscription;
-    subscription = events.listen((event) { if (event['requestId'] == requestId && (event['type'] == 'agent.done' || event['type'] == 'session.stats' || event['type'] == 'tools.list' || event['type'] == 'agent.error') && !completer.isCompleted) completer.complete(event); }, onError: (Object error, StackTrace stack) { if (!completer.isCompleted) completer.completeError(error, stack); }, onDone: () { if (!completer.isCompleted) completer.completeError(const AgentConnectionException('Agent 服务连接已断开')); });
+    subscription = events.listen((event) { if (event['requestId'] == requestId && (event['type'] == 'agent.done' || event['type'] == 'session.stats' || event['type'] == 'tools.list' || event['type'] == 'permission.status' || event['type'] == 'agent.error') && !completer.isCompleted) completer.complete(event); }, onError: (Object error, StackTrace stack) { if (!completer.isCompleted) completer.completeError(error, stack); }, onDone: () { if (!completer.isCompleted) completer.completeError(const AgentConnectionException('Agent 服务连接已断开')); });
     send(type, requestId, payload, sessionId);
     final result = await completer.future.timeout(const Duration(minutes: 5), onTimeout: () => throw TimeoutException('Agent request timed out'));
     await subscription.cancel();

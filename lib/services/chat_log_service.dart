@@ -12,7 +12,7 @@ class ChatLogService {
       final isMessage = type == 'request' ||
           type == 'raw.response' ||
           type == 'llm.response';
-      final file = File('${dir.path}/${isMessage ? 'messages' : 'events'}.log');
+      final file = File('${dir.path}/${isMessage ? 'request' : 'events'}.log');
       await file.writeAsString(
         '${jsonEncode({'time': DateTime.now().toIso8601String(), 'type': type, 'data': data})}\n',
         mode: FileMode.append,

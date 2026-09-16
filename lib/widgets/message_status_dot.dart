@@ -23,6 +23,8 @@ class _MessageStatusDotState extends State<MessageStatusDot>
   @override
   Widget build(BuildContext context) {
     final processing = widget.status == MessageStatus.processing;
+    // 用户消息的圆点放大一档，与 agent 状态点区分
+    final isUser = widget.status == MessageStatus.user;
     final color = switch (widget.status) {
       MessageStatus.user => const Color(0xFFF0A04B),
       MessageStatus.processing => const Color(0xFF9A9A9A),
@@ -30,7 +32,7 @@ class _MessageStatusDotState extends State<MessageStatusDot>
       MessageStatus.terminated => const Color(0xFFE05252),
     };
     return Padding(
-      padding: const EdgeInsets.only(top: 7, right: 10),
+      padding: EdgeInsets.only(top: isUser ? 4 : 7, right: 10),
       child: AnimatedBuilder(
         animation: _controller,
         builder: (_, child) => Opacity(
@@ -38,7 +40,7 @@ class _MessageStatusDotState extends State<MessageStatusDot>
           child: child,
         ),
         child: Container(
-          width: 6, height: 6,
+          width: isUser ? 9 : 6, height: isUser ? 9 : 6,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
       ),

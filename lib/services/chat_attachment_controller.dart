@@ -140,7 +140,7 @@ class ChatAttachmentController extends ChangeNotifier {
       ..height = (result['height'] as num?)?.toInt() ?? item.height;
   }
 
-  /// 把附件文件持久化到 ~/.orbby/attachments/{conversationId}/，
+  /// 把附件文件持久化到 ~/.orbby/task/{conversationId}/attachments/，
   /// 供会话重载后的缩略图展示与 /retry。已在目标目录的跳过。
   static Future<void> persistAll(
     String conversationId,
@@ -150,7 +150,7 @@ class ChatAttachmentController extends ChangeNotifier {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '';
-    final dir = Directory('$home/.orbby/attachments/$conversationId');
+    final dir = Directory('$home/.orbby/task/$conversationId/attachments');
     try {
       if (!await dir.exists()) await dir.create(recursive: true);
     } catch (_) {

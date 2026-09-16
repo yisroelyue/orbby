@@ -1,28 +1,62 @@
 part of 'home_screen.dart';
 
+/// 工具名 → 中文显示名（纯格式化，状态类与工具步骤折叠组共用，故为库级顶层函数）
+String toolDisplayName(String name) {
+  const aliases = {
+    'ask_user_question': '提问用户',
+    'powershell': '执行 PowerShell',
+    'bash': '执行 Bash',
+    'execute_command': '执行命令',
+    'read': '读取文件',
+    'write': '写入文件',
+    'edit': '编辑文件',
+    'delete': '删除文件',
+    'glob': '查找文件',
+    'grep': '搜索内容',
+    'str_replace_editor': '编辑器',
+    'terminal_open': '打开终端',
+    'terminal_send': '发送终端输入',
+    'terminal_read': '读取终端输出',
+    'terminal_close': '关闭终端',
+    'terminal_list': '终端列表',
+    'skill': '加载技能',
+  };
+  return aliases[name] ?? '工具操作';
+}
+
 /// HomeScreen 的纯展示辅助逻辑集中在这里，避免页面状态类继续膨胀。
 extension _HomeScreenFormatting on _HomeScreenState {
-  String _toolDisplayName(String name) {
-    const aliases = {
-      'ask_user_question': '提问用户',
-      'powershell': '执行 PowerShell',
-      'bash': '执行 Bash',
-      'execute_command': '执行命令',
-      'read': '读取文件',
-      'write': '写入文件',
-      'edit': '编辑文件',
-      'delete': '删除文件',
-      'glob': '查找文件',
-      'grep': '搜索内容',
-      'str_replace_editor': '编辑器操作',
-      'terminal_open': '打开终端',
-      'terminal_send': '发送终端输入',
-      'terminal_read': '读取终端输出',
-      'terminal_close': '关闭终端',
-      'terminal_list': '终端列表',
-      'skill': '加载技能',
-    };
-    return aliases[name] ?? '工具操作';
+  /// 工具行标题：编辑器类带子命令（如「编辑器 · str_replace」）；
+  /// view 本质是读文件，只显示「编辑器」不带子命令
+  String _toolRowTitle(_ToolEvent tool) {
+    final parameters = tool.parameters;
+    final command = parameters is Map ? parameters['command'] : null;
+    if (tool.name == 'str_replace_editor' && command != null && command.toString().isNotEmpty) {
+      if (command.toString() == 'view') return toolDisplayName(tool.name);
+      return '${toolDisplayName(tool.name)} · $command';
+    }
+    return toolDisplayName(tool.name);
+  }
+
+  /// 标题与参数同一行：标题（w600 浅灰）+「：」+ 参数摘要（更淡、不加粗），
+  /// 超宽自动软换行；无参数（如 ask_user_question）只显示标题
+  TextSpan _toolTitleSpan(_ToolEvent tool) {
+    final details = tool.name == 'ask_user_question' || tool.parameters == null
+        ? ''
+        : _formatToolDetails(tool.name, tool.parameters, null);
+    return TextSpan(
+      children: [
+        TextSpan(text: _toolRowTitle(tool)),
+        if (details.isNotEmpty) ...[
+          const TextSpan(text: '：'),
+          // 参数压平成单行（content/命令自带的换行转空格），超宽走软换行
+          TextSpan(
+            text: details.replaceAll('\r', '').replaceAll('\n', ' '),
+            style: const TextStyle(color: Colors.white38, fontWeight: FontWeight.w400),
+          ),
+        ],
+      ],
+    );
   }
 
   String _formatToolDetails(String name, dynamic parameters, dynamic result, {String? error}) {
@@ -33,8 +67,11 @@ extension _HomeScreenFormatting on _HomeScreenState {
     final lines = <String>[];
     if (parameters is Map) {
       // 工具卡片展示调用摘要；执行结果由对话正文/文件变更预览承载。
+      // command 裸行仅 shell 类工具（编辑器的 command 是子命令词，已并入行标题）
       final command = parameters['command'];
-      if (command != null) lines.add(command.toString());
+      if (command != null && (name == 'powershell' || name == 'bash' || name == 'execute_command')) {
+        lines.add(command.toString());
+      }
       if (name == 'edit') {
         final values = <String>[];
         for (final key in ['path', 'oldString', 'newString', 'replaceAll']) {
@@ -50,7 +87,7 @@ extension _HomeScreenFormatting on _HomeScreenState {
         if (name == 'read' && entry.key != 'path') continue;
         if ((name == 'powershell' || name == 'execute_command' || name == 'bash') && entry.key != 'workdir' && entry.key != 'timeoutMs') continue;
         if (name == 'edit' && entry.key != 'path' && entry.key != 'oldString' && entry.key != 'newString' && entry.key != 'replaceAll') continue;
-        if ((entry.key == 'content' || entry.key == 'oldString' || entry.key == 'newString') && entry.value is String && (entry.value as String).length > 160) {
+        if ((entry.key == 'content' || entry.key == 'oldString' || entry.key == 'newString' || entry.key == 'old_str' || entry.key == 'new_str' || entry.key == 'file_text') && entry.value is String && (entry.value as String).length > 160) {
           lines.add('${entry.key}: ${(entry.value as String).length} 字符');
           continue;
         }

@@ -5,6 +5,7 @@ import '../config/settings.dart';
 import '../config/platform.dart';
 import '../models/agent_question.dart';
 import '../models/chat_attachment.dart';
+import 'personality_service.dart';
 
 class AgentService {
   AgentService._();
@@ -20,6 +21,11 @@ class AgentService {
   }
 
   static void setSystemPrompt(String? prompt) {}
+  static void setPermissionMode(String mode) { _permissionMode = mode; _client.send('permission.mode', _id(), {'mode': mode}, _sessionId); }
+  static Future<Map<String, dynamic>> permissionStatus() async {
+    final result = await _client.request('permission.status', _id(), sessionId: _sessionId);
+    return Map<String, dynamic>.from((result['payload'] as Map?) ?? const {});
+  }
 
   /// Compatibility hook retained for callers from the pre-WebSocket Agent.
   /// Logging is owned by the Node runtime now and is sent with future runtime
@@ -65,6 +71,7 @@ class AgentService {
     return {
       'message': text,
       'mode': mode,
+      'permissionMode': _permissionMode,
       'history': history,
       // 附件 payload（含 Base64）由 ChatAttachmentController.ensurePayload 预先填好
       if (attachments.isNotEmpty)
@@ -79,14 +86,20 @@ class AgentService {
   static void resetConversation() { final id = _id(); _client.send('session.reset', id, const {}, _sessionId); }
 
   static Future<String> compact() async {
-    final result = await _client.request('agent.compact', _id(), sessionId: _sessionId);
+    final result = await _client.request('agent.compact', _id(), sessionId: _sessionId, payload: {'llm': await _llmPayload()});
     return ((result['payload'] as Map?)?['content'] ?? '').toString();
+  }
+
+  static Future<Map<String, dynamic>> status() async {
+    final result = await _client.request('session.stats', _id(), sessionId: _sessionId);
+    return Map<String, dynamic>.from((result['payload'] as Map?) ?? const {});
   }
 
   static Future<void> recreate() async { _sessionId = 'session-${DateTime.now().millisecondsSinceEpoch}'; }
   static agent_types.ConversationStats? getConversationStats() => null;
   static List<Map<String, dynamic>> getAvailableTools() => const [];
   static String _id() => 'req-${DateTime.now().microsecondsSinceEpoch}';
+  static String _permissionMode = 'ask';
   static void answerQuestion(String questionId, Object answers) => _client.send('user.answer', _id(), {'questionId': questionId, 'answers': answers}, _sessionId);
   static Future<Map<String, dynamic>> _llmPayload() async {
     final settings = await SettingsService.load();
@@ -98,8 +111,9 @@ class AgentService {
       'model': model,
       // provider 类型由 Flutter 侧告知（Node 不解析平台配置）
       'platform': settings.platform,
-      'systemPrompt': settings.agentSystemPrompt,
+      'systemPrompt': '${settings.agentSystemPrompt}\n[personality:${await PersonalityService.load()}]',
       'usageRules': settings.agentUsageRules,
+      'personality': await PersonalityService.load(),
     };
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:uuid/uuid.dart';
 
 class ChatConversation {
   ChatConversation({
@@ -53,12 +54,7 @@ class ChatConversation {
 class ChatStorageService {
   ChatStorageService._();
 
-  static String newConversationId() {
-    final now = DateTime.now();
-    String two(int value) => value.toString().padLeft(2, '0');
-    return 'task_${now.year}${two(now.month)}${two(now.day)}'
-        '${two(now.hour)}${two(now.minute)}';
-  }
+  static String newConversationId() => const Uuid().v4();
 
   static Future<String> get _taskDir async {
     final home = Platform.environment['USERPROFILE'] ??
@@ -80,7 +76,7 @@ class ChatStorageService {
     await for (final entity in dir.list()) {
       if (entity is Directory) {
         final id = entity.path.split(Platform.pathSeparator).last;
-        final jsonFile = File('${entity.path}/$id.json');
+        final jsonFile = File('${entity.path}/conversation.json');
         if (await jsonFile.exists()) {
           try {
             final raw = await jsonFile.readAsString();
@@ -99,7 +95,7 @@ class ChatStorageService {
 
   static Future<ChatConversation?> load(String id) async {
     final dirPath = await _taskDir;
-    final jsonFile = File('$dirPath/$id/$id.json');
+    final jsonFile = File('$dirPath/$id/conversation.json');
     if (!await jsonFile.exists()) return null;
     try {
       final raw = await jsonFile.readAsString();
@@ -116,7 +112,7 @@ class ChatStorageService {
     if (!await convDir.exists()) {
       await convDir.create(recursive: true);
     }
-    final jsonFile = File('${convDir.path}/${conv.id}.json');
+    final jsonFile = File('${convDir.path}/conversation.json');
     conv.updatedAt = DateTime.now();
     await jsonFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(conv.toJson()),

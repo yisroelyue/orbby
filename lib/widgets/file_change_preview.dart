@@ -33,7 +33,7 @@ class _FileDiff extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${change.path}  ${change.operation}  +${change.additions} -${change.deletions}', style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'JetBrains Mono')),
-          const SizedBox(height: 3),
+          const SizedBox(height: 8),
           Padding(padding: const EdgeInsets.only(left: 12), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final line in change.diff.split('\n')) _DiffLine(line)]))),
         ]),
       );

@@ -72,17 +72,45 @@ extension _HomeScreenMessages on _HomeScreenState {
   Widget _buildChatList() {
     return Theme(
       data: _listTheme,
-      child: SelectionArea(
-        child: ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          itemCount: _messages.length,
-          itemBuilder: (_, index) {
-            return _buildMessageBubble(_messages[index]);
-          },
-        ),
+      child: Stack(
+        children: [
+          SelectionArea(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              itemCount: _messages.length,
+              itemBuilder: (_, index) => _buildMessageBubble(_messages[index]),
+            ),
+          ),
+          if (_showScrollToBottom)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 12,
+              child: Center(
+                child: FloatingActionButton.small(
+                  heroTag: 'scroll-to-bottom',
+                  tooltip: '滚动到底部',
+                  backgroundColor: Color(0xFF3A3A3A),
+                  foregroundColor: Colors.white,
+                  onPressed: () => _scrollToBottom(force: true),
+                  child: const Icon(Icons.keyboard_arrow_down),
+                ),
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  void _onChatScroll() {
+    if (!_scrollController.hasClients) return;
+    final show = _scrollController.position.maxScrollExtent -
+            _scrollController.position.pixels >
+        50;
+    if (show != _showScrollToBottom && mounted) {
+      setState(() => _showScrollToBottom = show);
+    }
   }
 
   Widget _buildMessageBubble(_ChatMessage msg) {
@@ -141,27 +169,16 @@ extension _HomeScreenMessages on _HomeScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final tool in msg.toolEvents)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 5, 12, 2),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              AnimatedOpacity(opacity: tool.running ? (_toolBlinkOn ? 1 : 0.2) : 1, duration: const Duration(milliseconds: 180), child: Padding(padding: const EdgeInsets.only(top: 4, right: 8), child: Icon(Icons.circle, size: 7, color: Colors.lightBlueAccent))),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_toolDisplayName(tool.name), style: TextStyle(color: _bubbleText, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: _fontFamily)),
-                // ask_user_question 的参数 dump 由问答留痕卡替代
-                if (tool.name != 'ask_user_question' && (tool.parameters != null || tool.result != null || tool.errorMessage != null))
-                  Text(_formatToolDetails(tool.name, tool.parameters, null, error: tool.errorMessage), maxLines: 6, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white54, fontSize: 11, fontFamily: _fontFamily)),
-                if (tool.errorMessage != null) Text(tool.errorMessage!, maxLines: 5, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.redAccent, fontSize: 12, fontFamily: _fontFamily)),
-                if (tool.changes.isNotEmpty) FileChangesPanel(changes: tool.changes),
-                // ask_user_question 的问答留痕卡（与 diff 面板同级）
-                for (final panel in tool.questionPanels)
-                  QuestionRecordCard(
-                    questions: panel.questions,
-                    answers: panel.answers,
-                    skipped: panel.skipped,
-                  ),
-              ])),
-            ]),
+        // 工具行：单条直出；≥2 条折叠为步骤组（默认只显示概览 + 第一条，见 tool_steps.dart）
+        if (msg.toolEvents.length == 1)
+          _buildToolRow(msg.toolEvents.first)
+        else if (msg.toolEvents.length > 1)
+          _ToolStepsGroup(
+            events: msg.toolEvents,
+            expanded: msg.toolsExpanded,
+            blinkOn: _toolBlinkOn,
+            onToggle: () => setState(() => msg.toolsExpanded = !msg.toolsExpanded),
+            rowBuilder: _buildToolRow,
           ),
         // 正文气泡：只在有文本或（等待占位且还没有工具行）时渲染。
         // fileChanges/diff 与问答卡都挂在工具行下，正文区只剩状态点时不渲染，
@@ -224,6 +241,62 @@ extension _HomeScreenMessages on _HomeScreenState {
         //     ),
         //   ),
       ],
+    );
+  }
+
+  /// 单条工具调用行：直出与折叠组的展开详情共用同一实现
+  Widget _buildToolRow(_ToolEvent tool) {
+    // 提问用户：挂起中（无留痕卡、无错误）整行不渲染，问答交互在输入框上方卡片；
+    // 回答/跳过后渲染问答留痕卡
+    if (tool.name == 'ask_user_question' && tool.questionPanels.isEmpty && tool.errorMessage == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      // 左缩进 20：工具块整体比正文（28）更靠右一档，弱化辅助信息
+      padding: const EdgeInsets.fromLTRB(20, 5, 12, 2),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 圆点暂时隐藏：等宽占位（7 icon + 8 gap）保持文字位置不变，
+        // 且与概览头前缀（点7+gap4+箭头16+gap4=31）+ 缩进16 恰好对齐（12+15+16=43）
+        const SizedBox(width: 15),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 标题与参数同一行（「读取文件：path: ...」），超宽软换行；
+          // 错误不走详情（_formatToolDetails），只渲染下面独立错误行，防双写。
+          // 提问用户不渲染标题：问答留痕卡已承载全部信息，行容器保留以挂载留痕卡
+          if (tool.name != 'ask_user_question')
+            Text.rich(
+              _toolTitleSpan(tool),
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, fontFamily: _fontFamily),
+            ),
+          if (tool.errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Text(
+                tool.errorMessage!,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: tool.errorMessage == '提问已搁置' ? Colors.white38 : Colors.redAccent,
+                  fontSize: 11,
+                  fontFamily: _fontFamily,
+                ),
+              ),
+            ),
+          if (tool.changes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FileChangesPanel(changes: tool.changes),
+            ),
+          // ask_user_question 的问答留痕卡（与 diff 面板同级；标题已去掉，不留顶部间距）
+          for (final panel in tool.questionPanels)
+            QuestionRecordCard(
+              questions: panel.questions,
+              answers: panel.answers,
+              skipped: panel.skipped,
+            ),
+        ])),
+      ]),
     );
   }
 

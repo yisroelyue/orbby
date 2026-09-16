@@ -11,7 +11,11 @@ extension _HomeScreenWidgets on _HomeScreenState {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
-      child: isEmpty ? _buildWelcomeScreen() : _buildChatArea(),
+      child: Column(
+        children: [
+          Expanded(child: isEmpty ? _buildWelcomeScreen() : _buildChatArea()),
+        ],
+      ),
     );
   }
 

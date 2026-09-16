@@ -94,7 +94,7 @@ class _AboutScreenState extends State<AboutScreen> with WindowListener {
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF292344), Color(0xFF1A2635)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withValues(alpha: 0.09))),
     child: Row(children: [
-      Container(width: 64, height: 64, padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(18)), child: Image.asset('assets/png/logo.png')),
+      Container(width: 64, height: 64, padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(18)), child: Image.asset('assets/logo.png')),
       const SizedBox(width: 15),
       const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Orbby', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700)), SizedBox(height: 4), Text('你的桌面智能助手', style: TextStyle(color: Colors.white70, fontSize: 13)), SizedBox(height: 9), Row(children: [_StatusDot(), SizedBox(width: 6), Text('已就绪', style: TextStyle(color: Color(0xFF8FE4C8), fontSize: 11, fontWeight: FontWeight.w600))])])),
       const Text('v2.4.0', style: TextStyle(color: Colors.white38, fontSize: 11)),

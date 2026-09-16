@@ -19,6 +19,7 @@
 ## Agent 流式协议
 
 - Agent Runtime 未设置 `ORBBY_WORKSPACE` 时，初始工作区默认为当前用户的桌面目录；显式设置 `ORBBY_WORKSPACE` 时优先使用该目录。
+- `/compact` 由 Node runtime 在会话锁内执行：过滤系统消息，仅使用参与者对话生成中文摘要；角色设定、行为约束和使用规范继续由系统提示词负责。成功后以摘要替换 runtime 上下文并记录 `context/compact` 事件，摘要不显示在聊天界面；空会话直接返回提示，失败不得替换原上下文。
 
 - Agent 的 ReAct 工具循环运行在 `agent-runtime/` Node.js 子进程中，通过 localhost WebSocket 与 Flutter 通信。每轮文本经 `agent.token` 流式发出，工具循环最多 30 个 step；Flutter 的 `AgentService.chatStream` 继续转换为 `AgentTokenEvent`/`AgentRoundEvent`，Dart 侧不再运行 Agent 核心。
 - **流式契约：processMessage 正常完成时返回值 = 最后一轮已流出的 content，chatStream 对已流出过 token 的会话只关流不补发返回值（防整段重复）。因此 processMessage 内所有"额外兜底文案"（超轮次/上下文超硬限/空回复）必须自行经 `onToken` 发出再 return，否则 UI 会在已有文字后静默收尾，看起来像卡死。**
@@ -55,15 +56,15 @@
 - `lib/widgets/command_palette.dart`：纯展示列表，只读 controller 状态，确认回调交回宿主。
 - `lib/screens/home_screen/commands.dart` `_buildCommands()`：命令注册表。**新增命令 = 在这里加一条 `ChatCommand`，execute 只调用处理方法，不内联业务逻辑**；处理方法放在 `command_actions.dart` 或按领域拆分的动作文件中，并自行 mounted 保护。
 - 交互：↑/↓ 选择、Enter/Tab 确认（清空输入并执行）、Esc 收起、点击行确认；`/` 开头的输入不作为普通消息发送，命令面板支持名称前缀和分隔词首字母缩写匹配（如 `/cs` 匹配 `/clear-session`），发送时仍按命令精确匹配执行。
-- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/image-analyze`（prepareInput，见"图片附件"节）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（删除当前会话持久化历史并开启空会话）、`/clear-session`（删除所有历史会话并开启新会话）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/status`（查询 Runtime 当前上下文长度和会话状态）、`/personality <humor|serious|concise>`（切换 `~/.orbby/setting/personality.json` 中的持久化性格）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
 
-## 图片附件与 /image-analyze
+## 图片附件
 
 - 粘贴链路：`windows/runner/clipboard_image_channel.cpp`（`orbby_clipboard_image` 通道 `readImage`：CF_HDROP→图片文件路径；CF_DIBV5/CF_DIB/CF_BITMAP→WIC 编码 PNG 临时文件；每个 engine 注册一次，见 `RegisterClipboardImageChannel`）→ `lib/services/clipboard_image_service.dart`（mime 白名单 png/jpeg/webp/gif、单张 ≤10MB、缩略图/尺寸解码）→ `lib/services/chat_attachment_controller.dart`（sha256 去重、上限 4 张、超限提示、发送编码、持久化）→ `lib/widgets/chat_attachment_preview.dart`（缩略图三态+删除+点看大图 `chat_attachment_viewer.dart`）。
 - 输入框接管 Ctrl+V（优先图片、无图回退手动文本插入）与 Alt+V（仅图片）；**请求进行中禁止追加附件**（transientError 提示）。`/clear`、`/new`、切换会话统一 `_attachmentCtrl.clear()`。
 - **发送编码跑在 isolate**（controller 的 `_encodeForPayload`）：Base64 ≤6MB 原样透传（GIF 动画保留）；超限先缩到长边 4096 转 PNG，仍超限转 JPEG 92。编码结果缓存在 `ChatAttachment.sendPayload`（内存态，重载会话后由 `ensurePayload` 补算）。
-- **Base64 绝不入会话 JSON**：附件文件随发送持久化到 `~/.orbby/attachments/{conversationId}/`（`persistAll`），消息落盘只存引用元数据（`_ChatMessage.attachments` 的 `attachments` 键）；发给 LLM 的 history 历史轮只有 `[图片: 文件名]` 引用（`_historyContent`），仅当前轮经 `chat.start` 的 `attachments` 发完整 Base64；取消/失败附件保留在消息上，`/retry` 恢复。
-- `/image-analyze`（prepareInput）：确认后输入框留 `/image-analyze `，用户粘贴图片+补说明再回车；发送时 `_matchPrepareCommand` 剥前缀（不传给模型），说明为空用默认文案，无附件提示先粘贴且不调 AI。`_sendWithAttachments` 是带附件发送统一入口（视觉检查→编码→转移→`_sendText`）。
+- **Base64 绝不入会话 JSON**：附件文件随发送持久化到 `~/.orbby/task/{conversationId}/attachments/`（`persistAll`），消息落盘只存引用元数据（`_ChatMessage.attachments` 的 `attachments` 键）；发给 LLM 的 history 历史轮只有 `[图片: 文件名]` 引用（`_historyContent`），仅当前轮经 `chat.start` 的 `attachments` 发完整 Base64；取消/失败附件保留在消息上，`/retry` 恢复。
+- 带附件发送时直接使用输入框中的说明文字；说明为空时使用默认文案。`_sendWithAttachments` 是带附件发送统一入口（视觉检查→编码→转移→`_sendText`）。
 - **不做本地视觉能力判断**（名单式判断必然误杀迭代太快的新模型）：带附件直接发送，模型不支持时由 API 报错兜底，错误信息原样展示。`settings.platform` 随 `llm` payload 传给 Node 用于选 provider 格式。
 - Node 侧：`agent-runtime/src/llm/content-adapter.ts` 定义统一 `LlmContent`（string 或 text/image 块，图片在前文字在后）+ `sanitizeAttachments`（Node 侧兜底校验数量/mime/大小）；`client.ts` 按 `platform` 分支 OpenAI-compatible（image_url）/ Anthropic（image block，system 提顶级、tool 结果合并 tool_result、input_json_delta 流式解析）；历史轮 `toPlainText` 只回放文本。
 
@@ -71,10 +72,12 @@
 
 - `lib/models/agent_question.dart`：AgentQuestion/Option 模型，fromJson 容错（type 缺省按 options 是否为空推断，解析失败降级为 text 问题）。
 - `lib/widgets/agent_question_panel.dart` 三件套：`AgentQuestionPanelController`（纯逻辑 ChangeNotifier：扁平导航游标、选择状态、answers 组装）+ `AgentQuestionPanel`（纯展示，配色抄 CommandPalette；单问题单选点击选项行即提交，多选/text 走底部按钮）+ `QuestionRecordCard`（已回答留痕卡，只读）。与 CommandPalette 同构的 controller+展示模式，新增问题类型扩展 controller 与 `_buildQuestion` 分支，勿在 home_screen 内联。
-- home_screen 接入：`_questionCtrl`/`_questionId` 挂起状态（卡片插在 `_buildInputArea` 的 CommandPalette 之后，null 时不占位）；`_handleKeyEvent` 在命令面板分支**之后**接管 ↑↓/Enter/Esc（**输入框非空时不接管**，防拦截用户排队发送；Esc 始终跳过）；`chatStream` 流结束（完成/取消/断连）与 `/new`、`/clear` 统一走 `_dismissQuestionCard()` 收起卡片。
+- home_screen 接入：`_questionCtrl`/`_questionId` 挂起状态（卡片插在 `_buildInputArea` 的 CommandPalette 之后，null 时不占位）；`_handleKeyEvent` 在命令面板分支**之后**接管 ↑↓/Enter/Esc（**输入框非空时不接管**，防拦截用户排队发送；Esc 取消当前 Agent 请求并中止等待，跳过按钮才发送空答案）；`chatStream` 流结束（完成/取消/断连）与 `/new`、`/clear` 统一走 `_dismissQuestionCard()` 收起卡片。
 - 留痕：`_QuestionPanel`（home_screen/models.dart）随会话落盘（消息 map 的 `questionPanels` 键），重载经 `_decodeToolEvents` 还原，渲染在 ask_user_question 工具行下方；旧会话 JSON 无此键自然兼容。
 
 ## 聊天会话持久化与文件回滚
+
+会话存储目录为 `~/.orbby/task/`；新会话 ID 使用随机 UUID，不再使用时间戳或 `task_` 前缀。会话目录内的会话数据固定保存为 `conversation.json`，交互请求/响应日志为 `request.log`，事件日志为 `events.log`。不兼容旧的 `<id>.json` 文件。
 
 - **会话持久化**：HomeScreen 持有 `ChatConversation? _conversation`，经 `ChatStorageService` 落盘到 `~/.orbby/claude_task/task/`。落盘点：用户消息加入后、回复/压缩完成后、命令本地消息后。首轮发送时才创建会话（id 为毫秒时间戳，标题取首条用户消息）；切换会话（`_showSessionPicker` → `SessionPickerDialog`）前自动保存当前会话，agent 上下文由下次发送的 history 重建。**保存经 `_saveChain` 串行执行且链内吞错**（防快照交错、防一环失败毒化后续保存）；**`local` 消息（命令结果）不落盘也不进 history**——落盘会丢标志、重载后污染上下文。
 - **文件改动回滚**：`lib/services/file_undo_service.dart`（`FileUndoService`）备份到 `~/.orbby/undo/`（manifest.json + 字节级 .bin 备份，上限 50 条）。写类工具挂钩：`edit_file`/`create_file`(overwrite) 写前 `recordEdit`，`create_file` 新建 `recordCreate`，`delete_file` 文件分支 `recordDelete`；**目录删除不备份，rollback 覆盖不到**。仅在 menu 窗口 engine 内使用（静态缓存安全，同 engine 工具与命令共享）。

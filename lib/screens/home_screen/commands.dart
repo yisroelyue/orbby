@@ -16,7 +16,7 @@ extension _HomeScreenCommands on _HomeScreenState {
     _inputFocus.requestFocus();
   }
 
-  /// 匹配输入文本中的 prepareInput 命令前缀（如 `/image-analyze 找出问题`）。
+  /// 匹配输入文本中的 prepareInput 命令前缀。
   /// 只匹配"命令名+空格+说明"形态——纯命令名交给精确匹配走准备态
   /// （与命令面板确认行为一致）；非 prepareInput 前缀返回 null。
   (ChatCommand, String)? _matchPrepareCommand(String text) {
@@ -56,7 +56,7 @@ extension _HomeScreenCommands on _HomeScreenState {
       ),
       ChatCommand(
         name: 'clear',
-        description: '清空当前上下文，但继续使用当前会话',
+        description: '清空当前上下文和当前会话历史',
         execute: _clearCurrentConversation,
       ),
       ChatCommand(
@@ -68,6 +68,17 @@ extension _HomeScreenCommands on _HomeScreenState {
         name: 'compact',
         description: '压缩对话上下文',
         execute: _runCompact,
+      ),
+      ChatCommand(
+        name: 'status',
+        description: '查看当前上下文长度和会话状态',
+        execute: _showAgentStatus,
+      ),
+      ChatCommand(
+        name: 'personality',
+        description: '切换性格：humor、serious、concise',
+        behavior: ChatCommandBehavior.prepareInput,
+        execute: () {},
       ),
       ChatCommand(
         name: 'rollback',
@@ -90,14 +101,6 @@ extension _HomeScreenCommands on _HomeScreenState {
         execute: _copyConversationText,
       ),
       ChatCommand(
-        name: 'image-analyze',
-        description: '分析粘贴的图片（确认后 Ctrl+V 粘贴图片，再回车）',
-        // prepareInput 行为由宿主（_confirmCommand/_sendMessage）按 behavior 分派，
-        // execute 不承载动作
-        behavior: ChatCommandBehavior.prepareInput,
-        execute: () {},
-      ),
-      ChatCommand(
         name: 'apps',
         description: '打开应用中心',
         execute: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
@@ -112,6 +115,10 @@ extension _HomeScreenCommands on _HomeScreenState {
         description: '打开 Agent 设置',
         execute: _showAgentSettings,
       ),
+      ChatCommand(name: 'permission-off', description: '关闭授权，操作前询问', execute: () => _setPermissionMode('ask', '已关闭全局授权，恢复操作前询问。')),
+      ChatCommand(name: 'permission-all', description: '全局授权所有读写执行操作', execute: () => _setPermissionMode('all', '已开启全局授权，后续操作不再询问。')),
+      ChatCommand(name: 'permission-read', description: '只读授权，读取操作不再询问', execute: () => _setPermissionMode('read', '已开启只读授权，读取操作不再询问。')),
+      ChatCommand(name: 'permission', description: '查看当前授权模式和已保存权限', execute: _showPermissionStatus),
     ];
   }
 
