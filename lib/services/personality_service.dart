@@ -10,6 +10,19 @@ class PersonalityService {
     'concise': '简洁直接，优先给出结论，避免冗余。',
   };
 
+  /// 解析性格输入：精确名 > 唯一前缀匹配（如 h→humor、se→serious）。
+  /// 返回 (命中 key, 候选列表)：无命中或前缀歧义（多候选）时 key 为 null，
+  /// candidates 供上层提示。
+  static (String?, List<String>) resolve(String input) {
+    final key = input.trim().toLowerCase();
+    if (presets.containsKey(key)) return (key, const <String>[]);
+    final matches = presets.keys.where((name) => name.startsWith(key)).toList()
+      ..sort();
+    return matches.length == 1
+        ? (matches.single, const <String>[])
+        : (null, matches);
+  }
+
   static Future<File> _file() async {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
     final dir = Directory('$home/.orbby/setting');

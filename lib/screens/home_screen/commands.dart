@@ -17,8 +17,8 @@ extension _HomeScreenCommands on _HomeScreenState {
   }
 
   /// 匹配输入文本中的 prepareInput 命令前缀。
-  /// 只匹配"命令名+空格+说明"形态——纯命令名交给精确匹配走准备态
-  /// （与命令面板确认行为一致）；非 prepareInput 前缀返回 null。
+  /// 只匹配"命令名+空格+说明"形态；纯命令名经精确匹配以空参数执行
+  /// （面板确认仍走准备态，写回 `/命令名 ` 等待补参）；非 prepareInput 前缀返回 null。
   (ChatCommand, String)? _matchPrepareCommand(String text) {
     for (final cmd in _palette.commands) {
       if (cmd.behavior != ChatCommandBehavior.prepareInput) continue;
@@ -75,10 +75,18 @@ extension _HomeScreenCommands on _HomeScreenState {
         execute: _showAgentStatus,
       ),
       ChatCommand(
+        name: 'cd',
+        description: '切换工作区目录：/cd 路径，不带参数查看当前',
+        behavior: ChatCommandBehavior.prepareInput,
+        execute: () {},
+        executeWithArgument: _changeWorkspace,
+      ),
+      ChatCommand(
         name: 'personality',
         description: '切换性格：humor、serious、concise',
         behavior: ChatCommandBehavior.prepareInput,
         execute: () {},
+        executeWithArgument: _setPersonality,
       ),
       ChatCommand(
         name: 'rollback',

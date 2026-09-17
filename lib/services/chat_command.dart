@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 /// 命令确认后的行为：
@@ -14,6 +16,7 @@ class ChatCommand {
     required this.description,
     required this.execute,
     this.behavior = ChatCommandBehavior.immediate,
+    this.executeWithArgument,
   });
 
   /// 命令名（不含前导 '/'），同时也是输入过滤的关键词
@@ -27,6 +30,10 @@ class ChatCommand {
 
   /// 确认后的行为（见 [ChatCommandBehavior]）
   final ChatCommandBehavior behavior;
+
+  /// prepareInput 命令的带参执行入口：输入 `/命令名 参数` 发送时，
+  /// 剥离前缀后以参数调用（参数已 trim，可为空串）；immediate 命令不使用。
+  final FutureOr<void> Function(String argument)? executeWithArgument;
 }
 
 /// 命令面板状态：持有命令注册表，按输入 query 过滤并维护键盘选中项。

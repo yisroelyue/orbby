@@ -5,13 +5,36 @@ import { toPlainText, toUserContent } from '../llm/content-adapter.js';
 import { extractAttachments } from '../llm/attachment-extractor.js';
 import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { loadWorkspace, saveWorkspace } from '../services/workspace-storage.js';
 function defaultWorkspacePath() { return join(homedir(), 'Desktop'); }
+/** 工作区优先级：/cd 持久化值 > ORBBY_WORKSPACE env > 桌面默认 */
+function initialWorkspacePath() { return loadWorkspace() ?? process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath(); }
 export class AgentRuntime {
     registry;
     sessions = new Map();
+    /** 当前工作区：所有工具的相对路径基准与命令默认 cwd，可经 workspace.set 运行时切换 */
+    workspacePath = initialWorkspacePath();
     constructor(registry) {
         this.registry = registry;
+    }
+    getWorkspace() { return this.workspacePath; }
+    /** 切换工作区（相对路径按当前工作区解析）；仅接受已存在的目录，成功后持久化 */
+    async setWorkspace(path) {
+        const resolved = resolve(this.workspacePath, path.trim());
+        let stats;
+        try {
+            stats = await stat(resolved);
+        }
+        catch {
+            throw new Error(`目录不存在：${resolved}（相对路径按当前工作区解析）`);
+        }
+        if (!stats.isDirectory())
+            throw new Error(`不是目录：${resolved}`);
+        this.workspacePath = resolved;
+        saveWorkspace(resolved);
+        return resolved;
     }
     session(id) { let value = this.sessions.get(id); if (!value) {
         value = new AgentSession(id);
@@ -28,6 +51,8 @@ export class AgentRuntime {
             if (session.messages.length === 0 && history.length)
                 session.messages.push(...history.map(item => ({ role: item.role, content: toPlainText(item.content) })));
             session.messages.push({ role: 'system', content: AGENT_SYSTEM_PROMPT });
+            // 工作区基准随 /cd 变化，每轮注入最新值，保证 LLM 知道相对路径的解析基准
+            session.messages.push({ role: 'system', content: `当前工作区目录：${this.workspacePath}。read/write/edit/glob/grep 与命令工具的相对路径一律以该目录为基准。` });
             if (config.systemPrompt || config.usageRules || config.personality) {
                 const configuredPersonality = config.systemPrompt?.match(/\[personality:(humor|serious|concise)\]/)?.[1] ?? config.personality ?? 'humor';
                 const personality = configuredPersonality === 'serious' ? '严谨、专业、克制，避免玩梗。' : configuredPersonality === 'concise' ? '简洁直接，优先给出结论，避免冗余。' : '风格幽默，可以使用适量网络热词热梗；不刻意讨好，保持自己的性格。';
@@ -54,7 +79,7 @@ export class AgentRuntime {
                     return response.content;
                 }
                 const { WorkspacePermissionService } = await import('../services/workspace-permission.js');
-                const workspacePath = process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath();
+                const workspacePath = this.workspacePath;
                 const permissions = new WorkspacePermissionService();
                 permissions.setMode(permissionMode);
                 const results = await executeToolCalls(this.registry, response.toolCalls, { workspacePath, sessionId, requestId: '', permissionMode: 'accept', askUser, permissions }, signal, 4, onEvent);
@@ -96,7 +121,7 @@ export class AgentRuntime {
         return { sessionId, messageCount: s.messages.length, eventCount: s.events.length, contextChars, totalTokens, maxTokens, usagePercent: Math.round(totalTokens / maxTokens * 100), turn: s.turn, step: s.step, lastCompactionAt: compactEvents.at(-1)?.at ?? null };
     }
     tools() { return this.registry.definitions(); }
-    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath(), sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
+    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: this.workspacePath, sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
 }
 function serializeToolResult(value) {
     if (typeof value === 'string')

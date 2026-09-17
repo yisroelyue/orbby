@@ -1,12 +1,21 @@
 part of 'home_screen.dart';
 
+/// 错误消息展示：剥掉泛型 Exception 的 "Exception: " 前缀
+/// （重写了 toString 的自定义异常如 AgentException 不受影响）
+String _cleanErrorMessage(Object error) =>
+    error.toString().replaceFirst(RegExp(r'^Exception: '), '');
+
 /// 命令动作实现。commands.dart 只保留注册信息，具体业务逻辑集中在这里。
 extension _HomeScreenCommandActions on _HomeScreenState {
   Future<void> _setPersonality(String name) async {
-    final key = name.toLowerCase();
-    final description = PersonalityService.presets[key];
-    if (description == null) {
-      _addLocalMessage('未知性格：$name。可选：${PersonalityService.presets.keys.join('、')}');
+    final (key, candidates) = PersonalityService.resolve(name);
+    if (key == null) {
+      if (name.trim().isEmpty) {
+        _addLocalMessage('可选性格：${PersonalityService.presets.keys.join('、')}（支持前缀，如 /personality h）');
+        return;
+      }
+      final ambiguity = candidates.length > 1 ? '（前缀匹配到多个：${candidates.join('、')}）' : '';
+      _addLocalMessage('未知性格：$name$ambiguity。可选：${PersonalityService.presets.keys.join('、')}（支持前缀）');
       return;
     }
     await PersonalityService.save(key);
@@ -30,6 +39,28 @@ extension _HomeScreenCommandActions on _HomeScreenState {
     if (!mounted) return;
     final mode = status['mode'] ?? 'ask';
     _addLocalMessage('当前授权模式：$mode');
+  }
+
+  /// /cd：切换 Agent 工作区（Node 侧校验目录并持久化）。
+  /// 空参数查看当前工作区；相对路径由 Node 侧按当前工作区解析。
+  Future<void> _changeWorkspace(String path) async {
+    // 用户复制的 Windows 路径常带包裹引号，剥掉再交 Node 解析
+    final target = path.trim().replaceAll('"', '');
+    if (target.isEmpty) {
+      try {
+        final workspace = await AgentService.workspaceStatus();
+        if (mounted) _addLocalMessage('当前工作区：$workspace');
+      } catch (e) {
+        if (mounted) _addLocalMessage('查询工作区失败：${_cleanErrorMessage(e)}');
+      }
+      return;
+    }
+    try {
+      final workspace = await AgentService.setWorkspace(target);
+      if (mounted) _addLocalMessage('工作区已切换：$workspace');
+    } catch (e) {
+      if (mounted) _addLocalMessage('切换工作区失败：${_cleanErrorMessage(e)}');
+    }
   }
 
   void _setPermissionMode(String mode, String message) {

@@ -27,6 +27,18 @@ class AgentService {
     return Map<String, dynamic>.from((result['payload'] as Map?) ?? const {});
   }
 
+  /// 当前工作区（Node 侧解析后的绝对路径）
+  static Future<String> workspaceStatus() async {
+    final result = await _client.request('workspace.get', _id(), sessionId: _sessionId);
+    return ((result['payload'] as Map?)?['workspace'] ?? '').toString();
+  }
+
+  /// 切换工作区；相对路径由 Node 侧按当前工作区解析，目录不存在会抛错
+  static Future<String> setWorkspace(String path) async {
+    final result = await _client.request('workspace.set', _id(), sessionId: _sessionId, payload: {'path': path});
+    return ((result['payload'] as Map?)?['workspace'] ?? '').toString();
+  }
+
   /// Compatibility hook retained for callers from the pre-WebSocket Agent.
   /// Logging is owned by the Node runtime now and is sent with future runtime
   /// configuration messages rather than mutating a Dart Agent instance.

@@ -102,8 +102,9 @@ export function registerFilesystemTools(registry) {
             await walk(ctx.workspacePath);
             return result.join('\n') || 'No matches';
         } });
-    registry.register({ name: 'str_replace_editor', description: 'View, create, replace, or insert text in files.', parameters: params({ command: text, path: text, old_str: text, new_str: text, file_text: text, insert_line: { type: 'integer' } }, ['command', 'path']), async execute(args, ctx) {
-            const command = String(args.command);
+    registry.register({ name: 'str_replace_editor', description: 'View, create, replace, or insert text in files.', parameters: params({ command: { type: 'string', enum: ['view', 'create', 'str_replace', 'insert'] }, path: text, old_str: text, new_str: text, file_text: text, insert_line: { type: 'integer' } }, ['command', 'path']), async execute(args, ctx) {
+            const raw = String(args.command);
+            const command = raw === 'replace' ? 'str_replace' : raw;
             if (command === 'view')
                 return registry.execute('read', { path: args.path }, ctx);
             if (command === 'create')

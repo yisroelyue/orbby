@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Terminal Mascot Logo</title>
+  <desc id="logoDesc">An anthropomorphic command-line window: two horizontal dashes (- -) form the eyes and an underscore (_) forms the mouth.</desc>
+
+  <defs>
+    <linearGradient id="winGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161D38"/>
+      <stop offset="1" stop-color="#0A0E1E"/>
+    </linearGradient>
+
+    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#222C55"/>
+      <stop offset="1" stop-color="#182046"/>
+    </linearGradient>
+
+    <!-- all three face glyphs are now horizontal lines (two eye dashes plus the mouth underscore), so no glyph has a non-degenerate bounding box any more and inkGrad (objectBoundingBox) can no longer paint a stroke: each line carries its own userSpaceOnUse gradient instead. inkGrad is kept only as the face group's inherited stroke, which every path overrides. -->
+    <linearGradient id="inkGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9BFBD4"/>
+      <stop offset="1" stop-color="#2FD79A"/>
+    </linearGradient>
+
+    <!-- the mouth underscore is a horizontal line: its geometric bounding box is degenerate (height 0), so an objectBoundingBox gradient would be ignored and the stroke would not paint. userSpaceOnUse avoids that. -->
+    <linearGradient id="mouthGrad" gradientUnits="userSpaceOnUse" x1="444" y1="676" x2="580" y2="676">
+      <stop offset="0" stop-color="#9BFBD4"/>
+      <stop offset="1" stop-color="#2FD79A"/>
+    </linearGradient>
+
+    <!-- each eye dash is a horizontal line as well: same degenerate-bbox problem, same userSpaceOnUse workaround. The range is per dash rather than shared, so each eye keeps the full mint-to-green ramp it had when the glyphs were chevrons. -->
+    <linearGradient id="eyeGradL" gradientUnits="userSpaceOnUse" x1="386.38" y1="512" x2="432" y2="512">
+      <stop offset="0" stop-color="#9BFBD4"/>
+      <stop offset="1" stop-color="#2FD79A"/>
+    </linearGradient>
+
+    <linearGradient id="eyeGradR" gradientUnits="userSpaceOnUse" x1="606.38" y1="512" x2="652" y2="512">
+      <stop offset="0" stop-color="#9BFBD4"/>
+      <stop offset="1" stop-color="#2FD79A"/>
+    </linearGradient>
+
+    <radialGradient id="screenGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3BE8A8" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#3BE8A8" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="glyphGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+
+    <filter id="winShadow" x="-25%" y="-25%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="26" stdDeviation="32" flood-color="#02040C" flood-opacity="0.6"/>
+    </filter>
+
+    <clipPath id="winClip">
+      <rect x="128" y="176" width="768" height="672" rx="84"/>
+    </clipPath>
+  </defs>
+
+  <!-- no background plate: the terminal window itself is the mark. The window group, the rim and the face group below all carry the same transform, scaling the body 4/3 about the canvas centre (512,512): 768x672 becomes 1024x896, so the window sits flush with both side edges and leaves 64px top and bottom. The drop shadow reaches beyond the canvas and is therefore clipped at the edges. -->
+
+  <!-- terminal window -->
+  <g transform="translate(512 512) scale(1.333333333) translate(-512 -512)" filter="url(#winShadow)">
+    <g clip-path="url(#winClip)">
+      <rect x="128" y="176" width="768" height="672" fill="url(#winGrad)"/>
+      <rect x="128" y="176" width="768" height="112" fill="url(#barGrad)"/>
+      <line x1="128" y1="288" x2="896" y2="288" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="2"/>
+      <circle cx="208" cy="232" r="16" fill="#FF5F57"/>
+      <circle cx="264" cy="232" r="16" fill="#FEBC2E"/>
+      <circle cx="320" cy="232" r="16" fill="#28C840"/>
+      <circle cx="512" cy="566" r="300" fill="url(#screenGlow)"/>
+    </g>
+  </g>
+
+  <!-- window rim -->
+  <rect transform="translate(512 512) scale(1.333333333) translate(-512 -512)" x="128" y="176" width="768" height="672" rx="84" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="3"/>
+
+  <!-- face: two horizontal dashes "- -" form the eyes, an underscore "_" forms the mouth -->
+  <g transform="translate(512 512) scale(1.333333333) translate(-512 -512)" fill="none" stroke="url(#inkGrad)" stroke-linecap="round" stroke-linejoin="round">
+    <g filter="url(#glyphGlow)" stroke-width="42" opacity="0.55">
+      <path d="M386.38 512 H432" stroke="url(#eyeGradL)"/>
+      <path d="M606.38 512 H652" stroke="url(#eyeGradR)"/>
+      <path d="M444 676 H580" stroke="url(#mouthGrad)"/>
+    </g>
+    <g stroke-width="42">
+      <path d="M386.38 512 H432" stroke="url(#eyeGradL)"/>
+      <path d="M606.38 512 H652" stroke="url(#eyeGradR)"/>
+      <path d="M444 676 H580" stroke="url(#mouthGrad)"/>
+    </g>
+  </g>
+</svg>

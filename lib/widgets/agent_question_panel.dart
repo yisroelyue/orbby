@@ -50,6 +50,7 @@ class AgentQuestionPanelController extends ChangeNotifier {
   bool confirmCurrent() {
     final (qi, oi) = _resolve(_cursor);
     if (qi < 0) return false;
+    if (oi == -1) return true;
     final question = questions[qi];
     if (question.type == 'text') return true;
     if (oi == null) return true;
@@ -96,7 +97,9 @@ class AgentQuestionPanelController extends ChangeNotifier {
   int get _flatItemCount {
     var n = 0;
     for (final q in questions) {
-      n += q.type == 'choice' ? q.options.length + 1 : 1;
+      n += q.type == 'choice'
+          ? q.options.length + 1 + (q.multiSelect ? 1 : 0)
+          : 1;
     }
     return n;
   }
@@ -107,8 +110,9 @@ class AgentQuestionPanelController extends ChangeNotifier {
       final q = questions[qi];
       if (q.type == 'choice') {
         if (flat < n + q.options.length) return (qi, flat - n);
-        if (flat == n + q.options.length) return (qi, null);
-        n += q.options.length + 1;
+        if (q.multiSelect && flat == n + q.options.length) return (qi, -1);
+        if (flat == n + q.options.length + (q.multiSelect ? 1 : 0)) return (qi, null);
+        n += q.options.length + 1 + (q.multiSelect ? 1 : 0);
       } else {
         if (flat == n) return (qi, null);
         n += 1;
@@ -230,14 +234,14 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.07),
+                  // 与消息留痕卡右上角的问题类型 tag 保持一致
+                  color: const Color(0xFF56A8F5).withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
                 ),
                 child: Text(
                   question.header!,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.68),
+                    color: const Color(0xFF7CB9F8),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
@@ -265,6 +269,11 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
         if (question.type == 'choice') ...[
           for (var oi = 0; oi < question.options.length; oi++)
             _buildOption(question, qi, oi),
+          if (question.multiSelect)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _buildSubmitButton(qi),
+            ),
           const SizedBox(height: 5),
           _buildTextField(question, qi, controller, hintText: '或输入自定义答案'),
         ]
@@ -402,7 +411,6 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   }
 
   Widget _buildFooter() {
-    final controller = widget.controller;
     return Row(
       children: [
         Expanded(
@@ -419,12 +427,55 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
     );
   }
 
+  Widget _buildSubmitButton(int qi) {
+    final controller = widget.controller;
+    final cursorHere = controller.cursorInfo == (qi, -1);
+    return SizedBox(
+        width: double.infinity,
+        height: 32,
+        child: TextButton(
+      onPressed: widget.onSubmit,
+      style: TextButton.styleFrom(
+        foregroundColor: _mainText,
+        backgroundColor: cursorHere ? _selectedBg : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+          child: const Row(
+            children: [
+              Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.check_box_outline_blank, size: 15, color: _descText),
+              ),
+              Text(
+              '提交答案',
+        style: TextStyle(
+          fontSize: 13,
+          fontFamily: _fontFamily,
+        ),
+              ),
+            ],
+          ),
+        ),
+    );
+  }
+
   int _flatIndexOf(int qi, int? oi) {
     var n = 0;
     for (var i = 0; i < widget.controller.questions.length; i++) {
       final q = widget.controller.questions[i];
-      if (i == qi) return oi == null ? n : n + oi;
-      n += q.type == 'choice' ? q.options.length + 1 : 1;
+      if (i == qi) {
+        if (oi == null) return n;
+        if (oi == -1) return n + q.options.length;
+        return n + oi;
+      }
+      n += q.type == 'choice'
+          ? q.options.length + 1 + (q.multiSelect ? 1 : 0)
+          : 1;
     }
     return 0;
   }

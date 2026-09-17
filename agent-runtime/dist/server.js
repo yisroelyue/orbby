@@ -59,6 +59,13 @@ async function handle(socket, agent, active, answers, message) {
         }
         if (message.type === 'permission.status')
             return send(socket, reply('permission.status', message.requestId, sessionId, { mode: permissionMode }));
+        // /cd 工作区切换：set 校验失败（目录不存在）走外层 catch 回 agent.error
+        if (message.type === 'workspace.get')
+            return send(socket, reply('workspace.status', message.requestId, sessionId, { workspace: agent.getWorkspace() }));
+        if (message.type === 'workspace.set') {
+            const workspace = await agent.setWorkspace(String(message.payload.path ?? ''));
+            return send(socket, reply('workspace.status', message.requestId, sessionId, { workspace }));
+        }
         if (message.type === 'user.answer') {
             const entry = answers.get(message.payload.questionId);
             if (entry) {
@@ -106,7 +113,7 @@ async function handle(socket, agent, active, answers, message) {
     catch (error) {
         active.delete(message.requestId);
         const value = error;
-        send(socket, { type: 'agent.error', requestId: message.requestId, sessionId, error: { code: value.code ?? 'INTERNAL_ERROR', message: String(error) } });
+        send(socket, { type: 'agent.error', requestId: message.requestId, sessionId, error: { code: value.code ?? 'INTERNAL_ERROR', message: error instanceof Error ? error.message : String(error) } });
     }
 }
 function send(socket, value) { if (socket.readyState === WebSocket.OPEN)

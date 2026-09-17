@@ -19,8 +19,10 @@
 ## Agent 流式协议
 
 - Agent 的 ReAct 工具循环运行在 `agent-runtime/` Node.js 子进程中，通过 localhost WebSocket 与 Flutter 通信。每轮文本经 `agent.token` 流式发出，工具循环最多 30 个 step；Flutter 的 `AgentService.chatStream` 继续转换为 `AgentTokenEvent`/`AgentRoundEvent`，Dart 侧不再运行 Agent 核心。
+- **工作区（workspacePath）**：所有工具的相对路径基准与命令默认 cwd。优先级：`/cd` 持久化值（`~/.orbby/setting/workspace.json`，`agent-runtime/src/services/workspace-storage.ts`）> `ORBBY_WORKSPACE` env > 桌面默认。`/cd` 经 `workspace.set` 消息运行时切换（Node 侧 `AgentRuntime.setWorkspace`：按当前工作区 resolve 相对路径、校验目录存在、更新内存并持久化），`workspace.get` 查询（两者都回 `workspace.status`）；`chat` 与 `executeTools` 读 `AgentRuntime.workspacePath` 字段而非 env，`chat` 每轮注入"当前工作区目录"system 提示，保证 LLM 知道路径基准。
 - **流式契约：processMessage 正常完成时返回值 = 最后一轮已流出的 content，chatStream 对已流出过 token 的会话只关流不补发返回值（防整段重复）。因此 processMessage 内所有"额外兜底文案"（超轮次/上下文超硬限/空回复）必须自行经 `onToken` 发出再 return，否则 UI 会在已有文字后静默收尾，看起来像卡死。**
 - HomeScreen 收到 `AgentRoundEvent` 时在气泡内插 `\n\n---\n\n` 分隔轮次；该拼接文本随会话落盘、也作为 history 发回 LLM。**新增事件类型（如工具调用进度）时扩展 AgentStreamEvent 子类 + 各消费方 switch**，不要回退成裸字符串流（多轮文字会粘成一坨）。
+- **流式气泡定位必须持引用**：`_sendText` 的流式 AI 气泡用局部 `reply` 变量跟踪（切轮次/切泡时更新引用），严禁回退成 `_messages.last`——流式期间用户排队新任务会在末尾插入 `->next task:` 气泡，`_messages.last` 错位会把 AI 回复拼进排队消息。
 - `lib/agent/llm_client.dart` 的 HTTP 层收敛为公共骨架，**新增 LLM provider 复用骨架，勿再复制重试/超时逻辑**：`_withRetry`（统一重试+退避，`retryable` 回调供流式路径拦截"已流出内容"的重试，防 UI 文本重复）+ `_post`（连接/首字节超时、client 生命周期）+ `_readBody`/`_sseLines`（响应体读取超时：SSE 空闲 60s 每行重置、非流式整体 120s）。四个 `_call*` 方法只留协议差异（headers、body 组装 `_compatibleBody`/`_anthropicBody`、解析 `_parse*`），超时常量集中在类顶部。
 - **用户提问（ask_user_question / 目录权限确认）**：问题结构化 `AgentQuestion`（question/header/type(choice|text)/options/multiSelect，契约定义在 `agent-runtime/src/protocol.ts`，Flutter 侧模型在 `lib/models/agent_question.dart`，两端字段一致）；`user.answer` payload 为 `answers: string[][]`（按问题索引对应，空数组=跳过）。挂起的提问 promise 存在 **per-connection** 的 answers Map（value 含 requestId/resolve/reject）：**chat.cancel 与 socket close 必须 reject 挂起问题**，否则工具 worker 卡死并经 runExclusive 锁死整个会话。目录权限确认（workspace-permission）复用同一通道，答案按 `answers[0][0] === '允许'` 精确匹配（勿回退成字符串包含匹配）。
 
@@ -28,11 +30,11 @@
 
 输入框输入 `/` 弹出命令提示（HomeScreen 输入框上方），分三层，新增命令不碰 UI：
 
-- `lib/services/chat_command.dart`：`ChatCommand`（name/description/execute/behavior）+ `CommandPaletteController`（命令注册表、query 前缀过滤、键盘选中项，纯逻辑 ChangeNotifier）。`ChatCommandBehavior`：`immediate`（确认即执行，默认）/ `prepareInput`（确认后只把 `/命令名 ` 写回输入框，不执行动作；宿主按 behavior 分派 `_prepareInputCommand`，勿在 UI 硬编码判断具体命令名）。
+- `lib/services/chat_command.dart`：`ChatCommand`（name/description/execute/behavior/executeWithArgument）+ `CommandPaletteController`（命令注册表、query 前缀过滤、键盘选中项，纯逻辑 ChangeNotifier）。`ChatCommandBehavior`：`immediate`（确认即执行，默认）/ `prepareInput`（确认后只把 `/命令名 ` 写回输入框，不执行动作；宿主按 behavior 分派 `_prepareInputCommand`，勿在 UI 硬编码判断具体命令名）。**prepareInput 命令带参形态 `/命令名 参数`**：`_sendMessage` 经 `_matchPrepareCommand` 剥前缀后调命令的 `executeWithArgument`；直接发送纯命令名（trim 后无参数）以空参数执行（如 `/cd` 查看当前工作区）——准备态写回输入框只发生在命令面板确认路径，勿在 `_sendMessage` 对纯命令名走准备态（`_sendMessage` 的 trim 会吃掉尾随空格，会死循环回准备态）。
 - `lib/widgets/command_palette.dart`：纯展示列表，只读 controller 状态，确认回调交回宿主。
 - `lib/screens/home_screen.dart` `_buildCommands()`：命令注册表。**新增命令 = 在这里加一条 `ChatCommand`**；execute 里操作 HomeScreen 状态需自行 mounted 保护。
 - 交互：↑/↓ 选择、Enter/Tab 确认（清空输入并执行）、Esc 收起、点击行确认；`/` 开头的输入不作为普通消息发送，按命令精确匹配执行。
-- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/image-analyze`（prepareInput，见"图片附件"节）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+- 内置命令：`/help`、`/session`（历史会话弹窗，见下）、`/clear`（置空 `_conversation` 开新会话，旧会话文件保留）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/cd`（prepareInput，切换 Agent 工作区：`/cd 路径` 相对路径按当前工作区解析、空参数查看当前，Node 侧校验并持久化）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
 
 ## 附件（图片/文本/PDF）与 /image-analyze
 

@@ -87,7 +87,8 @@ extension _HomeScreenWidgets on _HomeScreenState {
           const TypingIndicator(),
           const SizedBox(height: 8),
         ],
-        const SizedBox(height: 4),
+        // 内容区与输入框的间隔
+        const SizedBox(height: 30),
         // 临时隐藏：三个提示按钮
         // _buildSuggestionIcons(),
         // const SizedBox(height: 8),

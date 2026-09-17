@@ -37,10 +37,12 @@ extension _HomeScreenAgent on _HomeScreenState {
 
     if (text.startsWith('/')) {
       _addInputHistory(text);
-      const prefix = '/personality ';
-      if (text.toLowerCase().startsWith(prefix)) {
+      // prepareInput 命令带参形态 `/命令名 参数`：剥前缀后交命令的带参入口
+      // （勿在此硬编码判断具体命令名，统一走 _matchPrepareCommand 分派）
+      final prepared = _matchPrepareCommand(text);
+      if (prepared != null) {
         _inputController.clear();
-        await _setPersonality(text.substring(prefix.length).trim());
+        await prepared.$1.executeWithArgument?.call(prepared.$2);
         return;
       }
       // '/' 开头按命令处理：精确匹配则按 behavior 分派，否则丢弃（不把命令残片发给 AI）
@@ -48,7 +50,14 @@ extension _HomeScreenAgent on _HomeScreenState {
       _inputController.clear();
       if (cmd != null) {
         if (cmd.behavior == ChatCommandBehavior.prepareInput) {
-          _prepareInputCommand(cmd);
+          // 直接发送纯命令名（trim 后无尾随空格）：以空参数执行（如 /cd 查看当前工作区）。
+          // 准备态只保留给面板确认路径（/命令名 写回输入框等补参数），否则会死循环。
+          final withArgument = cmd.executeWithArgument;
+          if (withArgument != null) {
+            await withArgument('');
+          } else {
+            _prepareInputCommand(cmd);
+          }
         } else {
           cmd.execute();
         }
@@ -157,9 +166,12 @@ extension _HomeScreenAgent on _HomeScreenState {
     _saveConversation();
     _scrollToBottom(force: true);
 
-    // 添加空的 AI 消息用于流式填充
+    // 添加空的 AI 消息用于流式填充；持有引用而非依赖 _messages.last——
+    // 流式期间用户排队新任务会在末尾插入 next task 气泡，_messages.last 会错位
+    // 把 AI 回复拼进排队消息。切轮次/切泡时同步更新引用。
+    var reply = _ChatMessage(text: '', isUser: false, streaming: true);
     setState(() {
-      _messages.add(_ChatMessage(text: '', isUser: false, streaming: true));
+      _messages.add(reply);
     });
 
     try {
@@ -177,12 +189,13 @@ extension _HomeScreenAgent on _HomeScreenState {
           switch (event) {
             case AgentRoundEvent():
               // 中间轮过程文字结束，插分隔线区分轮次
-              if (_messages.last.text.trim().isNotEmpty || _messages.last.toolEvents.isNotEmpty) {
-                _messages.last.streaming = false;
-                _messages.add(_ChatMessage(text: '', isUser: false, streaming: true));
+              if (reply.text.trim().isNotEmpty || reply.toolEvents.isNotEmpty) {
+                reply.streaming = false;
+                reply = _ChatMessage(text: '', isUser: false, streaming: true);
+                _messages.add(reply);
               }
             case AgentTokenEvent(:final text):
-              _messages.last.text += text;
+              reply.text += text;
             case AgentQuestionEvent(:final questionId, :final questions):
               // 提问挂起：卡片显示在输入框上方，回答后经 _submitAgentAnswer 留痕
               if (questions.isNotEmpty) {
@@ -195,22 +208,23 @@ extension _HomeScreenAgent on _HomeScreenState {
               if (running) {
                 // 工具调用属于新的执行轮次。若上一轮已经有文本，先切出独立气泡，
                 // 避免工具返回的 diff 被渲染到最终回复的最底部。
-                if (_messages.last.text.trim().isNotEmpty) {
-                  _messages.last.streaming = false;
-                  _messages.add(_ChatMessage(text: '', isUser: false, streaming: true));
+                if (reply.text.trim().isNotEmpty) {
+                  reply.streaming = false;
+                  reply = _ChatMessage(text: '', isUser: false, streaming: true);
+                  _messages.add(reply);
                 }
-                _messages.last.toolEvents.add(_ToolEvent(
+                reply.toolEvents.add(_ToolEvent(
                   id,
                   name,
                   running: true,
                   parameters: details,
                 ));
               } else {
-                final index = _messages.last.toolEvents.lastIndexWhere(
+                final index = reply.toolEvents.lastIndexWhere(
                   (tool) => tool.id == id && tool.running,
                 );
                 if (index >= 0) {
-                  final tool = _messages.last.toolEvents[index];
+                  final tool = reply.toolEvents[index];
                   final cancelledQuestion = error &&
                       details?.toString().toLowerCase().contains('question cancelled') == true;
                   tool.running = false;
@@ -220,14 +234,14 @@ extension _HomeScreenAgent on _HomeScreenState {
                   if (!error && changes is List) {
                     for (final raw in changes.whereType<Map>()) {
                       final change = FileChangePreview.fromJson(Map<String, dynamic>.from(raw));
-                      final existing = _messages.last.fileChanges.indexWhere((item) => item.path == change.path);
-                      if (existing >= 0) _messages.last.fileChanges[existing] = change;
-                      else _messages.last.fileChanges.add(change);
+                      final existing = reply.fileChanges.indexWhere((item) => item.path == change.path);
+                      if (existing >= 0) reply.fileChanges[existing] = change;
+                      else reply.fileChanges.add(change);
                       tool.changes.add(change);
                     }
                   }
                 } else {
-                  _messages.last.toolEvents.add(_ToolEvent(
+                  reply.toolEvents.add(_ToolEvent(
                     id,
                     name,
                     running: false,
@@ -244,7 +258,7 @@ extension _HomeScreenAgent on _HomeScreenState {
       }
       if (mounted) {
         setState(() {
-          _messages.last.streaming = false;
+          reply.streaming = false;
         });
       }
     } on AgentException catch (e) {
@@ -252,19 +266,19 @@ extension _HomeScreenAgent on _HomeScreenState {
       setState(() {
         final cancelled = e.message.toLowerCase().contains('cancel') ||
             e.message.toLowerCase().contains('abort');
-        _messages.last.text = cancelled ? '已终止' : e.message;
-        _messages.last.streaming = false;
-        _messages.last.terminated = cancelled;
+        reply.text = cancelled ? '已终止' : e.message;
+        reply.streaming = false;
+        reply.terminated = cancelled;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _messages.last.text = '请求失败: $e';
-        _messages.last.streaming = false;
+        reply.text = '请求失败: $e';
+        reply.streaming = false;
         final message = e.toString().toLowerCase();
         if (message.contains('cancel') || message.contains('abort')) {
-          _messages.last.text = '已终止';
-          _messages.last.terminated = true;
+          reply.text = '已终止';
+          reply.terminated = true;
         }
       });
     }

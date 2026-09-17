@@ -103,7 +103,7 @@ flutter build windows --release
 
 ### 可选配置
 
-- `ORBBY_WORKSPACE` — 指定 Agent 的初始工作区；不设置时默认为当前用户桌面目录
+- `ORBBY_WORKSPACE` — 指定 Agent 的初始工作区（可用聊天 `/cd` 命令运行时切换并持久化，优先级更高）；不设置时默认为当前用户桌面目录
 - 会话数据、附件与文件回滚备份存放在 `~/.orbby/` 下
 
 ---
