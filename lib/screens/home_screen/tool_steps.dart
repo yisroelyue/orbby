@@ -52,20 +52,21 @@ class _ToolStepsGroup extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    AnimatedOpacity(
-                      opacity: _anyRunning ? (blinkOn ? 1.0 : 0.2) : 1.0,
-                      duration: const Duration(milliseconds: 180),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 4, right: 4),
-                        child: Icon(
-                          Icons.circle,
-                          size: 7,
-                          color: _errorCount == events.length
-                              ? Colors.redAccent
-                              : Colors.lightBlueAccent,
+                    if (_anyRunning)
+                      AnimatedOpacity(
+                        opacity: blinkOn ? 1.0 : 0.2,
+                        duration: const Duration(milliseconds: 180),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 4, right: 4),
+                          child: Icon(
+                            Icons.circle,
+                            size: 7,
+                            color: _errorCount == events.length
+                                ? Colors.redAccent
+                                : Colors.lightBlueAccent,
+                          ),
                         ),
                       ),
-                    ),
                     // 展开按钮在圆点之后，旋转指示展开/收起
                     AnimatedRotation(
                       turns: expanded ? 0.5 : 0,

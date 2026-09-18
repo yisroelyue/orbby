@@ -4,15 +4,21 @@ import 'dart:io';
 
 class AgentWsClient {
   WebSocket? _socket;
+  // 连接中的 Future 缓存：多会话并发首发时共用同一次连接，防止竞态下连出多条 socket
+  Future<void>? _connecting;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get events => _events.stream;
 
-  Future<void> connect() async {
-    if (_socket != null) return;
-    final url = Platform.environment['ORBBY_AGENT_URL'] ?? 'ws://127.0.0.1:43127';
-    _socket = await WebSocket.connect(url);
-    _socket!.listen((data) => _events.add(jsonDecode(data as String) as Map<String, dynamic>), onDone: () { _socket = null; if (!_events.isClosed) _events.addError(const AgentConnectionException('Agent 服务连接已断开')); }, onError: (Object e, StackTrace s) { if (!_events.isClosed) _events.addError(e, s); });
-    send('hello', 'hello-${DateTime.now().microsecondsSinceEpoch}', {'protocolVersion': 1});
+  Future<void> connect() {
+    if (_socket != null) return Future.value();
+    return _connecting ??= () {
+      final url = Platform.environment['ORBBY_AGENT_URL'] ?? 'ws://127.0.0.1:43127';
+      return WebSocket.connect(url).then((socket) {
+        _socket = socket;
+        socket.listen((data) => _events.add(jsonDecode(data as String) as Map<String, dynamic>), onDone: () { _socket = null; if (!_events.isClosed) _events.addError(const AgentConnectionException('Agent 服务连接已断开')); }, onError: (Object e, StackTrace s) { if (!_events.isClosed) _events.addError(e, s); });
+        send('hello', 'hello-${DateTime.now().microsecondsSinceEpoch}', {'protocolVersion': 1});
+      }).whenComplete(() => _connecting = null);
+    }();
   }
 
   void send(String type, String requestId, [Map<String, dynamic> payload = const {}, String? sessionId]) {

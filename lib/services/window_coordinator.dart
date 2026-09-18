@@ -202,20 +202,50 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     await _menuOperation;
   }
 
+  /// app_bar 窗口位置参数：屏幕底部居中
+  Future<Map<String, double>> _appBarBounds() async {
+    final size = await _screenSize();
+    final width = size.width * .3;
+    return {'left': (size.width - width) / 2, 'top': size.height - _appBarHeight - 10, 'width': width, 'height': _appBarHeight};
+  }
+
+  /// 创建（如未创建）app_bar 窗口并等待其 engine 就绪；不负责显示
+  Future<void> _createAppBarWindow() async {
+    if (_appBarWindow != null) return;
+    // 等子窗口 engine 就绪（handler 注册后发回 ready）再 place，否则首次 place 丢失。
+    _appBarReady = Completer<void>();
+    _appBarWindow = await WindowController.create(WindowConfiguration(
+      hiddenAtLaunch: true,
+      arguments: jsonEncode({'type': 'app_bar', ...await _appBarBounds()}),
+    ));
+    try { await _appBarReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
+    _appBarReady = null;
+  }
+
+  /// content 窗口位置参数：屏幕右侧贴边
+  Future<Map<String, double>> _contentBounds() async {
+    final size = await _screenSize();
+    final width = size.width * _contentWidthFactor;
+    return {'left': size.width - width - 16, 'top': 16.0, 'width': width, 'height': size.height - 32};
+  }
+
+  /// 创建（如未创建）content 窗口并等待其 engine 就绪；不负责显示
+  Future<void> _createContentWindow() async {
+    if (_contentWindow != null) return;
+    _contentReady = Completer<void>();
+    _contentWindow = await WindowController.create(WindowConfiguration(
+      hiddenAtLaunch: true,
+      arguments: jsonEncode({'type': 'content', ...await _contentBounds()}),
+    ));
+    try { await _contentReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
+    _contentReady = null;
+  }
+
   Future<void> _toggleAppBar() async {
     _appBarOperation = _appBarOperation.then((_) async {
       if (_appBarVisible) { _appBarVisible = false; await _appBarWindow?.hide(); return; }
-      final size = await _screenSize();
-      final width = size.width * .3;
-      final args = {'left': (size.width - width) / 2, 'top': size.height - _appBarHeight - 10, 'width': width, 'height': _appBarHeight};
-      if (_appBarWindow == null) {
-        // 等子窗口 engine 就绪（handler 注册后发回 ready）再 place，否则首次 place 丢失。
-        _appBarReady = Completer<void>();
-        _appBarWindow = await WindowController.create(WindowConfiguration(hiddenAtLaunch: true, arguments: jsonEncode({'type': 'app_bar', ...args})));
-        try { await _appBarReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
-        _appBarReady = null;
-      }
-      await _appBarWindow!.invokeMethod('place', args);
+      await _createAppBarWindow();
+      await _appBarWindow!.invokeMethod('place', await _appBarBounds());
       _appBarVisible = true;
     }).catchError((_) {});
     await _appBarOperation;
@@ -224,16 +254,8 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   Future<void> _toggleContent() async {
     _contentOperation = _contentOperation.then((_) async {
       if (_contentVisible) { _contentVisible = false; await _contentWindow?.hide(); return; }
-      final size = await _screenSize();
-      final width = size.width * _contentWidthFactor;
-      final args = {'left': size.width - width - 16, 'top': 16.0, 'width': width, 'height': size.height - 32};
-      if (_contentWindow == null) {
-        _contentReady = Completer<void>();
-        _contentWindow = await WindowController.create(WindowConfiguration(hiddenAtLaunch: true, arguments: jsonEncode({'type': 'content', ...args})));
-        try { await _contentReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
-        _contentReady = null;
-      }
-      await _contentWindow!.invokeMethod('place', args);
+      await _createContentWindow();
+      await _contentWindow!.invokeMethod('place', await _contentBounds());
       _contentVisible = true;
     }).catchError((_) {});
     await _contentOperation;
@@ -247,9 +269,23 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
 
   Future<void> _precreateWindows() async {
     await _showMenu(show: false);
-    // 设置窗口预创建：启动时加载 engine，打开时无需等待。
+    // 常驻子窗口预创建：启动时加载 engine，首次打开走 place/show 无需当场冷启动。
+    // 各自排进自己的 operation 链（与用户 toggle 串行，避免双创建竞态）。
+    //
+    // engine 启动存在时序竞态：紧跟上一窗口 ready 创建下一个 engine，偶发该
+    // engine 的 Dart main() 永不执行（native 构造正常、isolate 不跑，ready 无限
+    // 超时、place 报 CHANNEL_UNREGISTERED；2026-09-18 排查记录）。实测
+    // menu → app_bar → settings → content 顺序 + 固定间隔稳定；严禁改回
+    // "上一窗口 ready 后立即创建下一个"的紧凑序列（原 settings→app_bar 紧邻
+    // 顺序 4/4 复现必挂）。
+    _appBarOperation = _appBarOperation.then((_) => _createAppBarWindow()).catchError((_) {});
+    await _appBarOperation;
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
     _settingsOperation = _settingsOperation.then((_) => _createSettingsWindow()).catchError((_) {});
     await _settingsOperation;
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    _contentOperation = _contentOperation.then((_) => _createContentWindow()).catchError((_) {});
+    await _contentOperation;
   }
 
   Future<Size> _screenSize() async {

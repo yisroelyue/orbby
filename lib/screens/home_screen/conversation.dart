@@ -3,15 +3,18 @@ part of 'home_screen.dart';
 /// 会话生命周期：落盘保存、本地消息、历史会话切换、会话内容复制、
 /// 以及落盘 JSON 字段的解码还原。
 extension _HomeScreenConversation on _HomeScreenState {
-  /// 当前对话落盘（~/.orbby/task）；空对话不创建文件。
+  /// 指定会话落盘（~/.orbby/task）；空对话不创建文件。
   /// 首轮发送时创建会话，标题取第一条用户消息。
-  /// 保存请求串行执行（_saveChain），避免两次快照交错落盘；
+  /// 保存请求串行执行（_saveChain，全部会话共用一条链），避免两次快照交错落盘；
   /// 链内吞错——一环失败不能毒化后续所有保存。
-  Future<void> _saveConversation() {
+  /// [view] 不传 = 当前 tab；流式收尾/关 tab 时必须显式传，
+  /// 那时目标会话可能已不在前台。
+  Future<void> _saveConversation([ChatSessionView? view]) {
+    final target = view ?? _current;
     _saveChain = _saveChain.then((_) async {
       try {
         var msgs = <Map<String, String>>[
-          for (final m in _messages)
+          for (final m in target.messages)
             // local 消息（命令结果）是瞬时提示，不落盘：
             // 否则重载会话后 local 标志丢失，会混进下次发送的 history
             if ((m.text.isNotEmpty || m.toolEvents.isNotEmpty || m.attachments.isNotEmpty) && !m.local && !m.pending)
@@ -25,14 +28,14 @@ extension _HomeScreenConversation on _HomeScreenState {
               },
         ];
         if (msgs.isEmpty) return;
-        _conversation ??= ChatConversation(
+        target.conversation ??= ChatConversation(
           id: ChatStorageService.newConversationId(),
-          title: _messages
+          title: target.messages
               .firstWhere((m) => m.isUser && !m.local,
-                  orElse: () => _messages.first)
+                  orElse: () => target.messages.first)
               .text,
         );
-        final conv = _conversation!;
+        final conv = target.conversation!;
         if (conv.title.isEmpty) {
           conv.title = msgs.first['content'] ?? '未命名会话';
         }
@@ -104,8 +107,14 @@ extension _HomeScreenConversation on _HomeScreenState {
     );
     if (selected == null || !mounted) return;
     final conv = await ChatStorageService.load(selected.id) ?? selected;
-    // agent 上下文由下次发送携带的 history 重建
-    AgentService.resetConversation();
+    // 空 tab 不承载历史会话：按会话 tab 的使用习惯，给选中的老会话新开一个 tab。
+    // 有内容的 tab 则原地打开，避免无条件产生空 tab。
+    if (_isCurrentTabEmpty && _views.length < _maxSessionTabs) {
+      _openNewSessionTab();
+    }
+    // agent 上下文由下次发送携带的 history 重建；
+    // 重置的是当前 tab 的 agentSessionId 对应的 Node 会话
+    AgentService.resetConversation(sessionId: _current.agentSessionId);
     // 切换会话后当前输入的附件不再属于新会话，一并清理
     _attachmentCtrl.clear();
     setState(() {
@@ -125,6 +134,14 @@ extension _HomeScreenConversation on _HomeScreenState {
     });
     _scrollToBottom(force: true);
   }
+
+  bool get _isCurrentTabEmpty =>
+      !_messages.any((message) =>
+          !message.local &&
+          !message.pending &&
+          (message.text.isNotEmpty ||
+              message.toolEvents.isNotEmpty ||
+              message.attachments.isNotEmpty));
 
   List<ChatAttachment> _decodeAttachments(String? raw) {
     if (raw == null || raw.isEmpty) return [];

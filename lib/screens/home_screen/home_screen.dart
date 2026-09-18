@@ -41,9 +41,10 @@ import '../../models/chat_attachment.dart';
 // - agent.dart       消息发送、Agent 流处理、提问卡片应答
 // - messages.dart    聊天列表与消息气泡渲染
 // - tool_steps.dart  工具步骤折叠组（多工具调用默认折叠，概览头 + 可展开详情）
+// - tabs.dart        顶部会话 tab 栏（多会话切换/新建/关闭）
 // - markdown.dart    Markdown 样式表与代码块渲染
 // - widgets.dart     页面骨架、欢迎页、聊天区域
-// - models.dart      _ChatMessage/_ToolEvent/_QuestionPanel 数据模型
+// - models.dart      ChatSessionView/_ChatMessage/_ToolEvent/_QuestionPanel 数据模型
 // - helpers.dart     工具名称/参数/结果的显示格式化
 part 'commands.dart';
 part 'command_actions.dart';
@@ -52,6 +53,7 @@ part 'conversation.dart';
 part 'agent.dart';
 part 'messages.dart';
 part 'tool_steps.dart';
+part 'tabs.dart';
 part 'markdown.dart';
 part 'widgets.dart';
 part 'models.dart';
@@ -71,6 +73,11 @@ final _theme = ThemeData(
 const _panelBg = Color(0xFF252526);
 
 const _scaffoldBg = Color(0xFF191A1C);
+
+/// 会话 tab 栏（Windows Terminal 风格）：栏底 _panelBg 上只有激活 tab 一个色块，
+/// 色块 = _scaffoldBg（与内容区同色无缝，视觉上是"从页面凸出的一块"）；
+/// 非激活 tab 透明融入栏底，hover 用 [_tabHoverBg] 轻微提亮
+const _tabHoverBg = Color(0x0DFFFFFF);
 const _inputBg = Color(0xFF2A2A2A);
 const _inputText = Color(0xB3FFFFFF);
 const _inputHint = Color(0x4DFFFFFF);
@@ -139,34 +146,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
-  final _messages = <_ChatMessage>[];
   String? _hoveredAction;
   String? _selectedAction;
-  bool _isSending = false;
-  final _queuedTexts = <String>[];
   Timer? _toolBlinkTimer;
   bool _toolBlinkOn = true;
   bool _showScrollToBottom = false;
 
+  // ─── 多会话 tab 状态 ─────────────────────────────────────────────────────
+  // 所有"会话内容"状态（消息/草稿/流式/提问/附件）都挂在 ChatSessionView 上；
+  // 下方 getter/setter 把"当前 tab"转发为旧字段名，渲染层与命令层零改动。
+  // 流式写入路径（agent.dart 的 _sendText）禁止走这些转发——必须持 view 引用。
+
+  /// 打开的会话 tab（有序）；至少恒有一个
+  final _views = <ChatSessionView>[];
+  int _activeIndex = 0;
+
+  ChatSessionView get _current => _views[_activeIndex];
+  List<_ChatMessage> get _messages => _current.messages;
+  ChatConversation? get _conversation => _current.conversation;
+  set _conversation(ChatConversation? value) => _current.conversation = value;
+  bool get _isSending => _current.isSending;
+  set _isSending(bool value) => _current.isSending = value;
+  List<String> get _queuedTexts => _current.queuedTexts;
+  AgentQuestionPanelController? get _questionCtrl => _current.questionCtrl;
+  set _questionCtrl(AgentQuestionPanelController? value) =>
+      _current.questionCtrl = value;
+  String? get _questionId => _current.questionId;
+  set _questionId(String? value) => _current.questionId = value;
+  ChatAttachmentController get _attachmentCtrl => _current.attachmentCtrl;
+
   // 输入历史：按上/下键浏览已发送的消息，向下越过最新记录时恢复草稿。
+  // 全窗口共享（浏览的是"这个输入框"发过的内容，不分会话）
   final _inputHistory = <String>[];
   int _historyIndex = -1;
   String _historyDraft = '';
 
-  /// 当前会话（持久化）；null = 新对话尚未落盘，首轮发送时创建
-  ChatConversation? _conversation;
   Future<void> _saveChain = Future<void>.value();
 
   /// '/' 命令面板：命令注册表见 commands.dart 的 [_HomeScreenCommands._buildCommands]
   late final _palette = CommandPaletteController(commands: _buildCommands());
-
-  /// Agent 提问卡片（输入框上方）：null = 无挂起提问
-  AgentQuestionPanelController? _questionCtrl;
-  /// 当前提问的 questionId（与 [_questionCtrl] 同生命周期）
-  String? _questionId;
-
-  /// 输入框附件（粘贴的图片）：添加/删除/清空/发送编码统一走 controller
-  final _attachmentCtrl = ChatAttachmentController();
 
   /// MaterialApp 内部的 Navigator context：
   /// HomeScreen 自身在 MaterialApp 之上，它的 context 弹窗找不到 MaterialLocalizations
@@ -179,8 +197,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => _toolBlinkOn = !_toolBlinkOn);
     });
     WidgetsBinding.instance.addObserver(this);
-    // 每次打开新的菜单窗口都使用新的 Agent 上下文，避免复用 runtime 中的 default session。
-    AgentService.recreate();
+    // 每次打开新的菜单窗口都使用新的 Agent 上下文（新 agentSessionId），
+    // 避免复用 runtime 中的 default session；首个会话 tab 同步建立。
+    _views.add(ChatSessionView(agentSessionId: AgentService.newSessionId()));
     HomeScreen.menuChannel.invokeMethod('ready');
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final position = await windowManager.getPosition();
@@ -213,8 +232,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     menuWindowShown.removeListener(_focusInput);
     _inputController.removeListener(_onInputChanged);
     _palette.dispose();
-    _questionCtrl?.dispose();
-    _attachmentCtrl.dispose();
+    // 所有 tab 的挂起提问卡片与附件 controller 一并释放
+    for (final view in _views) {
+      view.questionCtrl?.dispose();
+      view.attachmentCtrl.dispose();
+    }
     _scrollController.removeListener(_onChatScroll);
     _scrollController.dispose();
     _inputController.dispose();

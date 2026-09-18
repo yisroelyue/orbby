@@ -341,7 +341,10 @@ extension _HomeScreenMessages on _HomeScreenState {
     );
   }
 
-  void _scrollToBottom({bool force = false}) {
+  /// [view] 指定消息所属会话：仅当它是当前 tab 时才滚动（共享 scrollController，
+  /// 后台会话流式增长不得拽动前台视图）；不传 = 当前会话（命令本地消息等）
+  void _scrollToBottom({bool force = false, ChatSessionView? view}) {
+    if (view != null && !identical(view, _current)) return;
     // 在当前帧提交前判断是否跟随，避免内容增长后 maxScrollExtent 变化导致
     // 原本在底部的用户被误判为“已滚动到前面”。
     final shouldFollow = force ||

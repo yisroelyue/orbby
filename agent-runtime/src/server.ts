@@ -47,9 +47,9 @@ async function handle(socket: WebSocket, agent: AgentRuntime, active: Map<string
     if (message.type === 'hello') return send(socket, reply('hello.ok', message.requestId, undefined, {protocolVersion:1}));
     if ((message as any).type === 'permission.mode') { const mode = String((message as any).payload?.mode ?? 'ask'); if (mode === 'ask' || mode === 'read' || mode === 'all') { permissionMode = mode; savePermissionMode(mode); if (mode === 'ask') { const permissions = new (await import('./services/workspace-permission.js')).WorkspacePermissionService(); await permissions.clear(); } } return send(socket, reply('permission.mode.accepted', message.requestId, sessionId)); }
     if ((message as any).type === 'permission.status') return send(socket, reply('permission.status', message.requestId, sessionId, {mode: permissionMode}));
-    // /cd 工作区切换：set 校验失败（目录不存在）走外层 catch 回 agent.error
-    if (message.type === 'workspace.get') return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace: agent.getWorkspace()}));
-    if (message.type === 'workspace.set') { const workspace = await agent.setWorkspace(String(message.payload.path ?? '')); return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace})); }
+    // /cd 工作区切换：按会话隔离（多会话并发时互不影响）；set 校验失败（目录不存在）走外层 catch 回 agent.error
+    if (message.type === 'workspace.get') return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace: agent.getWorkspace(sessionId ?? 'default')}));
+    if (message.type === 'workspace.set') { const workspace = await agent.setWorkspace(sessionId ?? 'default', String(message.payload.path ?? '')); return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace})); }
     if (message.type === 'user.answer') {
       const entry = answers.get(message.payload.questionId);
       if (entry) { answers.delete(message.payload.questionId); entry.resolve(message.payload.answers); void conversationLog(conversationId, 'event', {type:'user.answer', payload:{questionId:message.payload.questionId, answers:message.payload.answers}}); }

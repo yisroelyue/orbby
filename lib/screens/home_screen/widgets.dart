@@ -10,10 +10,18 @@ extension _HomeScreenWidgets on _HomeScreenState {
         // 底部贴面板底边，圆角交给外层 ClipRRect 裁
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
       child: Column(
         children: [
-          Expanded(child: isEmpty ? _buildWelcomeScreen() : _buildChatArea()),
+          // 顶部会话 tab 栏（多会话切换/关闭，新建走 /new）：自带 _panelBg 栏底与 top 圆角、
+          // 贴满容器顶部；激活 tab 用 _scaffoldBg 与内容区同色衔接（Windows Terminal 式
+          // "从页面凸出的一块"），所以内容区 padding 移到这里单独包
+          _buildSessionTabs(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              child: isEmpty ? _buildWelcomeScreen() : _buildChatArea(),
+            ),
+          ),
         ],
       ),
     );

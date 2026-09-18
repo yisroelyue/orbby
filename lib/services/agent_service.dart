@@ -10,14 +10,23 @@ import 'personality_service.dart';
 class AgentService {
   AgentService._();
   static final AgentWsClient _client = AgentWsClient();
+  /// 默认会话（未显式传 sessionId 的调用兜底）；多会话 tab 各自持有
+  /// 独立的 agentSessionId（见 [newSessionId]），显式传入优先
   static String _sessionId = 'default';
-  static String? _activeRequestId;
+  /// 会话 → 进行中的 requestId（多会话并发各自可取消，互不顶掉）
+  static final _activeRequests = <String, String>{};
   static String get sessionId => _sessionId;
 
-  static void cancelCurrent() {
-    final requestId = _activeRequestId;
+  /// 生成新的 agent 会话 ID（Node 侧会话隔离 key：上下文/工作区/锁）
+  static String newSessionId() =>
+      'session-${DateTime.now().microsecondsSinceEpoch}';
+
+  /// 取消指定会话当前进行中的请求；不传 sessionId 取默认会话
+  static void cancelCurrent({String? sessionId}) {
+    final sid = sessionId ?? _sessionId;
+    final requestId = _activeRequests[sid];
     if (requestId == null) return;
-    _client.send('chat.cancel', requestId, const {}, _sessionId);
+    _client.send('chat.cancel', requestId, const {}, sid);
   }
 
   static void setSystemPrompt(String? prompt) {}
@@ -27,15 +36,15 @@ class AgentService {
     return Map<String, dynamic>.from((result['payload'] as Map?) ?? const {});
   }
 
-  /// 当前工作区（Node 侧解析后的绝对路径）
-  static Future<String> workspaceStatus() async {
-    final result = await _client.request('workspace.get', _id(), sessionId: _sessionId);
+  /// 会话工作区（Node 侧解析后的绝对路径）
+  static Future<String> workspaceStatus({String? sessionId}) async {
+    final result = await _client.request('workspace.get', _id(), sessionId: sessionId ?? _sessionId);
     return ((result['payload'] as Map?)?['workspace'] ?? '').toString();
   }
 
-  /// 切换工作区；相对路径由 Node 侧按当前工作区解析，目录不存在会抛错
-  static Future<String> setWorkspace(String path) async {
-    final result = await _client.request('workspace.set', _id(), sessionId: _sessionId, payload: {'path': path});
+  /// 切换工作区；相对路径由 Node 侧按该会话当前工作区解析，目录不存在会抛错
+  static Future<String> setWorkspace(String path, {String? sessionId}) async {
+    final result = await _client.request('workspace.set', _id(), sessionId: sessionId ?? _sessionId, payload: {'path': path});
     return ((result['payload'] as Map?)?['workspace'] ?? '').toString();
   }
 
@@ -44,16 +53,22 @@ class AgentService {
   /// configuration messages rather than mutating a Dart Agent instance.
   static Future<void> syncLogSettings() async {}
 
-  static Future<String> chat(String text, {String mode = 'accept', List<Map<String, String>> history = const []}) async {
+  static Future<String> chat(String text, {String mode = 'accept', List<Map<String, String>> history = const [], String? sessionId}) async {
+    final sid = sessionId ?? _sessionId;
     final id = _id();
-    _activeRequestId = id;
-    final result = await _client.request('chat.start', id, sessionId: _sessionId, payload: {'message': text, 'mode': mode, 'history': history, 'llm': await _llmPayload()});
-    return ((result['payload'] as Map?)?['content'] ?? '').toString();
+    _activeRequests[sid] = id;
+    try {
+      final result = await _client.request('chat.start', id, sessionId: sid, payload: {'message': text, 'mode': mode, 'history': history, 'llm': await _llmPayload()});
+      return ((result['payload'] as Map?)?['content'] ?? '').toString();
+    } finally {
+      if (_activeRequests[sid] == id) _activeRequests.remove(sid);
+    }
   }
 
-  static Stream<AgentStreamEvent> chatStream(String text, {String mode = 'accept', List<Map<String, String>> history = const [], String? conversationId, List<ChatAttachment> attachments = const [], void Function(Map<String, dynamic>)? onEvent}) async* {
+  static Stream<AgentStreamEvent> chatStream(String text, {String mode = 'accept', List<Map<String, String>> history = const [], String? conversationId, List<ChatAttachment> attachments = const [], String? sessionId, void Function(Map<String, dynamic>)? onEvent}) async* {
+    final sid = sessionId ?? _sessionId;
     final id = _id();
-    _activeRequestId = id;
+    _activeRequests[sid] = id;
     await _client.connect();
     final queue = StreamController<AgentStreamEvent>();
     final subscription = _client.events.where((e) => e['requestId'] == id).listen((event) {
@@ -72,9 +87,10 @@ class AgentService {
     }, onError: (Object error, StackTrace stack) { if (!queue.isClosed) { queue.addError(error, stack); queue.close(); } }, onDone: () { if (!queue.isClosed) { queue.addError(AgentException('Agent 服务连接已断开')); queue.close(); } });
     final payload = await chatPayload(text, mode: mode, history: history, attachments: attachments);
     if (conversationId != null) payload['conversationId'] = conversationId;
-    _client.send('chat.start', id, payload, _sessionId);
+    _client.send('chat.start', id, payload, sid);
     try { yield* queue.stream; } finally {
-      if (_activeRequestId == id) _activeRequestId = null;
+      // 值匹配才清：同会话新请求已顶掉旧登记时不误删
+      if (_activeRequests[sid] == id) _activeRequests.remove(sid);
       await subscription.cancel(); if (!queue.isClosed) await queue.close();
     }
   }
@@ -95,24 +111,25 @@ class AgentService {
     };
   }
 
-  static void resetConversation() { final id = _id(); _client.send('session.reset', id, const {}, _sessionId); }
+  /// 重置（删除）Node 侧该会话的内存上下文；下次 chat 惰性重建。
+  /// 多会话下必须带 sessionId，否则会把默认会话重置掉
+  static void resetConversation({String? sessionId}) { final id = _id(); _client.send('session.reset', id, const {}, sessionId ?? _sessionId); }
 
-  static Future<String> compact() async {
-    final result = await _client.request('agent.compact', _id(), sessionId: _sessionId, payload: {'llm': await _llmPayload()});
+  static Future<String> compact({String? sessionId}) async {
+    final result = await _client.request('agent.compact', _id(), sessionId: sessionId ?? _sessionId, payload: {'llm': await _llmPayload()});
     return ((result['payload'] as Map?)?['content'] ?? '').toString();
   }
 
-  static Future<Map<String, dynamic>> status() async {
-    final result = await _client.request('session.stats', _id(), sessionId: _sessionId);
+  static Future<Map<String, dynamic>> status({String? sessionId}) async {
+    final result = await _client.request('session.stats', _id(), sessionId: sessionId ?? _sessionId);
     return Map<String, dynamic>.from((result['payload'] as Map?) ?? const {});
   }
 
-  static Future<void> recreate() async { _sessionId = 'session-${DateTime.now().millisecondsSinceEpoch}'; }
   static agent_types.ConversationStats? getConversationStats() => null;
   static List<Map<String, dynamic>> getAvailableTools() => const [];
   static String _id() => 'req-${DateTime.now().microsecondsSinceEpoch}';
   static String _permissionMode = 'ask';
-  static void answerQuestion(String questionId, Object answers) => _client.send('user.answer', _id(), {'questionId': questionId, 'answers': answers}, _sessionId);
+  static void answerQuestion(String questionId, Object answers, {String? sessionId}) => _client.send('user.answer', _id(), {'questionId': questionId, 'answers': answers}, sessionId ?? _sessionId);
   static Future<Map<String, dynamic>> _llmPayload() async {
     final settings = await SettingsService.load();
     final url = settings.chatUrl.isEmpty ? PlatformConfig.defaultChatUrl(settings.platform) : settings.chatUrl.trim();

@@ -149,7 +149,7 @@ extension _HomeScreenInput on _HomeScreenState {
     if (_isSending &&
         key == LogicalKeyboardKey.keyC &&
         HardwareKeyboard.instance.isControlPressed) {
-      AgentService.cancelCurrent();
+      AgentService.cancelCurrent(sessionId: _current.agentSessionId);
       return KeyEventResult.handled;
     }
 
@@ -243,7 +243,7 @@ extension _HomeScreenInput on _HomeScreenState {
     if (_isSending &&
         key == LogicalKeyboardKey.keyC &&
         HardwareKeyboard.instance.isControlPressed) {
-      AgentService.cancelCurrent();
+      AgentService.cancelCurrent(sessionId: _current.agentSessionId);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
@@ -252,7 +252,7 @@ extension _HomeScreenInput on _HomeScreenState {
         return KeyEventResult.handled;
       }
       if (_isSending) {
-        AgentService.cancelCurrent();
+        AgentService.cancelCurrent(sessionId: _current.agentSessionId);
         return KeyEventResult.handled;
       }
     }

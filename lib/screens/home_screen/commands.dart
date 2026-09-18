@@ -51,8 +51,13 @@ extension _HomeScreenCommands on _HomeScreenState {
       ),
       ChatCommand(
         name: 'new',
-        description: '开启新对话，可通过 /session 命令找回历史会话',
+        description: '另开一个新的会话标签页（旧会话保留在 tab 栏可切回）',
         execute: _startNewConversation,
+      ),
+      ChatCommand(
+        name: 'close',
+        description: '关闭当前会话标签页',
+        execute: _closeCurrentSessionTab,
       ),
       ChatCommand(
         name: 'clear',

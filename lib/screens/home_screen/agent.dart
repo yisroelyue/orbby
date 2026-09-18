@@ -15,7 +15,7 @@ extension _HomeScreenAgent on _HomeScreenState {
     });
     _addLocalMessage('正在压缩上下文…');
     try {
-      await AgentService.compact();
+      await AgentService.compact(sessionId: _current.agentSessionId);
       if (mounted) _addLocalMessage('上下文已压缩');
     } catch (e) {
       if (!mounted) return;
@@ -105,22 +105,26 @@ extension _HomeScreenAgent on _HomeScreenState {
     await _sendText(text, attachments: attachments);
   }
 
-  /// 核心发送流程：追加用户消息并流式请求回复（输入发送与 /retry 共用）
-  Future<void> _sendText(String text, {List<ChatAttachment> attachments = const []}) async {
-    if (_isSending) {
+  /// 核心发送流程：追加用户消息并流式请求回复（输入发送与 /retry 共用）。
+  /// [target] 指定目标会话（队列续发必须传原会话）；默认当前 tab。
+  /// 全程持 view 引用读写——流式期间用户可能切走 tab，经 `_current`
+  /// 间接访问会把内容串进前台会话。
+  Future<void> _sendText(String text, {List<ChatAttachment> attachments = const [], ChatSessionView? target}) async {
+    final view = target ?? _current;
+    if (view.isSending) {
       setState(() {
-        _messages.add(_ChatMessage(text: '->next task: $text', isUser: true, pending: true));
+        view.messages.add(_ChatMessage(text: '->next task: $text', isUser: true, pending: true));
       });
-      _queuedTexts.add(text);
-      _scrollToBottom(force: true);
+      view.queuedTexts.add(text);
+      _scrollToBottom(force: true, view: view);
       return;
     }
 
-    final pendingIndex = _messages.indexWhere((m) => m.isUser && m.pending && (m.text == text || m.text == '->next task: $text'));
+    final pendingIndex = view.messages.indexWhere((m) => m.isUser && m.pending && (m.text == text || m.text == '->next task: $text'));
     final reusedPendingMessage = pendingIndex >= 0;
     if (pendingIndex >= 0) {
-      _messages[pendingIndex].text = text;
-      _messages[pendingIndex].pending = false;
+      view.messages[pendingIndex].text = text;
+      view.messages[pendingIndex].pending = false;
     }
 
     // 剔除文件已失效的附件（重载会话后可能被清理）
@@ -137,16 +141,16 @@ extension _HomeScreenAgent on _HomeScreenState {
       text = valid.every((a) => a.isImage) ? _defaultImagePrompt : _defaultAttachmentPrompt;
     }
 
-    _conversation ??= ChatConversation(
+    view.conversation ??= ChatConversation(
       id: ChatStorageService.newConversationId(),
       title: text,
     );
-    final conversationId = _conversation!.id;
+    final conversationId = view.conversation!.id;
     // 附件文件持久化到会话目录（重载缩略图展示与 /retry 依赖）
     await ChatAttachmentController.persistAll(conversationId, valid);
     // 构建历史消息（不含当前用户消息）
     final history = <Map<String, String>>[];
-    for (final msg in _messages) {
+    for (final msg in view.messages) {
       if (msg.text.isEmpty || msg.local || msg.pending) continue;
       history.add({
         'role': msg.isUser ? 'user' : 'assistant',
@@ -157,52 +161,53 @@ extension _HomeScreenAgent on _HomeScreenState {
 
     setState(() {
       if (!reusedPendingMessage) {
-        _messages.add(_ChatMessage(text: text, isUser: true, attachments: valid));
+        view.messages.add(_ChatMessage(text: text, isUser: true, attachments: valid));
       } else if (valid.isNotEmpty) {
-        _messages[pendingIndex].attachments.addAll(valid);
+        view.messages[pendingIndex].attachments.addAll(valid);
       }
-      _isSending = true;
+      view.isSending = true;
     });
-    _saveConversation();
-    _scrollToBottom(force: true);
+    _saveConversation(view);
+    _scrollToBottom(force: true, view: view);
 
-    // 添加空的 AI 消息用于流式填充；持有引用而非依赖 _messages.last——
-    // 流式期间用户排队新任务会在末尾插入 next task 气泡，_messages.last 会错位
+    // 添加空的 AI 消息用于流式填充；持有引用而非依赖 view.messages.last——
+    // 流式期间用户排队新任务会在末尾插入 next task 气泡，messages.last 会错位
     // 把 AI 回复拼进排队消息。切轮次/切泡时同步更新引用。
     var reply = _ChatMessage(text: '', isUser: false, streaming: true);
     setState(() {
-      _messages.add(reply);
+      view.messages.add(reply);
     });
 
     try {
-      // 重置 agent 对话并传入历史，避免与旧 popup 状态冲突
-      AgentService.resetConversation();
+      // 重置该会话的 agent 对话并传入历史，避免与旧上下文冲突
+      AgentService.resetConversation(sessionId: view.agentSessionId);
       await for (final event in AgentService.chatStream(
         text,
         mode: 'auto',
         history: history,
         conversationId: conversationId,
         attachments: valid,
+        sessionId: view.agentSessionId,
       )) {
         if (!mounted) return;
         setState(() {
           switch (event) {
             case AgentRoundEvent():
-              // 中间轮过程文字结束，插分隔线区分轮次
-              if (reply.text.trim().isNotEmpty || reply.toolEvents.isNotEmpty) {
+              // 中间轮过程文字结束才切泡；纯工具轮不切（与下方 tool.running 分支
+              // 的切泡条件一致），连续工具调用留在同一气泡内，≥2 条折叠为步骤组
+              if (reply.text.trim().isNotEmpty) {
                 reply.streaming = false;
                 reply = _ChatMessage(text: '', isUser: false, streaming: true);
-                _messages.add(reply);
+                view.messages.add(reply);
               }
             case AgentTokenEvent(:final text):
               reply.text += text;
             case AgentQuestionEvent(:final questionId, :final questions):
-              // 提问挂起：卡片显示在输入框上方，回答后经 _submitAgentAnswer 留痕
+              // 提问挂起：卡片显示在输入框上方，回答后经 _submitAgentAnswer 留痕。
+              // 写入目标会话（view）；后台会话挂起提问时卡片不可见，tab 上以红点提醒
               if (questions.isNotEmpty) {
-                setState(() {
-                  _questionId = questionId;
-                  _questionCtrl = AgentQuestionPanelController(questions: questions);
-                });
+                view.questionId = questionId;
+                view.questionCtrl = AgentQuestionPanelController(questions: questions);
               }
               case AgentToolEvent(:final id, :final name, :final running, :final error, :final details, :final changes):
               if (running) {
@@ -211,7 +216,7 @@ extension _HomeScreenAgent on _HomeScreenState {
                 if (reply.text.trim().isNotEmpty) {
                   reply.streaming = false;
                   reply = _ChatMessage(text: '', isUser: false, streaming: true);
-                  _messages.add(reply);
+                  view.messages.add(reply);
                 }
                 reply.toolEvents.add(_ToolEvent(
                   id,
@@ -254,7 +259,7 @@ extension _HomeScreenAgent on _HomeScreenState {
               }
           }
         });
-        _scrollToBottom();
+        _scrollToBottom(view: view);
       }
       if (mounted) {
         setState(() {
@@ -285,15 +290,15 @@ extension _HomeScreenAgent on _HomeScreenState {
 
     if (mounted) {
       setState(() {
-        _isSending = false;
-        // 流已结束（完成/取消/断连）：收起未回答的提问卡片，questionId 已失效
-        _dismissQuestionCard();
+        view.isSending = false;
+        // 流已结束（完成/取消/断连）：收起该会话未回答的提问卡片，questionId 已失效
+        _dismissQuestionCard(view);
       });
     }
-    _saveConversation();
-    if (mounted && _queuedTexts.isNotEmpty) {
-      final next = _queuedTexts.removeAt(0);
-      await _sendText(next);
+    _saveConversation(view);
+    if (mounted && view.queuedTexts.isNotEmpty) {
+      final next = view.queuedTexts.removeAt(0);
+      await _sendText(next, target: view);
     }
   }
 
@@ -330,30 +335,34 @@ extension _HomeScreenAgent on _HomeScreenState {
   /// Esc 退出提问：取消当前 Agent 请求，不向挂起的工具发送空答案。
   void _cancelAgentQuestion() {
     if (_questionCtrl == null || _questionId == null) return;
-    AgentService.cancelCurrent();
+    AgentService.cancelCurrent(sessionId: _current.agentSessionId);
     setState(_dismissQuestionCard);
   }
 
   void _answerAgentQuestion(List<AgentQuestion> questions, List<List<String>> answers, {required bool skipped}) {
-    final questionId = _questionId!;
+    // 提问卡片只在当前 tab 显示/提交，读写 _current 是安全的
+    final view = _current;
+    final questionId = view.questionId!;
     setState(() {
       _dismissQuestionCard();
       // 留痕挂在对应的 ask_user_question 工具行下面（与 FileChangesPanel 同级）：
       // user.question 一定发生在该工具 tool.start 之后、tool.result 之前
-      final index = _messages.lastIndexWhere((m) => !m.isUser && m.toolEvents.any((t) => t.running && t.name == 'ask_user_question'));
+      final index = view.messages.lastIndexWhere((m) => !m.isUser && m.toolEvents.any((t) => t.running && t.name == 'ask_user_question'));
       if (index >= 0) {
-        final toolIndex = _messages[index].toolEvents.lastIndexWhere((t) => t.running && t.name == 'ask_user_question');
-        _messages[index].toolEvents[toolIndex].questionPanels.add(_QuestionPanel(questions: questions, answers: answers, skipped: skipped));
+        final toolIndex = view.messages[index].toolEvents.lastIndexWhere((t) => t.running && t.name == 'ask_user_question');
+        view.messages[index].toolEvents[toolIndex].questionPanels.add(_QuestionPanel(questions: questions, answers: answers, skipped: skipped));
       }
     });
-    AgentService.answerQuestion(questionId, answers);
+    AgentService.answerQuestion(questionId, answers, sessionId: view.agentSessionId);
     _saveConversation();
   }
 
-  /// 收起提问卡片（须在 setState 内调用）；卡片 controller 持有 text 输入框，需 dispose
-  void _dismissQuestionCard() {
-    _questionCtrl?.dispose();
-    _questionCtrl = null;
-    _questionId = null;
+  /// 收起提问卡片（须在 setState 内调用）；卡片 controller 持有 text 输入框，需 dispose。
+  /// [view] 不传 = 当前 tab；流式收尾时传目标会话（可能已不在前台）
+  void _dismissQuestionCard([ChatSessionView? view]) {
+    final target = view ?? _current;
+    target.questionCtrl?.dispose();
+    target.questionCtrl = null;
+    target.questionId = null;
   }
 }

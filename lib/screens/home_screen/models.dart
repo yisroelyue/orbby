@@ -1,5 +1,43 @@
 part of 'home_screen.dart';
 
+/// 一个会话标签页的完整视图状态（多会话并发的 UI 侧载体）。
+/// 消息列表、流式状态、排队消息、挂起提问、附件、输入草稿全部按 tab 隔离。
+///
+/// 关键纪律：**流式写入必须持有 view 引用**（_sendText 开头捕获），
+/// 绝不能经 `_current` 间接访问——流式期间用户可能切走 tab，
+/// 经 `_current` 写会串到错误的会话；渲染/命令层（只作用于前台）不受此限。
+class ChatSessionView {
+  ChatSessionView({required this.agentSessionId});
+
+  /// Node 侧会话隔离 key：agent-runtime 按 sessionId 隔离上下文/工作区/锁，
+  /// tab 生命周期内不变（/cd 等只影响本 tab 对应的 Node 会话）
+  final String agentSessionId;
+
+  /// 会话持久化句柄；null = 新对话尚未落盘，首轮发送时创建
+  ChatConversation? conversation;
+
+  final messages = <_ChatMessage>[];
+
+  /// 本会话排队等待的后续任务（当前回复结束后按序续发）
+  final queuedTexts = <String>[];
+
+  /// 本会话是否有流式请求进行中
+  bool isSending = false;
+
+  /// Agent 提问卡片（输入框上方）；null = 无挂起提问。
+  /// 后台会话挂起提问时用户看不到卡片，tab 上以"待回答"标记提醒
+  AgentQuestionPanelController? questionCtrl;
+
+  /// 当前提问的 questionId（与 [questionCtrl] 同生命周期）
+  String? questionId;
+
+  /// 输入框草稿：切换 tab 时存回/恢复，各会话互不覆盖
+  String inputDraft = '';
+
+  /// 本会话输入框附件（粘贴的图片/文件）
+  final attachmentCtrl = ChatAttachmentController();
+}
+
 /// 聊天消息数据模型：随会话 JSON 落盘（ChatStorageService），
 /// toJson/fromJson 需与既有会话文件格式保持兼容，勿改动字段名。
 
