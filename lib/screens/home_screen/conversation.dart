@@ -103,7 +103,12 @@ extension _HomeScreenConversation on _HomeScreenState {
     final selected = await showDialog<ChatConversation>(
       context: navContext,
       barrierColor: Colors.black54,
-      builder: (_) => SessionPickerDialog(conversations: conversations),
+      // 弹窗挂在 navigator 层，在 body 的 ChatThemeScope 之外：
+      // 用当前主题再包一层，弹窗内部才能走 ChatTheme.of
+      builder: (_) => ChatThemeScope(
+        data: _themeData,
+        child: SessionPickerDialog(conversations: conversations),
+      ),
     );
     if (selected == null || !mounted) return;
     final conv = await ChatStorageService.load(selected.id) ?? selected;
@@ -131,6 +136,8 @@ extension _HomeScreenConversation on _HomeScreenState {
               ..fileChanges.addAll(_decodeChanges(m['fileChanges']))
               ..toolEvents.addAll(_decodeToolEvents(m['toolEvents'])),
         ]);
+      // 内容整体换源，旧的滚动记录对新列表无意义
+      _current.resetScrollState();
     });
     _scrollToBottom(force: true);
   }

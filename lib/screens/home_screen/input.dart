@@ -3,88 +3,290 @@ part of 'home_screen.dart';
 /// 输入区：输入框 UI、输入历史（↑/↓ 浏览）、命令面板确认、
 /// 以及命令面板/提问卡片对键盘导航的接管。
 extension _HomeScreenInput on _HomeScreenState {
+  Future<void> _loadWorkspaceLabel() async {
+    try {
+      final workspace = await AgentService.workspaceStatus(
+        sessionId: _current.agentSessionId,
+      );
+      final normalized = workspace.replaceAll('\\', '/');
+      final parts = normalized
+          .split('/')
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (!mounted || parts.isEmpty) return;
+      setState(() => _workspaceLabel = parts.last);
+    } catch (_) {
+      // 工作区查询失败时保留默认标签，不影响输入。
+    }
+  }
+
   Widget _buildInputArea() {
+    final theme = _themeData;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // '/' 命令提示列表，展开在输入框正上方
-        CommandPalette(
-          controller: _palette,
-          onConfirm: _confirmCommand,
-        ),
-        // Agent 提问卡片：无挂起提问时为零高度空盒，不占位
-        if (_questionCtrl != null)
-          AgentQuestionPanel(
-            controller: _questionCtrl!,
-            onSubmit: _submitAgentAnswer,
-            onSkip: _skipAgentQuestion,
-          ),
+        CommandPalette(controller: _palette, onConfirm: _confirmCommand),
+        // '@' 技能提示列表：与命令面板同位、按触发字符互斥显示，
+        // 不可见时自身为零高度空盒（children 位置稳定，不破坏索引 diff）
+        SkillPalette(controller: _skillPalette, onConfirm: _confirmSkill),
+        // Agent 提问卡片：无挂起提问时用零高度盒子占位。
+        // 不用 `if (...)` 条件展开——Column 的 children 按索引 diff（无 key），
+        // 卡片出现/消失会让它后面的附件区与输入框整体错位并被销毁重建
+        // （输入文字、焦点、附件状态全丢）
+        _questionCtrl != null
+            ? AgentQuestionPanel(
+                controller: _questionCtrl!,
+                onSubmit: _submitAgentAnswer,
+                onSkip: _skipAgentQuestion,
+              )
+            : const SizedBox.shrink(),
         // 粘贴的图片附件缩略图（无附件且无提示时为零高度空盒）
         ChatAttachmentPreview(
           controller: _attachmentCtrl,
           onOpen: _viewAttachment,
         ),
-        Focus(
-          onKeyEvent: _handleKeyEvent,
-          child: TextField(
-            controller: _inputController,
-            focusNode: _inputFocus,
-            minLines: 1,
-            maxLines: 10,
-            enabled: true,
-            cursorColor: Colors.white,
-            style: TextStyle(
-                color: _inputText,
-                fontSize: 14,
-                fontFamily: _fontFamily),
-            decoration: InputDecoration(
-              hint: _isSending
-                  ? null
-                  : RichText(
-                      text: TextSpan(
+        // 聚焦态光环需要跟随输入框焦点重绘（参考稿 composer.focus）
+        ListenableBuilder(
+          listenable: _inputFocus,
+          builder: (context, _) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0E0E0),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: theme.surface,
+                  border: Border.all(color: theme.line),
+                  boxShadow: const <BoxShadow>[],
+                ),
+                child: Focus(
+                  onKeyEvent: _handleKeyEvent,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _inputController,
+                        focusNode: _inputFocus,
+                        minLines: 2,
+                        maxLines: 10,
+                        enabled: true,
+                        cursorColor: theme.accentDeep,
                         style: TextStyle(
-                          color: _inputHint,
-                          fontSize: 14,
+                          color: theme.ink,
+                          fontSize: 15,
+                          height: 1.65,
+                          letterSpacing: 0.3,
                           fontFamily: _fontFamily,
                         ),
-                        children: const [
-                          TextSpan(text: 'Type something or use '),
-                          TextSpan(
-                            text: '/help',
-                            style: TextStyle(color: Colors.orangeAccent),
+                        decoration: InputDecoration(
+                          hint: _isSending
+                              ? null
+                              : RichText(
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  text: TextSpan(
+                                    style: TextStyle(
+                                      color: theme.ink3,
+                                      fontSize: 15,
+                                      letterSpacing: 0.3,
+                                      fontFamily: _fontFamily,
+                                    ),
+                                    children: [
+                                      const TextSpan(
+                                        text: '描述你的需求，/help 查看常用命令及说明， @ 调用技能。',
+                                      ),
+                                      // const TextSpan(text: '描述你的需求，'),
+                                      // TextSpan(
+                                      //   text: '/help',
+                                      //   style: const TextStyle(
+                                      //     color: Color(0xFF3665DD),
+                                      //   ),
+                                      // ),
+                                      // const TextSpan(text: ' 查看常用命令，'),
+                                      // TextSpan(
+                                      //   text: '@',
+                                      //   style: const TextStyle(
+                                      //     color: Color(0xFF3665DD),
+                                      //   ),
+                                      // ),
+                                      // const TextSpan(text: ' 调用技能。'),
+                                    ],
+                                  ),
+                                ),
+                          hintStyle: TextStyle(
+                            color: theme.ink3,
+                            fontSize: 15,
+                            letterSpacing: 0.3,
+                            fontFamily: _fontFamily,
                           ),
-                          TextSpan(text: ' to list commands'),
-                        ],
-                      ),
-                    ),
-              hintStyle: TextStyle(
-                  color: _inputHint,
-                  fontSize: 14,
-                  fontFamily: _fontFamily),
-              isDense: true,
-              contentPadding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
-              filled: true,
-              fillColor: _inputBg,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
-                borderSide: BorderSide.none,
-              ),
-              suffixIcon: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: IconButton(
-                        icon: SvgPicture.asset('assets/svg/发送.svg',
-                            width: 22, height: 22),
-                        onPressed: _sendMessage,
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            14,
+                            20,
+                            8,
+                            12,
+                          ),
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
                         ),
-                        padding: EdgeInsets.zero,
                       ),
-                    ),
-            ),
-          ),
+                      SizedBox(
+                        height: 48,
+                        child: Container(
+                          padding: const EdgeInsets.only(left: 14, right: 20),
+                          // alignment 让 Row 在 48 高度内垂直居中
+                          //（松约束下 Row 自身 wrap 高度会贴顶，须由容器对齐）
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Tooltip(
+                                    message: '当前工作区，使用/cd命令切换',
+                                    preferBelow: false,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 7,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SvgPicture.asset(
+                                          'assets/svg/工作区.svg',
+                                          width: 16,
+                                          height: 16,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            _workspaceLabel,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 12,
+                                              letterSpacing: 0.2,
+                                              fontFamily: _fontFamily,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Tooltip(
+                                message: '当前模型（暂不支持切换）',
+                                preferBelow: false,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                textStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Container(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 180,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SvgPicture.asset(
+                                        'assets/svg/大模型.svg',
+                                        width: 16,
+                                        height: 16,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 130,
+                                        ),
+                                        child: Text(
+                                          _modelLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.black,
+                                            fontSize: 12,
+                                            letterSpacing: 0.2,
+                                            fontFamily: _fontFamily,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Icon(
+                                        Icons.keyboard_arrow_down,
+                                        size: 17,
+                                        color: Colors.black,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: '发送消息',
+                                preferBelow: false,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                textStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: ValueListenableBuilder<TextEditingValue>(
+                                  valueListenable: _inputController,
+                                  builder: (context, value, _) => _SendButton(
+                                    onPressed: _sendMessage,
+                                    active: value.text.trim().isNotEmpty,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -96,7 +298,8 @@ extension _HomeScreenInput on _HomeScreenState {
   void _confirmCommand([ChatCommand? cmd]) {
     cmd ??= _palette.confirm();
     if (cmd == null) return;
-    _inputController.clear();
+    // /file 需要保留前面的 /cd 路径，选择目录后只替换最后一个命令片段。
+    if (cmd.name != 'file') _inputController.clear();
     if (cmd.behavior == ChatCommandBehavior.prepareInput) {
       _prepareInputCommand(cmd);
     } else {
@@ -183,11 +386,37 @@ extension _HomeScreenInput on _HomeScreenState {
         _palette.dismiss();
         return KeyEventResult.handled;
       }
-      final isConfirm = key == LogicalKeyboardKey.tab ||
+      final isConfirm =
+          key == LogicalKeyboardKey.tab ||
           (key == LogicalKeyboardKey.enter &&
               !HardwareKeyboard.instance.isShiftPressed);
       if (isConfirm) {
         _confirmCommand();
+        return KeyEventResult.handled;
+      }
+    }
+
+    // '@' 技能面板可见时，同款导航接管（与命令面板经 _onInputChanged
+    // 互斥路由，不会同时 visible；分支并列仅为防重）
+    if (_skillPalette.visible) {
+      if (key == LogicalKeyboardKey.arrowUp) {
+        _skillPalette.movePrevious();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) {
+        _skillPalette.moveNext();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.escape) {
+        _skillPalette.dismiss();
+        return KeyEventResult.handled;
+      }
+      final isConfirm =
+          key == LogicalKeyboardKey.tab ||
+          (key == LogicalKeyboardKey.enter &&
+              !HardwareKeyboard.instance.isShiftPressed);
+      if (isConfirm) {
+        _confirmSkill();
         return KeyEventResult.handled;
       }
     }
@@ -236,7 +465,9 @@ extension _HomeScreenInput on _HomeScreenState {
   /// 窗口级按键兜底：焦点不在输入框时（点过聊天区其他可聚焦控件等）也能终止。
   /// 按键事件沿焦点链从 primaryFocus 向上冒泡，输入框 handler 在更内层、
   /// 已 handled 的键不会到这一层；SelectionArea 的复制快捷键同样在更内层，
-  /// 先于本层生效。此处只兜底：Ctrl+C 终止任务、Esc 取消提问/终止任务。
+  /// 先于本层生效。此处只兜底：Ctrl+C 终止任务、Esc 取消提问/终止任务/关闭窗口
+  /// （挂起提问与发送中优先于关窗；弹窗挂 navigator 层，焦点链不经过本层，
+  /// 其 Esc 由弹窗自行消费）。navigator 层的大图/文档查看器同理，不会误关窗。
   KeyEventResult _handleWindowKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
@@ -255,6 +486,10 @@ extension _HomeScreenInput on _HomeScreenState {
         AgentService.cancelCurrent(sessionId: _current.agentSessionId);
         return KeyEventResult.handled;
       }
+      // 无挂起交互时 Esc 收起菜单窗口：经 hub 的 close_menu（同步 _menuVisible，
+      // 防下次快捷键 toggle 误判），menu 常驻只 hide、engine 状态（含输入草稿）保留。
+      HomeScreen.menuChannel.invokeMethod('close_menu');
+      return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
@@ -333,5 +568,44 @@ extension _HomeScreenInput on _HomeScreenState {
       selection: TextSelection.collapsed(offset: start + pasted.length),
     );
     return true;
+  }
+}
+
+/// 发送按钮（参考稿 .send）：30px 琥珀圆钮 + 墨色纸飞机，两套主题同款
+class _SendButton extends StatefulWidget {
+  const _SendButton({required this.onPressed, required this.active});
+
+  final VoidCallback onPressed;
+  final bool active;
+
+  @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: SvgPicture.asset(
+            widget.active
+                ? 'assets/svg/send_up_active.svg'
+                : 'assets/svg/send_up.svg',
+            width: 34,
+            height: 34,
+          ),
+        ),
+      ),
+    );
   }
 }

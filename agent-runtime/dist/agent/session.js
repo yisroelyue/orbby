@@ -5,6 +5,8 @@ export class AgentSession {
     turn = 0;
     step = 0;
     messages = [];
+    /** 本会话工作区（工具相对路径基准）；null = 未初始化，由 runtime 惰性填充（本次启动默认桌面） */
+    workspacePath = null;
     active;
     constructor(id = `session-${randomUUID()}`) { this.id = id; }
     append(type, payload) { this.events.push({ type, turn: this.turn, ...(this.step ? { step: this.step } : {}), at: Date.now(), ...(payload ? { payload } : {}) }); }

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="docIconTitle">
+    <title id="docIconTitle">证件资料图标</title>
+
+    <rect x="80" y="130" width="352" height="252" rx="44" fill="none" stroke="#1F2A44" stroke-width="40"/>
+    <circle cx="182" cy="226" r="42" fill="#1F2A44"/>
+    <path d="M132 320c0-38 24-58 52-58s52 20 52 58z" fill="#1F2A44"/>
+    <rect x="288" y="212" width="112" height="28" rx="14" fill="#1F2A44" opacity=".5"/>
+    <rect x="288" y="272" width="84" height="28" rx="14" fill="#FFC145"/>
+</svg>

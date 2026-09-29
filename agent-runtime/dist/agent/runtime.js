@@ -7,22 +7,26 @@ import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
-import { loadWorkspace, saveWorkspace } from '../services/workspace-storage.js';
 function defaultWorkspacePath() { return join(homedir(), 'Desktop'); }
-/** 工作区优先级：/cd 持久化值 > ORBBY_WORKSPACE env > 桌面默认 */
-function initialWorkspacePath() { return loadWorkspace() ?? process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath(); }
+/** 每次 runtime 启动都从桌面开始；/cd 只在当前 runtime 生命周期内生效。 */
+function initialWorkspacePath() { return defaultWorkspacePath(); }
 export class AgentRuntime {
     registry;
     sessions = new Map();
-    /** 当前工作区：所有工具的相对路径基准与命令默认 cwd，可经 workspace.set 运行时切换 */
-    workspacePath = initialWorkspacePath();
     constructor(registry) {
         this.registry = registry;
     }
-    getWorkspace() { return this.workspacePath; }
-    /** 切换工作区（相对路径按当前工作区解析）；仅接受已存在的目录，成功后持久化 */
-    async setWorkspace(path) {
-        const resolved = resolve(this.workspacePath, path.trim());
+    /** 会话工作区（工具相对路径基准与命令默认 cwd）：内存缓存 > 本次 runtime 的桌面默认，多会话互不影响 */
+    sessionWorkspace(sessionId) {
+        const session = this.session(sessionId);
+        if (session.workspacePath == null)
+            session.workspacePath = initialWorkspacePath();
+        return session.workspacePath;
+    }
+    getWorkspace(sessionId) { return this.sessionWorkspace(sessionId); }
+    /** 切换工作区（相对路径按该会话当前工作区解析）；仅在当前 runtime 生命周期内生效 */
+    async setWorkspace(sessionId, path) {
+        const resolved = resolve(this.sessionWorkspace(sessionId), path.trim());
         let stats;
         try {
             stats = await stat(resolved);
@@ -32,8 +36,7 @@ export class AgentRuntime {
         }
         if (!stats.isDirectory())
             throw new Error(`不是目录：${resolved}`);
-        this.workspacePath = resolved;
-        saveWorkspace(resolved);
+        this.session(sessionId).workspacePath = resolved;
         return resolved;
     }
     session(id) { let value = this.sessions.get(id); if (!value) {
@@ -47,12 +50,14 @@ export class AgentRuntime {
             session.step = 0;
             session.append('turn/start', { message });
             onEvent('turn.start', { turn: session.turn });
+            // 工作区在轮开始时取本会话快照：轮内工具与提示都用同一基准，其他会话（或本会话排队期间）的 /cd 不影响进行中的一轮
+            const workspacePath = this.sessionWorkspace(sessionId);
             // 历史轮只回放文本（多模态块经 toPlainText 归一化），图片仅当前轮发送
             if (session.messages.length === 0 && history.length)
                 session.messages.push(...history.map(item => ({ role: item.role, content: toPlainText(item.content) })));
             session.messages.push({ role: 'system', content: AGENT_SYSTEM_PROMPT });
             // 工作区基准随 /cd 变化，每轮注入最新值，保证 LLM 知道相对路径的解析基准
-            session.messages.push({ role: 'system', content: `当前工作区目录：${this.workspacePath}。read/write/edit/glob/grep 与命令工具的相对路径一律以该目录为基准。` });
+            session.messages.push({ role: 'system', content: `当前工作区目录：${workspacePath}。read/write/edit/glob/grep 与命令工具的相对路径一律以该目录为基准。` });
             if (config.systemPrompt || config.usageRules || config.personality) {
                 const configuredPersonality = config.systemPrompt?.match(/\[personality:(humor|serious|concise)\]/)?.[1] ?? config.personality ?? 'humor';
                 const personality = configuredPersonality === 'serious' ? '严谨、专业、克制，避免玩梗。' : configuredPersonality === 'concise' ? '简洁直接，优先给出结论，避免冗余。' : '风格幽默，可以使用适量网络热词热梗；不刻意讨好，保持自己的性格。';
@@ -79,7 +84,6 @@ export class AgentRuntime {
                     return response.content;
                 }
                 const { WorkspacePermissionService } = await import('../services/workspace-permission.js');
-                const workspacePath = this.workspacePath;
                 const permissions = new WorkspacePermissionService();
                 permissions.setMode(permissionMode);
                 const results = await executeToolCalls(this.registry, response.toolCalls, { workspacePath, sessionId, requestId: '', permissionMode: 'accept', askUser, permissions }, signal, 4, onEvent);
@@ -88,7 +92,14 @@ export class AgentRuntime {
                 session.append('step/end', { reason: 'tool_calls' });
                 onEvent('step.end', { reason: 'tool_calls' });
             }
-            throw new Error('Agent exceeded maximum iterations');
+            // 超步数兜底：文案必须经 onToken 流出再 return（流式契约）。勿 throw——异常会让已流出文本的会话以"请求失败"收尾，错误文本还会作为 assistant 消息落盘污染 history
+            const fallback = `\n\n（已达到本轮最大步数 30 步，先在这里收尾，上述文件改动均已生效。任务未完可发「继续」接着做。）`;
+            onEvent('llm.token', { text: fallback });
+            session.messages.push({ role: 'assistant', content: fallback });
+            session.append('assistant/message', { content: fallback });
+            session.append('turn/end', { reason: 'max_steps' });
+            onEvent('turn.end', { reason: 'max_steps' });
+            return fallback;
         });
     }
     reset(sessionId) { this.sessions.delete(sessionId); }
@@ -121,7 +132,7 @@ export class AgentRuntime {
         return { sessionId, messageCount: s.messages.length, eventCount: s.events.length, contextChars, totalTokens, maxTokens, usagePercent: Math.round(totalTokens / maxTokens * 100), turn: s.turn, step: s.step, lastCompactionAt: compactEvents.at(-1)?.at ?? null };
     }
     tools() { return this.registry.definitions(); }
-    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: this.workspacePath, sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
+    async executeTools(sessionId, requestId, calls, signal, onEvent) { return executeToolCalls(this.registry, calls, { workspacePath: this.sessionWorkspace(sessionId), sessionId, requestId, permissionMode: 'accept' }, signal, 4, onEvent); }
 }
 function serializeToolResult(value) {
     if (typeof value === 'string')

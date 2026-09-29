@@ -49,12 +49,17 @@ dependencies:
   ffi: ^2.1.0
   flutter_markdown: ^0.7.6
   markdown: ^7.3.1
+  re_highlight: ^0.0.3
   crypto: ^3.0.6
   image: ^4.9.1
+  encrypt: ^5.0.3
+  pointycastle: ^3.9.1
 
 dependency_overrides:
   desktop_multi_window:
     path: packages/desktop_multi_window
+  flutter_markdown:
+    path: packages/flutter_markdown
   uuid: ^4.4.0
 
 dev_dependencies:

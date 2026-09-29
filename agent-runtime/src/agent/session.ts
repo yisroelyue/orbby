@@ -8,7 +8,7 @@ export class AgentSession {
   turn = 0;
   step = 0;
   readonly messages: Array<{role:string;content:string|null|ContentPart[];tool_call_id?:string;tool_calls?:unknown[]}> = [];
-  /** 本会话工作区（工具相对路径基准）；null = 未初始化，由 runtime 惰性填充（会话持久化值 > 全局默认） */
+  /** 本会话工作区（工具相对路径基准）；null = 未初始化，由 runtime 惰性填充（本次启动默认桌面） */
   workspacePath: string | null = null;
   private active: Promise<unknown> | undefined;
   constructor(id = `session-${randomUUID()}`) { this.id = id; }

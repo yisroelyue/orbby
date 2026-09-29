@@ -59,11 +59,11 @@ async function handle(socket, agent, active, answers, message) {
         }
         if (message.type === 'permission.status')
             return send(socket, reply('permission.status', message.requestId, sessionId, { mode: permissionMode }));
-        // /cd 工作区切换：set 校验失败（目录不存在）走外层 catch 回 agent.error
+        // /cd 工作区切换：按会话隔离（多会话并发时互不影响）；set 校验失败（目录不存在）走外层 catch 回 agent.error
         if (message.type === 'workspace.get')
-            return send(socket, reply('workspace.status', message.requestId, sessionId, { workspace: agent.getWorkspace() }));
+            return send(socket, reply('workspace.status', message.requestId, sessionId, { workspace: agent.getWorkspace(sessionId ?? 'default') }));
         if (message.type === 'workspace.set') {
-            const workspace = await agent.setWorkspace(String(message.payload.path ?? ''));
+            const workspace = await agent.setWorkspace(sessionId ?? 'default', String(message.payload.path ?? ''));
             return send(socket, reply('workspace.status', message.requestId, sessionId, { workspace }));
         }
         if (message.type === 'user.answer') {

@@ -9,8 +9,8 @@
 ## 架构
 
 - Flutter Windows 多窗口应用，**每个窗口是独立 Flutter engine，静态变量/单例不跨窗口共享**——跨窗口必须走 channel 或 AppEvents。
-- 入口 `lib/main.dart` 按启动参数 `type` 分发各窗口 UI 与窗口配置。主窗口（pet）常驻隐藏，跑 `WindowCoordinator`（`lib/services/window_coordinator.dart`，即 hub）：全局快捷键 + 所有子窗口的创建/定位/显示。
-- 子窗口：`menu`（聊天 HomeScreen）、`settings`、`app_bar`、`content`、`app_center`、`about`。menu/settings 启动时预创建（hiddenAtLaunch），常驻窗口用 hide/show 切换；app_center/about 每次新建。
+- 入口 `lib/main.dart` 按启动参数 `type` 分发各窗口 UI 与窗口配置。主窗口（pet）常驻隐藏，跑 `WindowCoordinator`（`lib/services/window_coordinator.dart`，即 hub）：全局快捷键 + 所有子窗口的创建/定位/显示。主窗口启动时由 `lib/services/agent_runtime_process.dart` 自动启动 `agent-runtime/dist/main.js`，子窗口不重复启动。
+- 子窗口：`menu`（聊天 HomeScreen）、`settings`、`app_bar`、`content`、`app_center`、`about`、`note`。menu/settings 启动时预创建（hiddenAtLaunch）；note 暂停启动时自动创建和显示，保留窗口实现；其定位规则为优先副屏左上安全区域，没有副屏时使用主屏右上角，固定为 500×800，展开后的文本域高度随内容自适应，无标题栏按钮但可拖动；常驻窗口用 hide/show 切换；app_center/about 每次新建。
 - 窗口通信（本地 fork 的 `packages/desktop_multi_window`）两条路：
   - `WindowMethodChannel(..., ChannelMode.unidirectional)`：全局仅 hub 注册 handler，任何 engine 都能 invoke → **子→hub**（ready、hidden、open_settings 等）。
   - `window.invokeMethod(...)` 定向调用子窗口的 `setWindowMethodHandler` → **hub→子**（place、app_event 等）。
@@ -18,10 +18,14 @@
 
 ## Agent 流式协议
 
+- **工作区默认行为**：每次 agent-runtime 启动默认使用用户桌面；工作区不读取或写入持久化配置，也不使用 `ORBBY_WORKSPACE`。`/cd` 仅在当前 runtime 生命周期内切换，runtime 重启后恢复桌面。
+
 - **工作区（workspacePath）**：所有工具的相对路径基准与命令默认 cwd。优先级：`/cd` 持久化值（`~/.orbby/setting/workspace.json`，`agent-runtime/src/services/workspace-storage.ts`）> `ORBBY_WORKSPACE` env > 桌面默认。`/cd` 经 `workspace.set` 消息运行时切换（Node 侧 `AgentRuntime.setWorkspace`：按当前工作区 resolve 相对路径、校验目录存在、更新内存并持久化），`workspace.get` 查询（两者都回 `workspace.status`）；`chat` 与 `executeTools` 读 `AgentRuntime.workspacePath` 字段而非 env，`chat` 每轮注入"当前工作区目录"system 提示，保证 LLM 知道路径基准。
 - `/compact` 由 Node runtime 在会话锁内执行：过滤系统消息，仅使用参与者对话生成中文摘要；角色设定、行为约束和使用规范继续由系统提示词负责。成功后以摘要替换 runtime 上下文并记录 `context/compact` 事件，摘要不显示在聊天界面；空会话直接返回提示，失败不得替换原上下文。
 
 - Agent 的 ReAct 工具循环运行在 `agent-runtime/` Node.js 子进程中，通过 localhost WebSocket 与 Flutter 通信。每轮文本经 `agent.token` 流式发出，工具循环最多 30 个 step；Flutter 的 `AgentService.chatStream` 继续转换为 `AgentTokenEvent`/`AgentRoundEvent`，Dart 侧不再运行 Agent 核心。
+- Windows 打包使用 `scripts/build_windows.cmd`（或绕过执行策略运行 `build_windows.ps1`）：先构建 `agent-runtime`，再将 `dist`、`node_modules`、`package.json` 和 lock 文件复制到 Flutter exe 同级的 `agent-runtime/`，启动时由 hub 自动拉起。启动前若 `43127` 已被占用，只终止该端口对应的 PID 后重新启动 runtime。
+- 托盘退出时由 `AgentRuntimeProcess.stop()` 同步终止 Node runtime 及其子进程，避免留下占用端口的后台服务。
 - **流式契约：processMessage 正常完成时返回值 = 最后一轮已流出的 content，chatStream 对已流出过 token 的会话只关流不补发返回值（防整段重复）。因此 processMessage 内所有"额外兜底文案"（超轮次/上下文超硬限/空回复）必须自行经 `onToken` 发出再 return，否则 UI 会在已有文字后静默收尾，看起来像卡死。**
 - HomeScreen 收到 `AgentRoundEvent` 时在气泡内插 `\n\n---\n\n` 分隔轮次；该拼接文本随会话落盘、也作为 history 发回 LLM。**新增事件类型（如工具调用进度）时扩展 AgentStreamEvent 子类 + 各消费方 switch**，不要回退成裸字符串流（多轮文字会粘成一坨）。
 - **流式气泡定位必须持引用**：`_sendText` 的流式 AI 气泡用局部 `reply` 变量跟踪（切轮次/切泡时更新引用），严禁回退成 `_messages.last`——流式期间用户排队新任务会在末尾插入 `->next task:` 气泡，`_messages.last` 错位会把 AI 回复拼进排队消息。
@@ -40,6 +44,7 @@
 - `agent.dart`：`_sendMessage`/`_sendText`（chatStream 消费与事件分发）、`_runCompact`、提问卡片的提交/跳过/收起。
 - `messages.dart`：聊天列表、用户/Agent 气泡、工具行渲染、`_scrollToBottom`。
 - `markdown.dart`：MarkdownBody 样式表 `_markdownStyleSheet()` + 代码块渲染（`_PreTextBuilder`/`_CodeCopyButton` 顶层类）。
+- 代码块语法高亮由独立组件 `lib/widgets/code_highlight_text.dart` 负责，使用 `re_highlight` 按语言标签解析（支持库内语言别名），仅修改文字颜色，保留宿主字体、行高和背景；行号、复制、滚动仍由 `_PreTextBuilder` 管理。组件缓存当前渲染结果，代码/语言/主题/样式变化时失效；无语言、未知语言、解析失败或超过 20000 字符时显示完整纯文本，不做自动语言猜测。
 - `widgets.dart`：页面骨架（聊天主体/欢迎页/聊天区域/建议图标）。
 - `models.dart`：`_ChatMessage`/`_ToolEvent`/`_QuestionPanel` 数据模型。
 - `helpers.dart`：工具名称/参数/结果的显示格式化（纯展示辅助 extension）。
@@ -88,6 +93,10 @@
 跨窗口/组件的状态变更通知统一用 `AppEvents`（`lib/services/app_events.dart`），事件名集中定义在该类，禁止魔法字符串：
 
 ```
+
+## Windows 启动实例
+
+- Windows runner 在 `windows/runner/main.cpp` 使用进程级命名互斥锁 `Local\\Orbby.SingleInstance` 限制应用只能启动一个实例；应用内部由同一进程创建的多窗口不受影响。再次启动时新进程直接退出。
 // 发出：本窗口立即生效，并自动扩散到所有窗口
 AppEvents.emit(AppEvents.panelAppsChanged);
 

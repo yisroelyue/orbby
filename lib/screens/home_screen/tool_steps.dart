@@ -11,12 +11,16 @@ class _ToolStepsGroup extends StatelessWidget {
     required this.blinkOn,
     required this.onToggle,
     required this.rowBuilder,
+    required this.theme,
   });
 
   final List<_ToolEvent> events;
   final bool expanded;
   final bool blinkOn;
   final VoidCallback onToggle;
+
+  /// 当前主题 token（宿主传入，避免依赖 build context）
+  final ChatThemeData theme;
 
   /// 行渲染交回宿主（_buildToolRow），组件不复制行 UI
   final Widget Function(_ToolEvent event) rowBuilder;
@@ -36,6 +40,7 @@ class _ToolStepsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final allError = _errorCount == events.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -47,31 +52,35 @@ class _ToolStepsGroup extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: onToggle,
               child: Padding(
-                // 与 _buildToolRow 同步：左缩进 20，工具块整体比正文靠右一档
-                padding: const EdgeInsets.fromLTRB(20, 5, 12, 2),
+                // 正文左缩进 24（参考稿 .tool-head），工具行再退到 38
+                padding: const EdgeInsets.fromLTRB(24, 7, 12, 5),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_anyRunning)
-                      AnimatedOpacity(
-                        opacity: blinkOn ? 1.0 : 0.2,
+                    // 状态圆点 7px：运行中橙色闪烁；全部失败红色；其余信息蓝
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: AnimatedOpacity(
+                        opacity: _anyRunning && !allError ? (blinkOn ? 1.0 : 0.2) : 1.0,
                         duration: const Duration(milliseconds: 180),
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 4, right: 4),
-                          child: Icon(
-                            Icons.circle,
-                            size: 7,
-                            color: _errorCount == events.length
-                                ? Colors.redAccent
-                                : Colors.lightBlueAccent,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: allError
+                                ? theme.danger
+                                : (_anyRunning ? theme.run : theme.info),
+                            shape: BoxShape.circle,
                           ),
                         ),
                       ),
-                    // 展开按钮在圆点之后，旋转指示展开/收起
+                    ),
+                    const SizedBox(width: 7),
+                    // 展开箭头：旋转指示展开/收起
                     AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
+                      turns: expanded ? 0.25 : 0,
                       duration: const Duration(milliseconds: 150),
-                      child: const Icon(Icons.expand_more, size: 16, color: Colors.white38),
+                      child: Icon(Icons.chevron_right, size: 14, color: theme.ink3),
                     ),
                     const SizedBox(width: 4),
                     Expanded(child: _buildSummaryText()),
@@ -100,16 +109,17 @@ class _ToolStepsGroup extends StatelessWidget {
           if (_errorCount > 0)
             TextSpan(
               text: ' · $_errorCount 个失败',
-              style: const TextStyle(color: Colors.redAccent),
+              style: TextStyle(color: theme.danger),
             ),
         ],
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: Colors.white54,
-        fontSize: 10,
+        color: theme.ink2,
+        fontSize: 12.5,
         fontWeight: FontWeight.w600,
+        letterSpacing: 0.1,
         fontFamily: _fontFamily,
       ),
     );

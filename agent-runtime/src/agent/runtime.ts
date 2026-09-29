@@ -9,29 +9,27 @@ import { AgentQuestion, WsAttachment } from '../protocol.js';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
-import { loadWorkspace, loadSessionWorkspace, saveSessionWorkspace } from '../services/workspace-storage.js';
 
 function defaultWorkspacePath() { return join(homedir(), 'Desktop'); }
-/** 工作区优先级：/cd 持久化值 > ORBBY_WORKSPACE env > 桌面默认 */
-function initialWorkspacePath() { return loadWorkspace() ?? process.env.ORBBY_WORKSPACE ?? defaultWorkspacePath(); }
+/** 每次 runtime 启动都从桌面开始；/cd 只在当前 runtime 生命周期内生效。 */
+function initialWorkspacePath() { return defaultWorkspacePath(); }
 
 export class AgentRuntime {
   private readonly sessions = new Map<string, AgentSession>();
   constructor(private readonly registry: ToolRegistry) {}
-  /** 会话工作区（工具相对路径基准与命令默认 cwd）：内存缓存 > 会话持久化值 > 全局默认，多会话互不影响 */
+  /** 会话工作区（工具相对路径基准与命令默认 cwd）：内存缓存 > 本次 runtime 的桌面默认，多会话互不影响 */
   private sessionWorkspace(sessionId: string): string {
     const session = this.session(sessionId);
-    if (session.workspacePath == null) session.workspacePath = loadSessionWorkspace(sessionId) ?? initialWorkspacePath();
+    if (session.workspacePath == null) session.workspacePath = initialWorkspacePath();
     return session.workspacePath;
   }
   getWorkspace(sessionId: string) { return this.sessionWorkspace(sessionId); }
-  /** 切换工作区（相对路径按该会话当前工作区解析）；仅接受已存在的目录，成功后按会话持久化 */
+  /** 切换工作区（相对路径按该会话当前工作区解析）；仅在当前 runtime 生命周期内生效 */
   async setWorkspace(sessionId: string, path: string) {
     const resolved = resolve(this.sessionWorkspace(sessionId), path.trim());
     let stats; try { stats = await stat(resolved); } catch { throw new Error(`目录不存在：${resolved}（相对路径按当前工作区解析）`); }
     if (!stats.isDirectory()) throw new Error(`不是目录：${resolved}`);
     this.session(sessionId).workspacePath = resolved;
-    saveSessionWorkspace(sessionId, resolved);
     return resolved;
   }
   session(id: string) { let value = this.sessions.get(id); if (!value) { value = new AgentSession(id); this.sessions.set(id, value); } return value; }
@@ -67,7 +65,13 @@ export class AgentRuntime {
         for (const result of results) session.messages.push({role:'tool',content:result.error ? `Error: ${result.error.message}` : serializeToolResult(result.output),tool_call_id:result.id});
         session.append('step/end',{reason:'tool_calls'}); onEvent('step.end',{reason:'tool_calls'});
       }
-      throw new Error('Agent exceeded maximum iterations');
+      // 超步数兜底：文案必须经 onToken 流出再 return（流式契约）。勿 throw——异常会让已流出文本的会话以"请求失败"收尾，错误文本还会作为 assistant 消息落盘污染 history
+      const fallback = `\n\n（已达到本轮最大步数 30 步，先在这里收尾，上述文件改动均已生效。任务未完可发「继续」接着做。）`;
+      onEvent('llm.token', {text: fallback});
+      session.messages.push({role:'assistant', content: fallback});
+      session.append('assistant/message', {content: fallback});
+      session.append('turn/end', {reason: 'max_steps'}); onEvent('turn.end', {reason: 'max_steps'});
+      return fallback;
     });
   }
   reset(sessionId: string) { this.sessions.delete(sessionId); }

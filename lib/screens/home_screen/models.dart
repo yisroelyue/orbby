@@ -34,6 +34,21 @@ class ChatSessionView {
   /// 输入框草稿：切换 tab 时存回/恢复，各会话互不覆盖
   String inputDraft = '';
 
+  /// 滚动位置（瞬态，不落盘）：切换 tab 前保存、切回时恢复，
+  /// 共享 scrollController 下各会话互不覆盖；null = 未记录（按贴底恢复）
+  double? scrollOffset;
+
+  /// 离开时是否贴底（距底部 ≤50px）：贴底会话后台流式增长后切回仍跟随最新，
+  /// 非贴底则跳回离开时的位置（后台关 tab 也不得拽动前台）
+  bool atBottom = true;
+
+  /// 消息内容整体换源（/session 原地加载、/clear 清空）后调用：
+  /// 旧位置对新内容无意义，重置为"未记录、贴底"
+  void resetScrollState() {
+    scrollOffset = null;
+    atBottom = true;
+  }
+
   /// 本会话输入框附件（粘贴的图片/文件）
   final attachmentCtrl = ChatAttachmentController();
 }

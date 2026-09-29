@@ -19,10 +19,12 @@ import 'screens/app_center_screen.dart';
 import 'screens/home_screen/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/content_screen.dart';
+import 'screens/note_screen.dart';
 import 'services/llm_task.dart';
 import 'services/menu_window_signals.dart';
 import 'services/log_service.dart';
 import 'services/agent_service.dart';
+import 'services/agent_runtime_process.dart';
 import 'services/app_events.dart';
 
 
@@ -120,11 +122,28 @@ Future<void> main(List<String> args) async {
     runApp(const AboutScreen());
     return;
   }
+  if (windowArguments['type'] == 'note') {
+    await Window.initialize();
+    await _configureNoteWindow(windowController, windowArguments);
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(fontFamily: 'Microsoft YaHei'),
+        home: const NoteScreen(),
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      const WindowMethodChannel('orbby_note_events', mode: ChannelMode.unidirectional)
+          .invokeMethod('ready');
+    });
+    return;
+  }
   await Window.initialize();
   await _configurePetWindow();
   // PetScreen 需要挂载以注册全局快捷键，但窗口保持隐藏。
   await windowManager.hide();
   await _ensureSettingsFile();
+  await AgentRuntimeProcess.ensureStarted();
 
   runApp(const OrbbyApp());
   _initSystemTray();
@@ -167,6 +186,7 @@ Future<void> _initSystemTray() async {
         onClicked: (_) async {
           await windowManager.hide();
           await systemTray.destroy();
+          await AgentRuntimeProcess.stop();
           exit(0);
         },
       ),
@@ -467,6 +487,47 @@ Future<void> _configureAboutWindow(
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitle('About Orbby');
       await windowManager.setPreventClose(true);
+      await windowManager.show();
+    },
+  );
+}
+
+Future<void> _configureNoteWindow(
+  WindowController windowController,
+  Map<String, dynamic> arguments,
+) async {
+  final bounds = _boundsFromArguments(arguments);
+  await windowController.setWindowMethodHandler((call) async {
+    if (call.method == 'app_event') {
+      AppEvents.receive(call.arguments as String);
+      return;
+    }
+    if (call.method == 'place') {
+      await windowManager.setBounds(_boundsFromArguments(call.arguments as Map));
+      await windowManager.show();
+      return;
+    }
+    throw UnimplementedError('Not implemented: ${call.method}');
+  });
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: bounds.size,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: true,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      alwaysOnTop: false,
+    ),
+    () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(true);
+      await windowManager.setMinimumSize(bounds.size);
+      await windowManager.setMaximumSize(bounds.size);
+      await windowManager.setBounds(bounds);
+      await windowManager.setResizable(false);
+      await windowManager.setPreventClose(true);
+      await windowManager.setSkipTaskbar(true);
+      await windowManager.setTitle('Orbby Notes');
       await windowManager.show();
     },
   );

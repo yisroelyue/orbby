@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="serverIconTitle">
+    <title id="serverIconTitle">服务器图标</title>
+
+    <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+    <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+    <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+    <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+</svg>

@@ -8,6 +8,7 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../services/app_events.dart';
+import '../services/log_service.dart';
 
 /// Hidden primary-engine coordinator for native hotkeys and secondary windows.
 class WindowCoordinator extends StatefulWidget {
@@ -19,10 +20,18 @@ class WindowCoordinator extends StatefulWidget {
 
 class _WindowCoordinatorState extends State<WindowCoordinator> {
   static const _menuWidthFactor = 1 / 3;
+
+  /// menu 窗口四周预留的阴影呼吸区（窗口内由 Flutter 侧 Padding 留空）。
+  /// 与 lib/screens/home_screen/home_screen.dart 的 _windowMargin 必须一致——
+  /// 窗口矩形由这里定位，面板边距由对方绘制，两边不同步会出现偏移。
+  static const _menuMargin = 8.0;
+
   static const _appCenterWidth = 720.0;
   static const _appCenterHeight = 580.0;
   static const _appBarHeight = 80.0;
   static const _contentWidthFactor = 1 / 6;
+  static const _noteWidth = 500.0;
+  static const _noteHeight = 800.0;
 
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events', mode: ChannelMode.unidirectional,
@@ -38,16 +47,21 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   static const _contentChannel = WindowMethodChannel(
     'orbby_content_events', mode: ChannelMode.unidirectional,
   );
+  static const _noteChannel = WindowMethodChannel(
+    'orbby_note_events', mode: ChannelMode.unidirectional,
+  );
 
   WindowController? _menuWindow;
   WindowController? _appBarWindow;
   WindowController? _contentWindow;
   WindowController? _appCenterWindow;
   WindowController? _settingsWindow;
+  WindowController? _noteWindow;
   Completer<void>? _menuReady;
   Completer<void>? _appBarReady;
   Completer<void>? _contentReady;
   Completer<void>? _settingsReady;
+  Completer<void>? _noteReady;
   bool _menuVisible = false;
   bool _appBarVisible = false;
   bool _contentVisible = false;
@@ -78,6 +92,11 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
         _contentVisible = false;
       }
     });
+    _noteChannel.setMethodCallHandler((call) async {
+      if (call.method == 'ready' && _noteReady != null && !_noteReady!.isCompleted) {
+        _noteReady!.complete();
+      }
+    });
     AppEvents.initHub(_broadcastEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) => _precreateWindows());
   }
@@ -90,6 +109,7 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     _dropChannel.setMethodCallHandler(null);
     _appBarChannel.setMethodCallHandler(null);
     _contentChannel.setMethodCallHandler(null);
+    _noteChannel.setMethodCallHandler(null);
     super.dispose();
   }
 
@@ -267,7 +287,51 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     _appCenterWindow = await WindowController.create(WindowConfiguration(arguments: jsonEncode({'type': 'app_center', 'left': (size.width - _appCenterWidth) / 2, 'top': (size.height - _appCenterHeight) / 2, 'width': _appCenterWidth, 'height': _appCenterHeight})));
   }
 
+  Future<Map<String, double>> _noteBounds() async {
+    final primary = await screenRetriever.getPrimaryDisplay();
+    final displays = await screenRetriever.getAllDisplays();
+    var display = primary;
+    for (final candidate in displays) {
+      if (candidate.id != primary.id) {
+        display = candidate;
+        break;
+      }
+    }
+    final position = display.visiblePosition ?? Offset(primary.visibleSize?.width ?? primary.size.width, 0);
+    final size = display.visibleSize ?? display.size;
+    const width = _noteWidth;
+    const height = _noteHeight;
+    final isSecondary = display.id != primary.id;
+    final bounds = {
+      'left': isSecondary ? position.dx + 20 : position.dx + size.width - width,
+      'top': isSecondary ? position.dy + 20 : position.dy,
+      'width': width,
+      'height': height,
+    };
+    // LogService.info(
+    //   'Note display bounds: primary=${primary.id} ${primary.visiblePosition}/${primary.visibleSize}; '
+    //   'selected=${display.id} ${display.visiblePosition}/${display.visibleSize}; '
+    //   'all=${displays.map((d) => '${d.id}:${d.visiblePosition}/${d.visibleSize}').join(';')}; '
+    //   'bounds=$bounds',
+    // );
+    return bounds;
+  }
+
+  Future<void> _createNoteWindow() async {
+    if (_noteWindow != null) return;
+    _noteReady = Completer<void>();
+    _noteWindow = await WindowController.create(WindowConfiguration(
+      hiddenAtLaunch: true,
+      arguments: jsonEncode({'type': 'note', ...await _noteBounds()}),
+    ));
+    try {
+      await _noteReady!.future.timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    _noteReady = null;
+  }
+
   Future<void> _precreateWindows() async {
+    // 笔记面板暂不随启动创建或显示，保留窗口实现供后续恢复。
     await _showMenu(show: false);
     // 常驻子窗口预创建：启动时加载 engine，首次打开走 place/show 无需当场冷启动。
     // 各自排进自己的 operation 链（与用户 toggle 串行，避免双创建竞态）。
@@ -297,7 +361,9 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     final display = await screenRetriever.getPrimaryDisplay();
     final position = display.visiblePosition ?? Offset.zero;
     final size = display.visibleSize ?? display.size;
-    final width = size.width * _menuWidthFactor;
+    // 窗口矩形 = 面板 + 四周 [_menuMargin] 的阴影呼吸区，整体贴屏幕右上边缘；
+    // 面板本身仍是屏宽的 [_menuWidthFactor]，故窗口宽额外加两侧 margin。
+    final width = size.width * _menuWidthFactor + _menuMargin * 2;
     return Rect.fromLTWH(position.dx + size.width - width, position.dy, width, size.height);
   }
 

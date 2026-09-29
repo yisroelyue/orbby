@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../theme/chat_theme.dart';
+
 enum MessageStatus { user, processing, completed, terminated }
 
 class MessageStatusDot extends StatefulWidget {
-  const MessageStatusDot({super.key, required this.status});
+  const MessageStatusDot({
+    super.key,
+    required this.status,
+    this.lineHeight = 24,
+  });
+
   final MessageStatus status;
+
+  /// 同排首行文字的**实际行高**（fontSize × height，单位 px）。
+  /// 圆点据此垂直居中于首行——不要退回固定 top 魔数：魔数是按某一档字号
+  /// 凑出来的，字号一改（如整体 +1px）圆点就会明显偏上，与正文对不齐。
+  final double lineHeight;
 
   @override
   State<MessageStatusDot> createState() => _MessageStatusDotState();
@@ -22,17 +34,22 @@ class _MessageStatusDotState extends State<MessageStatusDot>
 
   @override
   Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     final processing = widget.status == MessageStatus.processing;
     // 用户消息与思考中的圆点放大一档（9px），与完成/终止的静态小点（6px）区分
     final large = processing || widget.status == MessageStatus.user;
     final color = switch (widget.status) {
-      MessageStatus.user => const Color(0xFFF0A04B),
-      MessageStatus.processing => const Color(0xFF9A9A9A),
-      MessageStatus.completed => const Color(0xFF55C878),
-      MessageStatus.terminated => const Color(0xFFE05252),
+      MessageStatus.user => theme.userDot,
+      MessageStatus.processing => theme.ink3,
+      MessageStatus.completed => theme.done,
+      MessageStatus.terminated => theme.term,
     };
+    final size = large ? 9.0 : 6.0;
+    // 圆点中心落在首行中心：行高与圆点直径之差取半（行高过小时退化为贴顶，
+    // 避免 EdgeInsets 出现负值被 RenderPadding 断言拦下）
+    final top = (widget.lineHeight - size) / 2;
     return Padding(
-      padding: EdgeInsets.only(top: large ? 4 : 7, right: 10),
+      padding: EdgeInsets.only(top: top > 0 ? top : 0, right: 10),
       child: AnimatedBuilder(
         animation: _controller,
         builder: (_, child) => Opacity(
@@ -40,7 +57,7 @@ class _MessageStatusDotState extends State<MessageStatusDot>
           child: child,
         ),
         child: Container(
-          width: large ? 9 : 6, height: large ? 9 : 6,
+          width: size, height: size,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
       ),

@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>笔记浮窗 · 密码本集成设计稿</title>
+<style>
+  :root{
+    --canvas:#EDEAE4;
+    --panel:#FCFBF9;
+    --card:#FFFFFF;
+    --line:#E7E3DB;
+    --line-soft:#EFEBE4;
+    --ink:#1F2A44;
+    --ink-2:#5D6577;
+    --ink-3:#9AA1AF;
+    --accent:#FFC145;
+    --accent-deep:#9C6E14;
+    --accent-soft:#FFF6E2;
+    --hover:#F3F5FA;
+    --danger:#C0483C;
+    --danger-soft:#FBEDEA;
+    --r-panel:18px;
+    --r-card:12px;
+    --shadow-panel:0 1px 2px rgba(31,42,68,.07), 0 24px 56px -16px rgba(31,42,68,.22);
+    --shadow-card:0 1px 2px rgba(31,42,68,.04);
+    --shadow-editor:0 1px 2px rgba(31,42,68,.05), 0 12px 28px -10px rgba(31,42,68,.16);
+    --mono:ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+    --font:-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    font-family:var(--font);
+    background:
+      radial-gradient(rgba(31,42,68,.055) 1px, transparent 1px) 0 0/22px 22px,
+      var(--canvas);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    padding:44px 48px 72px;
+    min-height:100vh;
+  }
+
+  /* ---------------- 设计稿页面外壳 ---------------- */
+  .page{width:100%;max-width:2200px;margin:0 auto}
+
+  .page-head{
+    display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;
+    padding-bottom:20px;margin-bottom:36px;
+    border-bottom:1px solid rgba(31,42,68,.10);
+  }
+  .page-head h1{font-size:21px;font-weight:650;letter-spacing:-.01em}
+  .page-head p{font-size:12.5px;color:var(--ink-2);margin-top:6px;letter-spacing:.01em}
+  .page-head p + p{font-size:11.5px;color:var(--ink-3);margin-top:9px;font-variant-numeric:tabular-nums}
+  .swatches{margin-left:auto;display:flex;gap:8px}
+  .sw{width:34px;height:34px;border-radius:10px;border:1px solid rgba(31,42,68,.09);position:relative}
+  .sw span{
+    position:absolute;top:38px;left:50%;transform:translateX(-50%);
+    font-size:9.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap;
+  }
+
+  .board{display:block}
+
+  .cap{
+    font-size:11px;font-weight:650;letter-spacing:.09em;
+    color:var(--ink-3);margin-bottom:12px;display:flex;align-items:center;gap:9px;
+  }
+  .cap::after{content:"";flex:1;height:1px;background:rgba(31,42,68,.09)}
+
+  /* 桌面画板：4 个状态横向并列铺满屏宽，整行等比缩放；画板逻辑尺寸恒为 500 × 800 */
+  .col-main{
+    --s:1;
+    display:flex;flex-wrap:nowrap;justify-content:center;align-items:flex-start;
+    gap:32px;width:100%;
+  }
+  .col-main > div{flex:none;width:calc(500px * var(--s))}
+  /* 缩放只作用于窗口本体，用负外边距抵消未缩放的 800px 占位高度 */
+  .col-main > div > .window{
+    transform:scale(var(--s));transform-origin:top left;
+    margin-bottom:calc(-800px * (1 - var(--s)));
+  }
+
+  /* 缩放档位按屏宽切换，并预留竖向滚动条与留白余量 */
+  @media (max-width:2215px){.col-main{--s:.92}}
+  @media (max-width:2055px){.col-main{--s:.84}}
+  @media (max-width:1895px){.col-main{--s:.76}}
+  @media (max-width:1735px){.col-main{--s:1;flex-wrap:wrap;row-gap:52px}}
+
+  /* 规格带：通栏置于画板下方，卡片与要点自动分栏 */
+  .col-side{
+    width:100%;margin-top:46px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+    gap:22px;align-items:start;
+  }
+  .col-side > :last-child{grid-column:1/-1}
+
+  /* ---------------- 窗口本体 500 × 800 ---------------- */
+  .window{
+    width:500px;height:800px;
+    background:var(--panel);
+    border:1px solid rgba(31,42,68,.07);
+    border-radius:var(--r-panel);
+    box-shadow:var(--shadow-panel);
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
+  .win-head{
+    position:relative;
+    display:flex;align-items:center;gap:12px;
+    padding:17px 20px 15px;
+    flex:none;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .logo{
+    width:34px;height:34px;flex:none;border-radius:10px;
+    background:#1F2A44;
+    display:grid;place-items:center;
+    box-shadow:0 1px 2px rgba(31,42,68,.28);
+  }
+  .win-title h2{font-size:16px;font-weight:650;letter-spacing:-.005em;line-height:1.2}
+  .win-title p{font-size:11.5px;color:var(--ink-3);margin-top:3px;font-variant-numeric:tabular-nums}
+  .head-tools{
+    position:absolute;top:17px;right:16px;
+    display:flex;align-items:center;gap:4px;
+  }
+  .drag{
+    width:26px;height:26px;border-radius:8px;
+    display:grid;place-items:center;color:#C9CEDB;
+  }
+
+  /* ---------------- 头部工具栏：视图切换图标按钮 ---------------- */
+  .jump{
+    width:34px;height:34px;flex:none;border:0;border-radius:10px;background:transparent;
+    display:grid;place-items:center;color:var(--ink-3);cursor:pointer;
+    transition:color .16s ease, background .16s ease;
+  }
+  .jump:hover{background:var(--hover);color:var(--accent-deep)}
+  .jump:active{background:#F0EDE6}
+  .jump svg{width:20px;height:20px}
+
+  .win-body{flex:1;overflow-y:auto;padding:16px 20px}
+
+  /* ---------------- 笔记视图：折叠 / 展开 ---------------- */
+  .item{
+    position:relative;display:flex;align-items:center;gap:12px;
+    height:52px;padding:0 14px;
+    background:var(--card);
+    border:1px solid var(--line-soft);
+    border-radius:var(--r-card);
+    box-shadow:var(--shadow-card);
+    cursor:pointer;
+  }
+  .item + .item{margin-top:7px}
+  .item:hover{border-color:#DEDAD1;box-shadow:0 2px 7px -3px rgba(31,42,68,.12)}
+  .ico{width:24px;height:24px;flex:none;display:block}
+  .item .txt{
+    flex:1;min-width:0;font-size:13.5px;line-height:1.4;letter-spacing:.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .item .txt.ph{color:var(--ink-3)}
+  .item .chev{color:#D3D7DF;flex:none}
+
+  .editor{
+    position:relative;
+    background:var(--card);
+    border:1px solid #E3DFD6;
+    border-radius:14px;
+    box-shadow:var(--shadow-editor);
+    padding:12px 12px 10px 14px;
+  }
+  .editor + .item , .item + .editor{margin-top:8px}
+  .ed-row{display:flex;align-items:center;gap:12px}
+  .ed-title{flex:1;min-width:0;font-size:13.5px;letter-spacing:.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .acts{display:flex;gap:6px;flex:none}
+  .act{
+    width:29px;height:29px;border:0;border-radius:9px;background:transparent;
+    display:grid;place-items:center;color:var(--ink-2);cursor:pointer;
+  }
+  .act:hover{background:var(--hover)}
+  .act.on{background:var(--accent-soft);color:var(--accent-deep)}
+  .act.sm{width:26px;height:26px;border-radius:8px}
+  .act.eye{color:var(--ink-3)}
+  .act.eye:hover{color:var(--ink)}
+  .ed-body{
+    display:block;width:100%;margin-top:7px;padding:0 3px 0 36px;
+    border:0;background:transparent;outline:0;resize:none;overflow:hidden;
+    font-family:inherit;font-size:13px;line-height:1.75;color:#3F4557;letter-spacing:.005em;
+    min-height:68px;
+  }
+  .ed-foot{
+    margin-top:11px;padding:10px 3px 0;
+    border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:flex-end;
+  }
+
+  .empty{
+    height:120px;border:1px dashed #E3DFD6;border-radius:var(--r-card);
+    display:grid;place-items:center;
+    font-size:12.5px;color:var(--ink-3);letter-spacing:.03em;
+    background:rgba(255,255,255,.5);
+  }
+
+  .win-foot{
+    flex:none;padding:12px 20px;
+    border-top:1px solid var(--line-soft);
+    background:var(--panel);
+  }
+  .new-btn{
+    width:100%;height:42px;border:0;border-radius:12px;
+    background:var(--accent);color:var(--ink);
+    font-family:inherit;font-size:13.5px;font-weight:650;letter-spacing:.01em;
+    display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
+    box-shadow:0 1px 2px rgba(31,42,68,.10), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+  .new-btn:hover{background:#FFCB5C}
+
+  /* ---------------- 密码本视图：折叠密码 ---------------- */
+  .ent{
+    position:relative;display:flex;align-items:center;gap:12px;
+    height:54px;padding:0 10px 0 14px;
+    background:var(--card);
+    border:1px solid var(--line-soft);
+    border-radius:var(--r-card);
+    box-shadow:var(--shadow-card);
+    cursor:pointer;
+  }
+  .ent + .ent{margin-top:8px}
+  .ent:hover{border-color:#DEDAD1;box-shadow:0 2px 7px -3px rgba(31,42,68,.12)}
+  .ent-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .ent-txt b{
+    font-size:13px;font-weight:600;line-height:1.25;letter-spacing:.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .ent-txt span{
+    font-size:11px;color:var(--ink-3);line-height:1.25;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .mask{
+    flex:none;font-size:13px;color:var(--ink-2);letter-spacing:.12em;
+    font-variant-numeric:tabular-nums;
+  }
+  .mask.plain{letter-spacing:.02em;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+
+  /* ---------------- 密码本视图：展开详情 ---------------- */
+  .fields{margin-top:9px;border-top:1px solid var(--line)}
+  .field{display:flex;align-items:center;gap:12px;height:38px}
+  .field + .field{border-top:1px solid var(--line-soft)}
+  .lb{flex:none;width:38px;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+  .vl{
+    flex:1;min-width:0;font-size:13px;color:#3F4557;letter-spacing:.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .vl.mono{font-family:var(--mono);font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  .tbtn{
+    flex:none;height:29px;padding:0 12px;border:0;border-radius:9px;background:transparent;
+    font-family:inherit;font-size:12.5px;font-weight:600;color:var(--ink-2);
+    display:flex;align-items:center;gap:6px;cursor:pointer;
+  }
+  .tbtn:hover{background:var(--hover)}
+  .tbtn.danger{color:var(--danger)}
+  .tbtn.danger:hover{background:var(--danger-soft)}
+
+  /* ---------------- 密码本视图：锁定态 ---------------- */
+  .locked{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding-bottom:64px;
+  }
+  .lock-mark{
+    width:56px;height:56px;border-radius:17px;
+    background:#1F2A44;display:grid;place-items:center;
+    box-shadow:0 1px 2px rgba(31,42,68,.28), 0 12px 24px -12px rgba(31,42,68,.5);
+  }
+  .locked h3{font-size:15px;font-weight:650;margin-top:18px;letter-spacing:-.005em}
+  .locked .sub{font-size:12px;color:var(--ink-3);margin-top:7px;letter-spacing:.01em}
+  .pins{display:flex;gap:9px;margin:24px 0 22px}
+  .pin{
+    width:46px;height:54px;border-radius:13px;
+    background:var(--card);border:1px solid var(--line);
+    display:grid;place-items:center;
+    box-shadow:0 1px 2px rgba(31,42,68,.04);
+  }
+  .pin.filled::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--ink)}
+  .pin.cur{
+    border:1.5px solid var(--accent);
+    box-shadow:0 0 0 3px rgba(255,193,69,.22);
+  }
+  .caret{width:2px;height:20px;border-radius:2px;background:var(--accent);animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .unlock{width:240px}
+  .hint{font-size:11px;color:var(--ink-3);margin-top:18px;letter-spacing:.02em;text-align:center;line-height:1.7}
+
+  .alert{
+    display:flex;align-items:center;gap:9px;
+    background:var(--danger-soft);border:1px solid rgba(192,72,60,.16);
+    border-radius:11px;padding:9px 12px;
+    font-size:12px;color:var(--danger);letter-spacing:.01em;
+  }
+
+  /* ---------------- 侧栏素材 ---------------- */
+  .legend{
+    background:var(--card);border:1px solid var(--line-soft);border-radius:var(--r-card);
+    box-shadow:var(--shadow-card);overflow:hidden;
+  }
+  .lg{display:flex;align-items:center;gap:11px;padding:11px 13px}
+  .lg + .lg{border-top:1px solid var(--line-soft)}
+  .lg b{font-size:12.5px;font-weight:650}
+  .lg span{
+    margin-left:auto;font-size:10.5px;color:var(--accent-deep);
+    background:var(--accent-soft);padding:2px 6px;border-radius:5px;
+    font-variant-numeric:tabular-nums;letter-spacing:.01em;
+  }
+  .lg .dot{width:22px;height:22px;border-radius:7px;flex:none;margin-left:auto}
+  .demo{padding:13px}
+  .demo .row{display:flex;align-items:center;gap:12px;padding:4px 0}
+  .demo .row + .row{border-top:1px solid var(--line-soft);margin-top:10px;padding-top:12px}
+  .minihead{display:flex;align-items:center;gap:9px}
+  .minihead .mh{font-size:13.5px;font-weight:650;color:var(--ink);letter-spacing:-.005em}
+  .mh-note{margin-left:auto;font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .demo-note{
+    margin-top:12px;padding-top:11px;border-top:1px solid var(--line-soft);
+    font-size:11px;line-height:1.65;color:var(--ink-3);
+  }
+  .demo-note b{color:var(--ink-2);font-weight:600}
+  .demo-note code{
+    font-size:10.5px;color:var(--accent-deep);background:var(--accent-soft);
+    padding:1px 5px;border-radius:5px;font-variant-numeric:tabular-nums;
+  }
+
+  .specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:13px 30px}
+  .spec{display:flex;gap:11px;align-items:baseline}
+  .spec i{flex:none;width:4px;height:4px;border-radius:50%;background:#C6CBD6;margin-top:6px}
+  .spec p{font-size:12px;line-height:1.65;color:var(--ink-2)}
+  .spec p b{color:var(--ink);font-weight:600}
+  .spec p code{
+    font-size:11px;color:var(--accent-deep);background:var(--accent-soft);
+    padding:1px 5px;border-radius:5px;font-variant-numeric:tabular-nums;
+  }
+
+  .mini{position:relative;width:250px;height:400px}
+  .mini .window{position:absolute;top:0;left:0;transform:scale(.5);transform-origin:top left}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-head">
+    <div>
+      <h1>笔记浮窗 · 密码本集成设计稿</h1>
+      <p>不新增窗口、不新增页面：在 500 × 800 窗口内以「头部工具栏图标按钮」跳转「笔记 / 密码本」· 沿用原视觉体系与交互模型</p>
+        <p class="page-note">桌面画板：4 个状态横向并列铺满屏宽，整行等比缩放 1.00 / 0.92 / 0.84 / 0.76（≤1735px 自动折行）；画板逻辑尺寸恒为 500 × 800</p>
+    </div>
+    <div class="swatches">
+      <div class="sw" style="background:#FFC145"><span>#FFC145</span></div>
+      <div class="sw" style="background:#1F2A44"><span>#1F2A44</span></div>
+      <div class="sw" style="background:#FFF6E2"><span>#FFF6E2</span></div>
+      <div class="sw" style="background:#FFFFFF"><span>#FFFFFF</span></div>
+      <div class="sw" style="background:#FCFBF9"><span>#FCFBF9</span></div>
+      <div class="sw" style="background:#C0483C"><span>#C0483C</span></div>
+    </div>
+  </header>
+
+  <div class="board">
+
+    <!-- ==================== 主列 ==================== -->
+    <section class="col-main">
+
+      <!-- ---------- ① 笔记视图 ---------- -->
+      <div>
+        <div class="cap">① 笔记视图 · 头部工具栏新增图标切换按钮，原有内容与操作不变</div>
+        <div class="window">
+          <div class="win-head">
+            <div class="logo">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="#FFFFFF"/>
+                <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="#FFFFFF" opacity=".55"/>
+                <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="#FFC145"/>
+              </svg>
+            </div>
+            <div class="win-title">
+              <h2>笔记</h2>
+              <p>8 条笔记 · 3 条重要</p>
+            </div>
+            <div class="head-tools">
+              <button class="jump" title="切换到密码本">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.2" y="6.9" width="9.6" height="6.9" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.6 6.9V5.3a2.4 2.4 0 0 1 4.8 0v1.6" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <div class="drag" title="整屏可拖动">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.6" cy="4" r="1.05"/><circle cx="10.4" cy="4" r="1.05"/>
+                  <circle cx="5.6" cy="8" r="1.05"/><circle cx="10.4" cy="8" r="1.05"/>
+                  <circle cx="5.6" cy="12" r="1.05"/><circle cx="10.4" cy="12" r="1.05"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="win-body">
+
+            <div class="editor">
+              <div class="ed-row">
+                <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                  <rect x="112" y="88" width="24" height="336" rx="12" fill="#1F2A44"/>
+                  <path d="M 148 112 H 400 L 356 178 L 400 244 H 148 Z"
+                        fill="#FFC145" stroke="#FFC145" stroke-width="16" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <textarea class="ed-body" rows="3" spellcheck="false">整理下周评审会的材料
+1 · 汇总三份评审意见，标出重复项
+2 · 把待确认的问题列成清单，会上逐条过</textarea>
+              <div class="ed-foot">
+                <div class="acts">
+                  <button class="act" title="完成">
+                    <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <circle cx="8.5" cy="8.5" r="6.5" stroke="currentColor" stroke-width="1.6"/>
+                      <path d="M5.8 8.8l1.9 1.9 3.6-3.9" stroke="currentColor" stroke-width="1.6"
+                            stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <button class="act on" title="取消重要">
+                    <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <path d="M4.7 14.3V3.1m0 .5h5.9c.95 0 1.5 1.05.95 1.8l-1.05 1.5c-.3.45-.3 1.05 0 1.5l1.05 1.5c.55.75 0 1.8-.95 1.8H4.7"
+                            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="item">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="88" width="24" height="336" rx="12" fill="#1F2A44"/>
+                <path d="M 148 112 H 400 L 356 178 L 400 244 H 148 Z"
+                      fill="#FFC145" stroke="#FFC145" stroke-width="16" stroke-linejoin="round"/>
+              </svg>
+              <span class="txt">确定 Q3 汇报的数据口径与图表来源</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <div class="item">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="96" y="120" width="320" height="24" rx="12" fill="#1F2A44"/>
+                <rect x="96" y="244" width="216" height="24" rx="12" fill="#1F2A44" opacity="0.55"/>
+                <rect x="96" y="368" width="296" height="24" rx="12" fill="#FFC145"/>
+              </svg>
+              <span class="txt">回复设计师关于图标规范的邮件</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <div class="item">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="96" y="120" width="320" height="24" rx="12" fill="#1F2A44"/>
+                <rect x="96" y="244" width="216" height="24" rx="12" fill="#1F2A44" opacity="0.55"/>
+                <rect x="96" y="368" width="296" height="24" rx="12" fill="#FFC145"/>
+              </svg>
+              <span class="txt">整理下季度的工作清单草稿，按优先级排好之后同步给组内的其他成员</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <div class="item">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="96" y="120" width="320" height="24" rx="12" fill="#1F2A44"/>
+                <rect x="96" y="244" width="216" height="24" rx="12" fill="#1F2A44" opacity="0.55"/>
+                <rect x="96" y="368" width="296" height="24" rx="12" fill="#FFC145"/>
+              </svg>
+              <span class="txt">确认差旅报销的提交截止时间</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <div class="item">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="96" y="120" width="320" height="24" rx="12" fill="#1F2A44"/>
+                <rect x="96" y="244" width="216" height="24" rx="12" fill="#1F2A44" opacity="0.55"/>
+                <rect x="96" y="368" width="296" height="24" rx="12" fill="#FFC145"/>
+              </svg>
+              <span class="txt ph">空笔记</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+          </div>
+
+          <div class="win-foot">
+            <button class="new-btn">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.9"
+                      stroke-linecap="round"/>
+              </svg>
+              新建笔记
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- ② 密码本 · 列表 ---------- -->
+      <div>
+        <div class="cap">② 密码本视图 · 已解锁 · 密码默认掩码</div>
+        <div class="window">
+          <div class="win-head">
+            <div class="logo">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="#FFFFFF"/>
+                <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="#FFFFFF" opacity=".55"/>
+                <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="#FFC145"/>
+              </svg>
+            </div>
+            <div class="win-title">
+              <h2>密码本</h2>
+              <p>12 个密码</p>
+            </div>
+            <div class="head-tools">
+              <button class="jump" title="切换到笔记">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.4" y="2.7" width="9.2" height="10.6" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.9 6.2h4.2M5.9 8.8h2.8" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <div class="drag" title="整屏可拖动">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.6" cy="4" r="1.05"/><circle cx="10.4" cy="4" r="1.05"/>
+                  <circle cx="5.6" cy="8" r="1.05"/><circle cx="10.4" cy="8" r="1.05"/>
+                  <circle cx="5.6" cy="12" r="1.05"/><circle cx="10.4" cy="12" r="1.05"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="win-body">
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <circle cx="172" cy="172" r="80" fill="none" stroke="#1F2A44" stroke-width="46"/>
+                <path d="M228 228L396 396" stroke="#1F2A44" stroke-width="46" stroke-linecap="round"/>
+                <path d="M340 340l34-34M386 386l34-34" stroke="#FFC145" stroke-width="40" stroke-linecap="round"/>
+              </svg>
+              <div class="ent-txt">
+                <b>邮箱主账号</b>
+                <span>yisro@example.com</span>
+              </div>
+              <span class="mask">••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="72" y="146" width="368" height="220" rx="44" fill="#1F2A44"/>
+                <rect x="112" y="204" width="288" height="32" rx="16" fill="#FFFFFF" opacity=".45"/>
+                <rect x="112" y="278" width="128" height="30" rx="15" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>招行信用卡</b>
+                <span>尾号 4021 · 查询密码</span>
+              </div>
+              <span class="mask">••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+                <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+                <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+                <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>公司 VPN</b>
+                <span>vpn.corp.cn · yisro</span>
+              </div>
+              <span class="mask">••••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="80" y="130" width="352" height="252" rx="44" fill="none" stroke="#1F2A44" stroke-width="40"/>
+                <circle cx="182" cy="226" r="42" fill="#1F2A44"/>
+                <path d="M132 320c0-38 24-58 52-58s52 20 52 58z" fill="#1F2A44"/>
+                <rect x="288" y="212" width="112" height="28" rx="14" fill="#1F2A44" opacity=".5"/>
+                <rect x="288" y="272" width="84" height="28" rx="14" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>社保与证件信息</b>
+                <span>查询账号 · 证件号后四位</span>
+              </div>
+              <span class="mask">••••••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+                <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+                <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+                <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>家庭 Wi-Fi</b>
+                <span>TP-Link-5G</span>
+              </div>
+              <span class="mask">••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <circle cx="172" cy="172" r="80" fill="none" stroke="#1F2A44" stroke-width="46"/>
+                <path d="M228 228L396 396" stroke="#1F2A44" stroke-width="46" stroke-linecap="round"/>
+                <path d="M340 340l34-34M386 386l34-34" stroke="#FFC145" stroke-width="40" stroke-linecap="round"/>
+              </svg>
+              <div class="ent-txt">
+                <b>12306 购票</b>
+                <span>手机号登录 · 图形码已备注</span>
+              </div>
+              <span class="mask">••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+                <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+                <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+                <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>云服务器后台</b>
+                <span>47.98.x.x · root</span>
+              </div>
+              <span class="mask">••••••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <circle cx="172" cy="172" r="80" fill="none" stroke="#1F2A44" stroke-width="46"/>
+                <path d="M228 228L396 396" stroke="#1F2A44" stroke-width="46" stroke-linecap="round"/>
+                <path d="M340 340l34-34M386 386l34-34" stroke="#FFC145" stroke-width="40" stroke-linecap="round"/>
+              </svg>
+              <div class="ent-txt">
+                <b>Notion 团队空间</b>
+                <span>yisro@example.com</span>
+              </div>
+              <span class="mask">••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+          </div>
+
+          <div class="win-foot">
+            <button class="new-btn">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.9"
+                      stroke-linecap="round"/>
+              </svg>
+              新建密码
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- ③ 密码本 · 展开详情 ---------- -->
+      <div>
+        <div class="cap">③ 密码本 · 点击密码展开 · 当前条明文显示</div>
+        <div class="window">
+          <div class="win-head">
+            <div class="logo">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="#FFFFFF"/>
+                <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="#FFFFFF" opacity=".55"/>
+                <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="#FFC145"/>
+              </svg>
+            </div>
+            <div class="win-title">
+              <h2>密码本</h2>
+              <p>12 个密码</p>
+            </div>
+            <div class="head-tools">
+              <button class="jump" title="切换到笔记">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.4" y="2.7" width="9.2" height="10.6" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.9 6.2h4.2M5.9 8.8h2.8" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <div class="drag" title="整屏可拖动">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.6" cy="4" r="1.05"/><circle cx="10.4" cy="4" r="1.05"/>
+                  <circle cx="5.6" cy="8" r="1.05"/><circle cx="10.4" cy="8" r="1.05"/>
+                  <circle cx="5.6" cy="12" r="1.05"/><circle cx="10.4" cy="12" r="1.05"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="win-body">
+
+            <div class="editor">
+              <div class="ed-row">
+                <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                  <circle cx="172" cy="172" r="80" fill="none" stroke="#1F2A44" stroke-width="46"/>
+                  <path d="M228 228L396 396" stroke="#1F2A44" stroke-width="46" stroke-linecap="round"/>
+                  <path d="M340 340l34-34M386 386l34-34" stroke="#FFC145" stroke-width="40" stroke-linecap="round"/>
+                </svg>
+              </div>
+
+              <div class="fields">
+                <div class="field">
+                  <span class="lb">名称</span>
+                  <span class="vl">邮箱主账号</span>
+                </div>
+                <div class="field">
+                  <span class="lb">账号</span>
+                  <span class="vl">yisro@example.com</span>
+                  <button class="act sm" title="复制账号">
+                    <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <rect x="6" y="6" width="8.2" height="8.2" rx="2.4" stroke="currentColor" stroke-width="1.5"/>
+                      <path d="M11.4 3.3H5.8A2.5 2.5 0 0 0 3.3 5.8v5.6" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="field">
+                  <span class="lb">密码</span>
+                  <span class="vl mono">Aa7#kR2mQx9!</span>
+                  <button class="act sm on" title="隐藏密码">
+                    <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                            stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                      <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="ed-foot">
+                <div class="acts">
+                  <button class="tbtn">
+                    <svg width="15" height="15" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <rect x="6" y="6" width="8.2" height="8.2" rx="2.4" stroke="currentColor" stroke-width="1.5"/>
+                      <path d="M11.4 3.3H5.8A2.5 2.5 0 0 0 3.3 5.8v5.6" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round"/>
+                    </svg>
+                    复制密码
+                  </button>
+                  <button class="tbtn">
+                    <svg width="15" height="15" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <path d="M11.9 3.1l2 2-7.9 7.9-2.9.9.9-2.9z" stroke="currentColor" stroke-width="1.5"
+                            stroke-linejoin="round"/>
+                      <path d="M10.5 4.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    编辑
+                  </button>
+                  <button class="tbtn danger">
+                    <svg width="15" height="15" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                      <path d="M3.2 5.1h10.6M6.7 5.1V3.7a1.1 1.1 0 0 1 1.1-1.1h1.4a1.1 1.1 0 0 1 1.1 1.1v1.4M4.9 5.1l.6 8.1a1.2 1.2 0 0 0 1.2 1.1h3.6a1.2 1.2 0 0 0 1.2-1.1l.6-8.1"
+                            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="72" y="146" width="368" height="220" rx="44" fill="#1F2A44"/>
+                <rect x="112" y="204" width="288" height="32" rx="16" fill="#FFFFFF" opacity=".45"/>
+                <rect x="112" y="278" width="128" height="30" rx="15" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>招行信用卡</b>
+                <span>尾号 4021 · 查询密码</span>
+              </div>
+              <span class="mask">••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+                <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+                <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+                <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>公司 VPN</b>
+                <span>vpn.corp.cn · yisro</span>
+              </div>
+              <span class="mask">••••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="80" y="130" width="352" height="252" rx="44" fill="none" stroke="#1F2A44" stroke-width="40"/>
+                <circle cx="182" cy="226" r="42" fill="#1F2A44"/>
+                <path d="M132 320c0-38 24-58 52-58s52 20 52 58z" fill="#1F2A44"/>
+                <rect x="288" y="212" width="112" height="28" rx="14" fill="#1F2A44" opacity=".5"/>
+                <rect x="288" y="272" width="84" height="28" rx="14" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>社保与证件信息</b>
+                <span>查询账号 · 证件号后四位</span>
+              </div>
+              <span class="mask">••••••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ent">
+              <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+                <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+                <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+                <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+                <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+              </svg>
+              <div class="ent-txt">
+                <b>家庭 Wi-Fi</b>
+                <span>TP-Link-5G</span>
+              </div>
+              <span class="mask">••••••••</span>
+              <button class="act sm eye" title="显示密码">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                  <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                        stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+
+          </div>
+
+          <div class="win-foot">
+            <button class="new-btn">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.9"
+                      stroke-linecap="round"/>
+              </svg>
+              新建密码
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- ④ 密码本 · 锁定态 ---------- -->
+      <div>
+        <div class="cap">④ 密码本 · 锁定态（切走即锁 / 超时自动锁定）</div>
+        <div class="window">
+          <div class="win-head">
+            <div class="logo">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="#FFFFFF"/>
+                <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="#FFFFFF" opacity=".55"/>
+                <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="#FFC145"/>
+              </svg>
+            </div>
+            <div class="win-title">
+              <h2>密码本</h2>
+              <p>已锁定 · 12 个密码</p>
+            </div>
+            <div class="head-tools">
+              <button class="jump" title="切换到笔记">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.4" y="2.7" width="9.2" height="10.6" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.9 6.2h4.2M5.9 8.8h2.8" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <div class="drag" title="整屏可拖动">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.6" cy="4" r="1.05"/><circle cx="10.4" cy="4" r="1.05"/>
+                  <circle cx="5.6" cy="8" r="1.05"/><circle cx="10.4" cy="8" r="1.05"/>
+                  <circle cx="5.6" cy="12" r="1.05"/><circle cx="10.4" cy="12" r="1.05"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="win-body locked">
+            <div class="lock-mark">
+              <svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7.5 10.4V7.7a4.5 4.5 0 0 1 9 0v2.7" stroke="#FFFFFF" stroke-width="2"
+                      stroke-linecap="round"/>
+                <rect x="4.6" y="10.2" width="14.8" height="10.4" rx="3.3" fill="#FFC145"/>
+                <circle cx="12" cy="15.4" r="1.55" fill="#1F2A44"/>
+              </svg>
+            </div>
+            <h3>密码本已锁定</h3>
+            <p class="sub">输入 6 位主密码，查看 12 个密码</p>
+
+            <div class="pins">
+              <i class="pin filled"></i>
+              <i class="pin filled"></i>
+              <i class="pin filled"></i>
+              <i class="pin cur"><span class="caret"></span></i>
+              <i class="pin"></i>
+              <i class="pin"></i>
+            </div>
+
+            <button class="new-btn unlock">解锁</button>
+            <p class="hint">离开密码本后自动重新锁定<br>主密码仅保存在本机，忘记后无法恢复</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==================== 侧栏 ==================== -->
+    <aside class="col-side">
+
+      <div>
+        <div class="cap">头部工具栏 · 视图切换图标按钮</div>
+        <div class="legend demo">
+          <div class="row">
+            <div class="minihead">
+              <span class="mh">笔记</span>
+              <button class="jump" title="切换到密码本">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.2" y="6.9" width="9.6" height="6.9" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.6 6.9V5.3a2.4 2.4 0 0 1 4.8 0v1.6" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <span class="mh-note">笔记视图 · 点图标进密码本</span>
+          </div>
+          <div class="row">
+            <div class="minihead">
+              <span class="mh">密码本</span>
+              <button class="jump" title="切换到笔记">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="3.4" y="2.7" width="9.2" height="10.6" rx="2.2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5.9 6.2h4.2M5.9 8.8h2.8" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <span class="mh-note">密码本视图 · 点图标回笔记</span>
+          </div>
+          <p class="demo-note">切换按钮<b>只显示图标、不带文字</b>；位置取自原「立即锁定」按钮（拖动柄左侧）：<code>34 × 34</code>、圆角 <code>10px</code>、透明底；笔记视图为锁形图标，密码本视图为文档图标，hover 时图标转琥珀色并浮出浅底。原「立即锁定」按钮已移除。</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="cap">密码图标 · 即分类</div>
+        <div class="legend">
+          <div class="lg">
+            <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+              <circle cx="172" cy="172" r="80" fill="none" stroke="#1F2A44" stroke-width="46"/>
+              <path d="M228 228L396 396" stroke="#1F2A44" stroke-width="46" stroke-linecap="round"/>
+              <path d="M340 340l34-34M386 386l34-34" stroke="#FFC145" stroke-width="40" stroke-linecap="round"/>
+            </svg>
+            <b>账号密码</b>
+            <span>key.svg</span>
+          </div>
+          <div class="lg">
+            <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+              <rect x="72" y="146" width="368" height="220" rx="44" fill="#1F2A44"/>
+              <rect x="112" y="204" width="288" height="32" rx="16" fill="#FFFFFF" opacity=".45"/>
+              <rect x="112" y="278" width="128" height="30" rx="15" fill="#FFC145"/>
+            </svg>
+            <b>银行卡</b>
+            <span>card.svg</span>
+          </div>
+          <div class="lg">
+            <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+              <rect x="112" y="118" width="288" height="112" rx="34" fill="#1F2A44"/>
+              <circle cx="364" cy="174" r="17" fill="#FFC145"/>
+              <rect x="112" y="282" width="288" height="112" rx="34" fill="#1F2A44" opacity=".5"/>
+              <circle cx="364" cy="338" r="17" fill="#FFC145"/>
+            </svg>
+            <b>服务器 / 网络</b>
+            <span>server.svg</span>
+          </div>
+          <div class="lg">
+            <svg class="ico" viewBox="0 0 512 512" aria-hidden="true">
+              <rect x="80" y="130" width="352" height="252" rx="44" fill="none" stroke="#1F2A44" stroke-width="40"/>
+              <circle cx="182" cy="226" r="42" fill="#1F2A44"/>
+              <path d="M132 320c0-38 24-58 52-58s52 20 52 58z" fill="#1F2A44"/>
+              <rect x="288" y="212" width="112" height="28" rx="14" fill="#1F2A44" opacity=".5"/>
+              <rect x="288" y="272" width="84" height="28" rx="14" fill="#FFC145"/>
+            </svg>
+            <b>证件 / 资料</b>
+            <span>doc.svg</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="cap">密码显示 · 两态</div>
+        <div class="legend demo">
+          <div class="row">
+            <span class="mask" style="flex:none">••••••••</span>
+            <button class="act sm eye" title="显示密码">
+              <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                      stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </button>
+            <span style="margin-left:auto;font-size:10.5px;color:var(--ink-3)">默认 · 掩码</span>
+          </div>
+          <div class="row">
+            <span class="mask plain" style="flex:none">Aa7#kR2mQx9!</span>
+            <button class="act sm on" title="隐藏密码">
+              <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                <path d="M1.6 8.5S4.2 3.6 8.5 3.6 15.4 8.5 15.4 8.5 12.8 13.4 8.5 13.4 1.6 8.5 1.6 8.5Z"
+                      stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <circle cx="8.5" cy="8.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </button>
+            <span style="margin-left:auto;font-size:10.5px;color:var(--ink-3)">查看 · 等宽明文</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="cap">错误提示 · 危险操作</div>
+        <div class="legend demo" style="display:flex;flex-direction:column;gap:10px">
+          <div class="alert">
+            <svg width="15" height="15" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+              <circle cx="8.5" cy="8.5" r="6.6" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8.5 5.3v4.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="8.5" cy="11.8" r=".95" fill="currentColor"/>
+            </svg>
+            主密码不正确，请重试
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="tbtn danger">
+              <svg width="15" height="15" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+                <path d="M3.2 5.1h10.6M6.7 5.1V3.7a1.1 1.1 0 0 1 1.1-1.1h1.4a1.1 1.1 0 0 1 1.1 1.1v1.4M4.9 5.1l.6 8.1a1.2 1.2 0 0 0 1.2 1.1h3.6a1.2 1.2 0 0 0 1.2-1.1l.6-8.1"
+                      stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              删除密码
+            </button>
+            <span style="margin-left:auto;font-size:10.5px;color:var(--ink-3)">#C0483C</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="cap">规格要点</div>
+        <div class="specs">
+          <div class="spec"><i></i><p>密码本<b>不是新窗口、也不是新页面</b>，而是原 500 × 800 窗口内的第二个视图，窗口尺寸、圆角、拖动行为全部不变。</p></div>
+          <div class="spec"><i></i><p>切换控件是<b>头部工具栏的纯图标按钮</b>（位于拖动柄左侧）：<code>34 × 34</code>、圆角 <code>10px</code>、透明底，<b>只显示图标、不带文字</b>；笔记视图为锁形图标，密码本视图为文档图标，hover 时图标转琥珀色并浮出浅底。</p></div>
+          <div class="spec"><i></i><p>切换视图时<b>头部标题与副标题同步变化</b>（笔记 / 密码本），左上角 logo 固定不变，作为产品标识；切换按钮<b>只换图标不换文字</b>。</p></div>
+          <div class="spec"><i></i><p>底部按钮随视图变化：笔记 <b>新建笔记</b> → 密码本 <b>新建密码</b>；位置、尺寸、颜色完全一致，不产生跳动。</p></div>
+          <div class="spec"><i></i><p>密码列表沿用笔记的<b>折叠单行 / 点击展开</b>模型：折叠态高 <code>54px</code>（两行：名称 + 账号），展开态替换为字段卡片，同时仅一条展开。</p></div>
+          <div class="spec"><i></i><p>展开态字段固定三行：<b>名称 / 账号 / 密码</b>，label 宽 <code>38px</code>，行高 <code>38px</code>，行间用 <code>#EFEBE4</code> 细分隔线；与折叠态图标左对齐同一条竖线。</p></div>
+          <div class="spec"><i></i><p>密码默认以圆点掩码显示，点击行内<b>眼睛按钮</b>临时切换明文，明文用等宽字体；眼睛激活时复用 <code>--accent-soft</code> 底与 <code>--accent-deep</code> 字。</p></div>
+          <div class="spec"><i></i><p>展开态底部操作栏与笔记一致（细分割线 + 右对齐）：<b>复制密码 · 编辑 · 删除</b>，删除使用 <code>#C0483C</code> 危险色。</p></div>
+          <div class="spec"><i></i><p>未解锁时切到密码本，<b>在原窗口内直接显示解锁态</b>：居中锁标 + 6 位 PIN 方格 + 琥珀主按钮，不弹模态、不遮罩整个桌面。</p></div>
+          <div class="spec"><i></i><p>PIN 方格 <code>46 × 54</code>、圆角 <code>13px</code>；已填显示 9px 墨色圆点，当前格为琥珀描边 + <code>3px</code> 光环 + 闪烁光标。</p></div>
+          <div class="spec"><i></i><p>安全策略：<b>切回笔记视图立即重新锁定</b>、闲置 <code>5 分钟</code> 自动锁定、连续输错 3 次延迟 30 秒；原「立即锁定」按钮已移除，锁定时机全部由上述规则自动触发。</p></div>
+          <div class="spec"><i></i><p>数据层：复用原存储逻辑，字段 <code>title</code>（名称）/ <code>username</code> / <code>password</code> / <code>kind</code>（图标分类），与笔记数据分开存放，不联网、不同步。</p></div>
+        </div>
+      </div>
+
+    </aside>
+
+  </div>
+</div>
+</body>
+</html>

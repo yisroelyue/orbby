@@ -24,6 +24,38 @@ String toolDisplayName(String name) {
   return aliases[name] ?? '工具操作';
 }
 
+/// 工具名 → 前置图标 asset（方点与标题之间；无映射返回 null，行首保持原样）。
+/// 图标为单色三阶灰，渲染时用 ColorFilter 染 ink2 随主题。
+String? toolIconAsset(String name) {
+  switch (name) {
+    // 编辑类 → 铅笔
+    case 'edit':
+    case 'write':
+    case 'str_replace_editor':
+      return 'assets/svg/edit.svg';
+    // 读取/查找类 → 眼形
+    case 'read':
+    case 'glob':
+    case 'grep':
+      return 'assets/svg/read.svg';
+    // 删除
+    case 'delete':
+      return 'assets/svg/deleted.svg';
+    // 命令/终端类 → 提示符
+    case 'powershell':
+    case 'bash':
+    case 'execute_command':
+    case 'terminal_open':
+    case 'terminal_send':
+    case 'terminal_read':
+    case 'terminal_close':
+    case 'terminal_list':
+      return 'assets/svg/terminal.svg';
+    default:
+      return null;
+  }
+}
+
 /// HomeScreen 的纯展示辅助逻辑集中在这里，避免页面状态类继续膨胀。
 extension _HomeScreenFormatting on _HomeScreenState {
   /// 工具行标题：编辑器类带子命令（如「编辑器 · str_replace」）；
@@ -38,7 +70,7 @@ extension _HomeScreenFormatting on _HomeScreenState {
     return toolDisplayName(tool.name);
   }
 
-  /// 标题与参数同一行：标题（w600 浅灰）+「：」+ 参数摘要（更淡、不加粗），
+  /// 标题与参数同一行：标题（w600 ink2）+「：」+ 参数摘要（ink3、不加粗），
   /// 超宽自动软换行；无参数（如 ask_user_question）只显示标题
   TextSpan _toolTitleSpan(_ToolEvent tool) {
     final details = tool.name == 'ask_user_question' || tool.parameters == null
@@ -52,7 +84,7 @@ extension _HomeScreenFormatting on _HomeScreenState {
           // 参数压平成单行（content/命令自带的换行转空格），超宽走软换行
           TextSpan(
             text: details.replaceAll('\r', '').replaceAll('\n', ' '),
-            style: const TextStyle(color: Colors.white38, fontWeight: FontWeight.w400),
+            style: TextStyle(color: _themeData.ink3, fontWeight: FontWeight.w400),
           ),
         ],
       ],

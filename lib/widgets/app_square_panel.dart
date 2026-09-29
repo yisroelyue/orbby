@@ -38,20 +38,83 @@ class AppInfo {
 class AppSquarePanel extends StatefulWidget {
   const AppSquarePanel({super.key});
   @override
-  State<AppSquarePanel> createState() => _AppSquarePanelState();
+  State<AppSquarePanel> createState() => AppSquarePanelState();
 }
 
-class _AppSquarePanelState extends State<AppSquarePanel> {
+/// 公开 State：app_bar 窗口经 GlobalKey 调 moveSelection/runSelected/
+/// resetSelection 驱动键盘导航（与 note 窗口调子视图 public 方法同模式）；
+/// 按键接管在窗口层（app_bar_screen），本类只管列表状态与执行。
+class AppSquarePanelState extends State<AppSquarePanel> {
   static const _buttonSize = 56.0;
   static const _iconSize = 36.0;
   static const _textColor = Color(0xFFDDDDDD);
   static const _hoverColor = Color(0x22333333);
   static const _borderColor = Color(0x55888888);
+  static const _itemGap = 10.0;
 
   final _scrollController = ScrollController();
   List<AppInfo> _apps = [];
   int? _hoveredIndex;
+  int? _selectedIndex;
   bool _loading = true;
+
+  int get _itemCount => _apps.length + 1;
+
+  /// 鼠标 hover 与键盘选中共用放大高亮。
+  bool _isHighlighted(int index) =>
+      _hoveredIndex == index || _selectedIndex == index;
+
+  /// 窗口显示时由 app_bar_screen 调用，键盘选中默认落到第一个应用。
+  void resetSelection() {
+    if (_selectedIndex == 0) return;
+    setState(() => _selectedIndex = 0);
+  }
+
+  /// ←/→ 循环移动键盘选中。索引语义与 _hoveredIndex 一致：
+  /// -1 = 应用中心，0..n-1 = 应用（_apps 索引）——渲染高亮（_isHighlighted）
+  /// 与执行（runSelected）共用同一语义，错开一位会出现"亮 A 开 B"。
+  void moveSelection(int delta) {
+    final count = _itemCount;
+    if (count == 0) return;
+    setState(() {
+      // 换到 0..count-1 的 item 域做循环取模，再映射回 -1 起始的选中域。
+      final item = ((_selectedIndex ?? -1) + 1 + delta + count) % count;
+      _selectedIndex = item - 1;
+    });
+    _scrollToSelection(_selectedIndex!);
+  }
+
+  /// 回车执行选中项：-1 打开应用中心，其余启动对应应用。
+  void runSelected() {
+    final index = _selectedIndex ?? 0;
+    if (index == -1) {
+      HomeScreen.menuChannel.invokeMethod('open_app_center');
+      return;
+    }
+    if (index < _apps.length) _launchApp(_apps[index]);
+  }
+
+  /// 滚动跟随：item 尺寸固定（按钮 56 + 间距 10），按选中项位置滚动到可见，
+  /// 两侧留 20 的 padding 缓冲（与列表 horizontal padding 一致）。
+  /// 参数为选中域索引（-1 起），item 位置 = 索引 + 1。
+  void _scrollToSelection(int index) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final itemLeft = (index + 1) * (_buttonSize + _itemGap);
+    final itemRight = itemLeft + _buttonSize;
+    double? target;
+    if (itemLeft - 20 < position.pixels) {
+      target = itemLeft - 20;
+    } else if (itemRight + 20 > position.pixels + position.viewportDimension) {
+      target = itemRight + 20 - position.viewportDimension;
+    }
+    if (target == null) return;
+    _scrollController.animateTo(
+      target.clamp(0.0, position.maxScrollExtent).toDouble(),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   void initState() {
@@ -149,14 +212,14 @@ class _AppSquarePanelState extends State<AppSquarePanel> {
   }
 
   Widget _appCenterButton() => _button(
-        hovered: _hoveredIndex == -1,
+        hovered: _isHighlighted(-1),
         onHover: (v) => setState(() => _hoveredIndex = v ? -1 : null),
         onTap: () => HomeScreen.menuChannel.invokeMethod('open_app_center'),
         child: SvgPicture.asset('assets/svg/应用.svg', width: _iconSize, height: _iconSize),
       );
 
   Widget _appButton(AppInfo app, int index) => _button(
-        hovered: _hoveredIndex == index,
+        hovered: _isHighlighted(index),
         onHover: (v) => setState(() => _hoveredIndex = v ? index : null),
         onTap: () => _launchApp(app),
         child: app.hasIcon

@@ -87,6 +87,11 @@ extension _HomeScreenCommands on _HomeScreenState {
         executeWithArgument: _changeWorkspace,
       ),
       ChatCommand(
+        name: 'file',
+        description: '浏览当前工作区文件并插入文件路径',
+        execute: _showFilePicker,
+      ),
+      ChatCommand(
         name: 'personality',
         description: '切换性格：humor、serious、concise',
         behavior: ChatCommandBehavior.prepareInput,
@@ -135,45 +140,208 @@ extension _HomeScreenCommands on _HomeScreenState {
     ];
   }
 
-  /// /setting：Agent 设置弹窗（自定义系统提示词与使用规范）
+  /// /setting：Agent 设置弹窗（自定义系统提示词与使用规范）。
+  /// 弹窗挂在 navigator 层（ChatThemeScope 之外），主题 token 直接取
+  /// State 的 _themeData，不走 ChatTheme.of(dialogContext)
   Future<void> _showAgentSettings() async {
     final settings = await SettingsService.load();
     if (!mounted) return;
+    final theme = _themeData;
+    var dialogThemeDark = _themeDark;
     final prompt = TextEditingController(text: settings.agentSystemPrompt);
     final rules = TextEditingController(text: settings.agentUsageRules);
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
+      builder: (dialogContext) => Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            Navigator.of(dialogContext).pop();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            color: theme.raised,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.line),
+            boxShadow: theme.popShadows,
           ),
-          padding: const EdgeInsets.all(20),
-          width: 560,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
+          width: 620,
+          height: MediaQuery.sizeOf(dialogContext).height * 0.7,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
               Row(children: [
-                const Expanded(child: Text('Agent 设置', style: TextStyle(color: Color(0xFFEAEAEA), fontSize: 14, fontWeight: FontWeight.w600))),
-                IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close, size: 18, color: Colors.white54)),
+                Expanded(child: Text('Agent 设置', style: TextStyle(color: theme.ink, fontSize: 15, fontWeight: FontWeight.w600, fontFamily: _fontFamily))),
+                IconButton(onPressed: () => Navigator.pop(dialogContext), icon: Icon(Icons.close, size: 18, color: theme.ink3)),
               ]),
-              const SizedBox(height: 18),
-              TextField(controller: prompt, maxLines: 6, style: const TextStyle(color: Colors.white70), decoration: const InputDecoration(labelText: '自定义系统提示词', labelStyle: TextStyle(color: Colors.white54), border: OutlineInputBorder(), filled: true, fillColor: Color(0xFF292929))),
               const SizedBox(height: 14),
-              TextField(controller: rules, maxLines: 6, style: const TextStyle(color: Colors.white70), decoration: const InputDecoration(labelText: '自定义使用规范', labelStyle: TextStyle(color: Colors.white54), border: OutlineInputBorder(), filled: true, fillColor: Color(0xFF292929))),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '自定义系统提示词',
+                  style: TextStyle(
+                    color: theme.ink2,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 7),
+              TextField(
+                controller: prompt,
+                onChanged: (_) => _scheduleAgentSettingsSave(
+                  settings,
+                  prompt.text,
+                  rules.text,
+                ),
+                minLines: 1,
+                maxLines: 12,
+                cursorColor: theme.accentDeep,
+                style: TextStyle(color: theme.body, fontSize: 14, height: 1.45, fontFamily: _fontFamily),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.lineSoft),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.lineSoft),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.accent),
+                  ),
+                  contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+                  filled: true,
+                  fillColor: theme.sunken,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '自定义使用规范',
+                  style: TextStyle(
+                    color: theme.ink2,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 7),
+              TextField(
+                controller: rules,
+                onChanged: (_) => _scheduleAgentSettingsSave(
+                  settings,
+                  prompt.text,
+                  rules.text,
+                ),
+                minLines: 1,
+                maxLines: 12,
+                cursorColor: theme.accentDeep,
+                style: TextStyle(color: theme.body, fontSize: 14, height: 1.45, fontFamily: _fontFamily),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.lineSoft),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.lineSoft),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: theme.accent),
+                  ),
+                  contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+                  filled: true,
+                  fillColor: theme.sunken,
+                ),
+              ),
               const SizedBox(height: 18),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消', style: TextStyle(color: Colors.white54))),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: () async { settings.agentSystemPrompt = prompt.text; settings.agentUsageRules = rules.text; await SettingsService.save(settings); if (dialogContext.mounted) Navigator.pop(dialogContext); }, child: const Text('保存')),
-              ]),
+              Row(
+                children: [
+                  Icon(
+                    theme.isDark
+                        ? Icons.dark_mode_outlined
+                        : Icons.light_mode_outlined,
+                    size: 18,
+                    color: theme.ink2,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '深色主题',
+                      style: TextStyle(color: theme.ink2, fontSize: 13),
+                    ),
+                  ),
+                  StatefulBuilder(
+                    builder: (context, setDialogState) => Transform.scale(
+                      scale: 0.82,
+                      child: Switch(
+                        value: dialogThemeDark,
+                        onChanged: (value) {
+                          setDialogState(() => dialogThemeDark = value);
+                          _toggleTheme();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.tab_outlined, size: 18, color: theme.ink2),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '显示会话标签',
+                      style: TextStyle(color: theme.ink2, fontSize: 13),
+                    ),
+                  ),
+                  StatefulBuilder(
+                    builder: (context, setDialogState) => Transform.scale(
+                      scale: 0.82,
+                      child: Switch(
+                        value: settings.showSessionTabs,
+                        onChanged: (value) async {
+                          setDialogState(() => settings.showSessionTabs = value);
+                          if (mounted) setState(() => _showSessionTabs = value);
+                          await SettingsService.save(settings);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ]),
+          ),
+          ),
         ),
       ),
     );
     prompt.dispose();
     rules.dispose();
+  }
+
+  void _scheduleAgentSettingsSave(
+    AppSettings settings,
+    String prompt,
+    String rules,
+  ) {
+    _agentSettingsSaveTimer?.cancel();
+    _agentSettingsSaveTimer = Timer(const Duration(milliseconds: 450), () {
+      settings.agentSystemPrompt = prompt;
+      settings.agentUsageRules = rules;
+      SettingsService.save(settings);
+    });
   }
 }

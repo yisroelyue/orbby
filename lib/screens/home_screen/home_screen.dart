@@ -16,16 +16,21 @@ import '../../services/chat_storage_service.dart';
 import '../../services/chat_log_service.dart';
 import '../../services/file_undo_service.dart';
 import '../../services/menu_window_signals.dart';
+import '../../services/menu_theme_service.dart';
 import '../../services/chat_attachment_controller.dart';
 import '../../services/clipboard_image_service.dart';
 import '../../services/personality_service.dart';
+import '../../services/chat_skill.dart';
+import '../../services/skill_service.dart';
+import '../../theme/chat_theme.dart';
 import '../../config/settings.dart';
 import '../../config/platform.dart';
 import '../../widgets/command_palette.dart';
-import '../../widgets/frosted_panel.dart';
+import '../../widgets/skill_palette.dart';
 import '../../widgets/session_picker_dialog.dart';
 import '../../widgets/typing_indicator.dart';
 import '../../widgets/message_status_dot.dart';
+import '../../widgets/code_highlight_text.dart';
 import '../../widgets/file_change_preview.dart';
 import '../../widgets/agent_question_panel.dart';
 import '../../widgets/chat_attachment_preview.dart';
@@ -36,6 +41,7 @@ import '../../models/chat_attachment.dart';
 
 // HomeScreen 按功能拆分的 part 文件（同库，可互访私有成员）：
 // - commands.dart    '/' 命令注册表 + Agent 设置弹窗
+// - skills.dart      '@' 技能目录加载 + 面板确认
 // - input.dart       输入区 UI、输入历史、键盘交互
 // - conversation.dart 会话创建/保存/切换/复制/解码
 // - agent.dart       消息发送、Agent 流处理、提问卡片应答
@@ -47,6 +53,7 @@ import '../../models/chat_attachment.dart';
 // - models.dart      ChatSessionView/_ChatMessage/_ToolEvent/_QuestionPanel 数据模型
 // - helpers.dart     工具名称/参数/结果的显示格式化
 part 'commands.dart';
+part 'skills.dart';
 part 'command_actions.dart';
 part 'input.dart';
 part 'conversation.dart';
@@ -63,46 +70,30 @@ part 'helpers.dart';
 // 页面视觉常量（库级顶层：extension 内可直接裸名引用）
 // =========================================================================
 
-/// 缓存避免每次 build 重建 ThemeData 触发全树刷新
-final _theme = ThemeData(
-  fontFamily: 'Microsoft YaHei',
-  scaffoldBackgroundColor: Colors.grey,
-);
+/// 窗口面板与屏幕边缘的留白（圆角 + 阴影的呼吸区）。
+/// 与 hub 侧 WindowCoordinator 的 _menuMargin 必须一致——窗口矩形由
+/// hub 的 place 消息按此值定位，Flutter 面板在本窗口内再内缩同样宽度。
+/// 取值即阴影可见上限：投影只在窗口内绘制，超出窗口边界的部分被系统裁掉。
+const _windowMargin = 8.0;
 
-/// 面板深灰黑背景（比聊天区 0xFF1E1E1E 略亮，形成分层）
-const _panelBg = Color(0xFF252526);
+/// 聊天统一字体：正文与 UI 文案。与组件层同源（[ChatTheme.fontFamily]），
+/// 换字体只改 chat_theme.dart；part 文件继续裸名引用本常量。
+const _fontFamily = ChatTheme.fontFamily;
 
-const _scaffoldBg = Color(0xFF191A1C);
+/// 代码字体：IDEA 同款 JetBrains Mono（无中文字形，中文由系统字体兜底）
+const _codeFont = ChatTheme.codeFont;
 
-/// 会话 tab 栏（Windows Terminal 风格）：栏底 _panelBg 上只有激活 tab 一个色块，
-/// 色块 = _scaffoldBg（与内容区同色无缝，视觉上是"从页面凸出的一块"）；
-/// 非激活 tab 透明融入栏底，hover 用 [_tabHoverBg] 轻微提亮
-const _tabHoverBg = Color(0x0DFFFFFF);
-const _inputBg = Color(0xFF2A2A2A);
-const _inputText = Color(0xB3FFFFFF);
-const _inputHint = Color(0x4DFFFFFF);
-const _chipActiveBg = Color(0x26FFFFFF);
-const _chipActiveText = Color(0xB3FFFFFF);
-const _userBubble = Color(0xFF3A3A3A);
+// ─── 正文排版：字号 × 行高倍数 ────────────────────────────────────────────
+// 消息正文的样式与「前面的状态圆点」共用这组值：圆点按首行行高垂直居中，
+// 不再用固定 top 魔数。改字号/行高只动这里，两处自动同步。
 
-/// 正文灰白——纯白在深底上太刺眼
-const _bubbleText = Color(0xFFC0C0C0);
-const _statusText = Colors.white;
-const _dividerColor = Color(0xFF3A3A3A);
+/// 用户消息正文字号 / 行高倍数
+const _userFontSize = 15.0;
+const _userLineHeightFactor = 1.7;
 
-/// Markdown 元素配色：代码与链接区别于正文白色
-const _codeText = Color(0xFF56A8F5);
-
-/// 代码块文字
-const _codeBlockText = Color(0xFFC0C0C0);
-const _codeBlockBg = Color(0xFF101215);
-const _linkText = Color(0xFF64B5F6);
-
-/// 聊天统一字体：更纱黑体——西文为内嵌等宽，中文严格两倍宽，终端格子感
-const _fontFamily = 'Sarasa Mono SC';
-
-/// 代码字体：IDEA 同款 JetBrains Mono（无中文字形，中文回退更纱黑体）
-const _codeFont = 'JetBrains Mono';
+/// AI 正文（Markdown 段落、列表项）字号 / 行高倍数
+const _bodyFontSize = 15.0;
+const _bodyLineHeightFactor = 1.85;
 
 /// 图片分析时用户未补充说明的默认提问文案
 const _defaultImagePrompt = '请分析这些图片，并描述其中的重要内容';
@@ -110,17 +101,35 @@ const _defaultImagePrompt = '请分析这些图片，并描述其中的重要内
 /// 混合/纯文档附件时用户未补充说明的默认提问文案
 const _defaultAttachmentPrompt = '请分析这些附件的内容';
 
-/// 列表区主题固定，缓存避免每次 build 重建 ThemeData
-final _listTheme = ThemeData(
-  brightness: Brightness.dark,
-  textSelectionTheme: const TextSelectionThemeData(
-    // 选中文字的背景高亮色
-    selectionColor: Color(0xFF4A4A4A),
+/// MaterialApp 主题缓存（浅 / 深各一份，避免每次 build 重建触发全树刷新）。
+/// 字体与聊天正文同源（[_fontFamily]）——Material 自带组件（Tooltip、SnackBar、
+/// 默认 Dialog 文字等）也走这一份，避免与手写文字混排两种字形。
+final _materialThemes = {
+  false: ThemeData(
+    brightness: Brightness.light,
+    fontFamily: _fontFamily,
   ),
-  scrollbarTheme: const ScrollbarThemeData(
-    thickness: WidgetStatePropertyAll(0),
+  true: ThemeData(
+    brightness: Brightness.dark,
+    fontFamily: _fontFamily,
   ),
-);
+};
+
+/// 聊天列表区主题（浅 / 深各一份）：选中高亮色随主题
+final _listThemes = {
+  for (final dark in [false, true])
+    dark: ThemeData(
+      brightness: dark ? Brightness.dark : Brightness.light,
+      textSelectionTheme: TextSelectionThemeData(
+        selectionColor: dark
+            ? ChatThemeData.dark.selectionColor
+            : ChatThemeData.light.selectionColor,
+      ),
+      scrollbarTheme: const ScrollbarThemeData(
+        thickness: WidgetStatePropertyAll(0),
+      ),
+    ),
+};
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -141,14 +150,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 菜单窗口是否曾获得焦点（用于失焦自动隐藏）
   bool _wasFocused = false;
 
+  // ─── 主题 ────────────────────────────────────────────────────────────────
+
+  /// 深色主题开关（默认深色延续旧版观感）；持久化经 MenuThemeService。
+  /// 所有 part 文件经 [_themeData] 取 token；弹窗（navigator 层 context
+  /// 在 ChatThemeScope 之外）也直接读字段，不走 ChatTheme.of。
+  bool _themeDark = true;
+  bool _showSessionTabs = true;
+
+  ChatThemeData get _themeData =>
+      _themeDark ? ChatThemeData.dark : ChatThemeData.light;
+
+  /// 顶栏右侧主题切换按钮：切换 + 落盘
+  Future<void> _toggleTheme() async {
+    setState(() => _themeDark = !_themeDark);
+    await MenuThemeService.save(_themeDark);
+  }
+
   // ─── 聊天状态 ────────────────────────────────────────────────────────────
 
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
-  String? _hoveredAction;
-  String? _selectedAction;
+  String _modelLabel = '加载模型中…';
+  String _workspaceLabel = '工作区';
   Timer? _toolBlinkTimer;
+  Timer? _agentSettingsSaveTimer;
   bool _toolBlinkOn = true;
   bool _showScrollToBottom = false;
 
@@ -186,6 +213,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// '/' 命令面板：命令注册表见 commands.dart 的 [_HomeScreenCommands._buildCommands]
   late final _palette = CommandPaletteController(commands: _buildCommands());
 
+  /// '@' 技能面板：技能来自 ~/.orbby/skills/（见 skills.dart 的
+  /// [_HomeScreenSkills._loadSkills]），启动时异步扫描注册
+  late final _skillPalette = SkillPaletteController();
+
   /// MaterialApp 内部的 Navigator context：
   /// HomeScreen 自身在 MaterialApp 之上，它的 context 弹窗找不到 MaterialLocalizations
   final _navigatorKey = GlobalKey<NavigatorState>();
@@ -200,16 +231,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 每次打开新的菜单窗口都使用新的 Agent 上下文（新 agentSessionId），
     // 避免复用 runtime 中的 default session；首个会话 tab 同步建立。
     _views.add(ChatSessionView(agentSessionId: AgentService.newSessionId()));
+    _loadWorkspaceLabel();
+    _loadSkills();
     HomeScreen.menuChannel.invokeMethod('ready');
+    // 恢复持久化的主题偏好（引擎就绪后一次性刷新）
+    MenuThemeService.load().then((dark) {
+      if (mounted && dark != _themeDark) setState(() => _themeDark = dark);
+    });
+    SettingsService.load().then((settings) {
+      if (!mounted) return;
+      final model = settings.model.trim().isEmpty
+          ? PlatformConfig.defaultChatModel(settings.platform)
+          : settings.model.trim();
+      setState(() {
+        _modelLabel = model;
+        _showSessionTabs = settings.showSessionTabs;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final position = await windowManager.getPosition();
       final size = await windowManager.getSize();
       final display = await screenRetriever.getPrimaryDisplay();
+      final position = display.visiblePosition ?? Offset.zero;
       final screenSize = display.visibleSize ?? display.size;
-      final adjustedSize = Size(size.width + 1, size.height);
-      await windowManager.setSize(adjustedSize);
+      // 悬浮窗几何：窗口矩形（= 面板 + 四周 _windowMargin 阴影区）贴屏幕右上边缘，
+      // 面板边距由本窗口的 Padding 绘制。hub 的 _menuBounds 按同一几何定位，
+      // 此处仅作窗口自身的最终校正（两处公式必须一致）
       await windowManager.setPosition(
-        Offset(screenSize.width - adjustedSize.width, 0),
+        Offset(
+          position.dx + screenSize.width - size.width,
+          position.dy,
+        ),
       );
     });
     // 每次窗口被显示时，输入框自动获得焦点
@@ -219,7 +270,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _scrollController.addListener(_onChatScroll);
   }
 
-  void _onInputChanged() => _palette.updateQuery(_inputController.text);
+  /// 输入内容驱动命令/技能面板过滤；'/' 与 '@' 按最后出现的触发字符
+  /// 互斥路由（两个面板不会同时可见），未路由到的一方强制隐藏
+  void _onInputChanged() {
+    final text = _inputController.text;
+    if (text.lastIndexOf('@') > text.lastIndexOf('/')) {
+      _palette.hide();
+      _skillPalette.updateQuery(text);
+    } else {
+      _skillPalette.hide();
+      _palette.updateQuery(text);
+    }
+  }
 
   void _focusInput() {
     if (!_isSending) _inputFocus.requestFocus();
@@ -228,10 +290,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _toolBlinkTimer?.cancel();
+    _agentSettingsSaveTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     menuWindowShown.removeListener(_focusInput);
     _inputController.removeListener(_onInputChanged);
     _palette.dispose();
+    _skillPalette.dispose();
     // 所有 tab 的挂起提问卡片与附件 controller 一并释放
     for (final view in _views) {
       view.questionCtrl?.dispose();
@@ -269,9 +333,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final theme = _themeData;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: _theme,
+      theme: _materialThemes[theme.isDark],
       navigatorKey: _navigatorKey,
       // 窗口级按键兜底（_handleWindowKeyEvent）：焦点不在输入框时也能 Ctrl+C/Esc 终止。
       // 只监听不抢焦点（canRequestFocus: false），不参与 tab 遍历。
@@ -280,34 +345,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         skipTraversal: true,
         onKeyEvent: _handleWindowKeyEvent,
         child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.zero,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                blurRadius: 32,
-                offset: const Offset(-10, 4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.zero,
-            child: FrostedPanel(
-              color: _panelBg,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 25),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _buildChatBody()),
-                  ],
+          backgroundColor: Colors.transparent,
+          // 窗口本体视觉：透明窗口内四周留 [_windowMargin] 给阴影，
+          // 面板 = surface 底 + 12px 圆角 + 1px 描边 + 柔和投影（参考稿形态）
+          body: ChatThemeScope(
+            data: theme,
+            child: Padding(
+              padding: const EdgeInsets.all(_windowMargin),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.line),
+                  boxShadow: theme.windowShadows,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _buildChatBody(),
                 ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

@@ -23,6 +23,16 @@ function diff(path, before, after, operation) {
     return { output: `${operation}d ${path}`, changes: [{ path, operation, diff: lines.join('\n'), additions: added.length, deletions: removed.length }] };
 }
 function displayPath(path, workspace) { const value = relative(workspace, path).replaceAll(sep, '/'); return value.startsWith('../') ? path.replaceAll(sep, '/') : value; }
+/** edit 匹配失败时的纠偏提示：按首行去空白比较找到文件中的实际行，暴露真实缩进，避免模型盲猜缩进反复重试 */
+function editHint(before, old) {
+    const first = old.split('\n').map(line => line.trim()).find(Boolean);
+    if (!first)
+        return '';
+    const hits = [];
+    before.split('\n').forEach((line, i) => { if (line.trim() === first)
+        hits.push(`${i + 1}: ${JSON.stringify(line)}`); });
+    return hits.length ? `。首行去空白后在文件中可匹配 ${hits.length} 处，实际行（引号内为真实内容与缩进）：\n${hits.slice(0, 5).join('\n')}\n请按实际行的真实缩进重试，或改用不含行首空白的唯一子串。` : '';
+}
 async function change(path, display, operation, before, action) { await action(); const after = operation === 'delete' ? null : await fs.readFile(path, 'utf8'); return diff(display, before, after, operation); }
 export function registerFilesystemTools(registry) {
     const text = { type: 'string' };
@@ -33,7 +43,8 @@ export function registerFilesystemTools(registry) {
             const lines = value.split(/\r?\n/);
             const start = Math.max(1, Number(args.startLine ?? 1));
             const end = Math.min(lines.length, Number(args.endLine ?? lines.length));
-            return lines.slice(start - 1, end).map((line, i) => `${String(start + i).padStart(6)}  ${line}`).join('\n');
+            // 行号与内容必须用制表符分隔：空格分隔符会被模型并入行首缩进（缩进 +2），构造出的 edit oldString 永远匹配不上
+            return lines.slice(start - 1, end).map((line, i) => `${String(start + i).padStart(6)}\t${line}`).join('\n');
         } });
     registry.register({ name: 'write', description: 'Create or overwrite a UTF-8 text file.', parameters: params({ path: text, content: text }, ['path', 'content']), async execute(args, ctx) {
             const path = safePath(String(args.path), ctx.workspacePath);
@@ -48,16 +59,21 @@ export function registerFilesystemTools(registry) {
     registry.register({ name: 'edit', description: 'Replace an exact string in a UTF-8 text file.', parameters: params({ path: text, oldString: text, newString: text, replaceAll: { type: 'boolean' } }, ['path', 'oldString', 'newString']), async execute(args, ctx) {
             const path = safePath(String(args.path), ctx.workspacePath);
             await ctx.permissions?.ensure(path, 'write', ctx.askUser);
-            const before = await fs.readFile(path, 'utf8');
-            const old = String(args.oldString);
+            const raw = await fs.readFile(path, 'utf8');
+            // read 展示时已把 CRLF 归一化为 LF，模型构造的 oldString 只会含 \n：统一在 LF 视图上匹配，写回时还原文件原换行风格，否则 CRLF 文件的多行替换永远匹配不上
+            const crlf = raw.includes('\r\n');
+            const before = raw.replaceAll('\r\n', '\n');
+            const old = String(args.oldString).replaceAll('\r\n', '\n');
+            const replacement = String(args.newString).replaceAll('\r\n', '\n');
             const count = before.split(old).length - 1;
             if (count === 0)
-                throw new Error('Edit target was not found');
+                throw new Error(`Edit target was not found${editHint(before, old)}`);
             if (count > 1 && !args.replaceAll)
-                throw new Error('Edit target is ambiguous');
-            const after = before.replace(args.replaceAll ? new RegExp(old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : old, String(args.newString));
+                throw new Error(`Edit target is ambiguous (${count} occurrences; pass replaceAll:true to replace all)`);
+            const merged = before.replace(args.replaceAll ? new RegExp(old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : old, replacement);
+            const after = crlf ? merged.replaceAll('\n', '\r\n') : merged;
             await fs.writeFile(path, after, 'utf8');
-            return diff(displayPath(path, ctx.workspacePath), before, after, 'edit');
+            return diff(displayPath(path, ctx.workspacePath), before, merged, 'edit');
         } });
     registry.register({ name: 'delete', description: 'Delete a file after permission approval.', parameters: params({ path: text }, ['path']), async execute(args, ctx) {
             const path = safePath(String(args.path), ctx.workspacePath);
@@ -114,13 +130,14 @@ export function registerFilesystemTools(registry) {
             if (command === 'insert') {
                 const path = safePath(String(args.path), ctx.workspacePath);
                 await ctx.permissions?.ensure(path, 'write', ctx.askUser);
-                const before = await fs.readFile(path, 'utf8');
-                const lines = before.split(/\r?\n/);
+                const raw = await fs.readFile(path, 'utf8');
+                const crlf = raw.includes('\r\n');
+                const lines = raw.split(/\r?\n/);
                 const line = Math.max(0, Math.min(lines.length, Number(args.insert_line ?? lines.length)));
-                lines.splice(line, 0, String(args.new_str ?? ''));
-                const after = lines.join('\n');
-                await fs.writeFile(path, after, 'utf8');
-                return diff(displayPath(path, ctx.workspacePath), before, after, 'edit');
+                lines.splice(line, 0, String(args.new_str ?? '').replaceAll('\r\n', '\n'));
+                const merged = lines.join('\n');
+                await fs.writeFile(path, crlf ? merged.replaceAll('\n', '\r\n') : merged, 'utf8');
+                return diff(displayPath(path, ctx.workspacePath), raw, merged, 'edit');
             }
             throw new Error(`Unsupported editor command: ${command}`);
         } });

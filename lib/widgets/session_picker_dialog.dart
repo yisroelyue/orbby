@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/chat_storage_service.dart';
+import '../theme/chat_theme.dart';
 
 /// 历史会话选择弹窗（menu 窗口内模态）：列出 ChatStorageService 的会话，
 /// 点击选中后经 Navigator.pop 返回该会话。
+///
+/// 弹窗挂在 navigator 层（在 HomeScreen 的 [ChatThemeScope] 之外），
+/// 故宿主调用时必须用 `ChatThemeScope(data: _themeData, child: ...)` 包一层，
+/// 本组件内部才能经 [ChatTheme.of] 取到当前主题。
 class SessionPickerDialog extends StatefulWidget {
   const SessionPickerDialog({super.key, required this.conversations});
 
@@ -15,16 +20,9 @@ class SessionPickerDialog extends StatefulWidget {
 }
 
 class _SessionPickerDialogState extends State<SessionPickerDialog> {
-  static const _fontFamily = 'Sarasa Mono SC';
+  static const _fontFamily = ChatTheme.fontFamily;
   // 预留标题、副标题及上下内边距，避免固定行高造成 RenderFlex 溢出。
   static const _itemExtent = 60.0;
-
-  static const _bg = Color(0xFF1E1E1E);
-  static const _border = Color(0x1AFFFFFF);
-  static const _divider = Color(0x14FFFFFF);
-  static const _hoverBg = Color(0x12FFFFFF);
-  static const _titleText = Color(0xFFEAEAEA);
-  static const _subText = Color(0x73FFFFFF);
 
   int? _hoverIndex;
   late int _selectedIndex;
@@ -87,6 +85,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Focus(
@@ -96,18 +95,20 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
         child: Container(
         width: 460,
         constraints: const BoxConstraints(maxHeight: 420),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: _bg,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _border),
+          color: theme.raised,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.line),
+          boxShadow: theme.popShadows,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildHeader(),
-            Container(height: 1, color: _divider),
-            Flexible(child: _buildList()),
+            _buildHeader(theme),
+            Container(height: 1, color: theme.lineSoft),
+            Flexible(child: _buildList(theme)),
           ],
         ),
         ),
@@ -115,7 +116,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(ChatThemeData theme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       child: Row(
@@ -123,8 +124,9 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
           Text(
             '历史会话',
             style: TextStyle(
-              color: _titleText,
-              fontSize: 14,
+              color: theme.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
               fontFamily: _fontFamily,
             ),
           ),
@@ -132,8 +134,8 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
           Text(
             '${widget.conversations.length}',
             style: TextStyle(
-              color: _subText,
-              fontSize: 12,
+              color: theme.ink3,
+              fontSize: 13,
               fontFamily: _fontFamily,
             ),
           ),
@@ -145,7 +147,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
               child: Padding(
                 padding: const EdgeInsets.all(6),
                 child: Icon(Icons.close,
-                    size: 16, color: _subText),
+                    size: 16, color: theme.ink3),
               ),
             ),
           ),
@@ -154,7 +156,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
     );
   }
 
-  Widget _buildList() {
+  Widget _buildList(ChatThemeData theme) {
     if (widget.conversations.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40),
@@ -162,8 +164,8 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
           child: Text(
             '暂无历史会话',
             style: TextStyle(
-              color: _subText,
-              fontSize: 13,
+              color: theme.ink3,
+              fontSize: 14,
               fontFamily: _fontFamily,
             ),
           ),
@@ -176,11 +178,11 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
       itemExtent: _itemExtent,
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: widget.conversations.length,
-      itemBuilder: (_, index) => _buildItem(index),
+      itemBuilder: (_, index) => _buildItem(index, theme),
     );
   }
 
-  Widget _buildItem(int index) {
+  Widget _buildItem(int index, ChatThemeData theme) {
     final conv = widget.conversations[index];
     final hovered = _hoverIndex == index;
     final selected = _selectedIndex == index;
@@ -196,7 +198,7 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
         onTap: () => Navigator.pop(context, conv),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: hovered || selected ? _hoverBg : Colors.transparent,
+          color: hovered || selected ? theme.hover : Colors.transparent,
           child: Row(
             children: [
               Expanded(
@@ -208,8 +210,9 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: _titleText,
-                        fontSize: 13,
+                        color: selected ? theme.ink : theme.ink2,
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                         fontFamily: _fontFamily,
                       ),
                     ),
@@ -217,8 +220,8 @@ class _SessionPickerDialogState extends State<SessionPickerDialog> {
                     Text(
                       '${_formatTime(conv.updatedAt)} · ${conv.messages.length} 条消息',
                       style: TextStyle(
-                        color: _subText,
-                        fontSize: 11,
+                        color: theme.ink3,
+                        fontSize: 12,
                         fontFamily: _fontFamily,
                       ),
                     ),

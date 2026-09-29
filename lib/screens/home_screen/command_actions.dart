@@ -7,6 +7,52 @@ String _cleanErrorMessage(Object error) =>
 
 /// 命令动作实现。commands.dart 只保留注册信息，具体业务逻辑集中在这里。
 extension _HomeScreenCommandActions on _HomeScreenState {
+  Future<void> _showFilePicker() async {
+    try {
+      final workspace = await AgentService.workspaceStatus(
+        sessionId: _current.agentSessionId,
+      );
+      final root = Directory(workspace);
+      if (!await root.exists()) {
+        if (mounted) _addLocalMessage('当前工作区不存在：$workspace');
+        return;
+      }
+
+      final directories = <String>[];
+      await for (final entity in root.list(recursive: true, followLinks: false)) {
+        if (entity is! Directory) continue;
+        final absolute = entity.path;
+        var relative = absolute.startsWith(root.path)
+            ? absolute.substring(root.path.length)
+            : absolute;
+        relative = relative.replaceFirst(RegExp(r'^[\\/]'), '').replaceAll('\\', '/');
+        if (relative.isNotEmpty) directories.add(relative);
+        if (directories.length >= 5000) break;
+      }
+      directories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      if (!mounted) return;
+      final selected = await _pickWorkspaceFile(directories);
+      if (selected != null && mounted) {
+        final currentText = _inputController.text;
+        final slashIndex = currentText.lastIndexOf('/');
+        final prefix = slashIndex < 0
+            ? ''
+            : currentText.substring(0, slashIndex);
+        _setInputText('$prefix$selected ');
+        _inputFocus.requestFocus();
+      }
+    } catch (error) {
+      if (mounted) _addLocalMessage('读取工作区文件失败：${_cleanErrorMessage(error)}');
+    }
+  }
+
+  Future<String?> _pickWorkspaceFile(List<String> directories) {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _WorkspaceFilePickerDialog(files: directories),
+    );
+  }
+
   Future<void> _setPersonality(String name) async {
     final (key, candidates) = PersonalityService.resolve(name);
     if (key == null) {
@@ -41,7 +87,7 @@ extension _HomeScreenCommandActions on _HomeScreenState {
     _addLocalMessage('当前授权模式：$mode');
   }
 
-  /// /cd：切换 Agent 工作区（Node 侧校验目录并持久化）。
+  /// /cd：切换 Agent 工作区（Node 侧校验；仅当前 runtime 生命周期有效）。
   /// 空参数查看当前工作区；相对路径由 Node 侧按当前工作区解析。
   Future<void> _changeWorkspace(String path) async {
     // 用户复制的 Windows 路径常带包裹引号，剥掉再交 Node 解析；
@@ -59,6 +105,7 @@ extension _HomeScreenCommandActions on _HomeScreenState {
     }
     try {
       final workspace = await AgentService.setWorkspace(target, sessionId: sid);
+      await _loadWorkspaceLabel();
       if (mounted) _addLocalMessage('工作区已切换：$workspace');
     } catch (e) {
       if (mounted) _addLocalMessage('切换工作区失败：${_cleanErrorMessage(e)}');
@@ -97,6 +144,8 @@ extension _HomeScreenCommandActions on _HomeScreenState {
       _messages.clear();
       _queuedTexts.clear();
       _dismissQuestionCard();
+      // 内容整体换源，旧的滚动记录对空列表无意义
+      _current.resetScrollState();
     });
     _attachmentCtrl.clear();
   }
@@ -135,5 +184,160 @@ extension _HomeScreenCommandActions on _HomeScreenState {
     // 丢掉最后一条用户消息及其后的所有回复，重新发送。
     setState(() => _messages.removeRange(lastUser, _messages.length));
     _sendText(text, attachments: attachments);
+  }
+}
+
+class _WorkspaceFilePickerDialog extends StatefulWidget {
+  const _WorkspaceFilePickerDialog({required this.files});
+
+  final List<String> files;
+
+  @override
+  State<_WorkspaceFilePickerDialog> createState() =>
+      _WorkspaceFilePickerDialogState();
+}
+
+class _WorkspaceFilePickerDialogState
+    extends State<_WorkspaceFilePickerDialog> {
+  final _searchController = TextEditingController();
+  final _focusNode = FocusNode();
+  final _searchFocusNode = FocusNode();
+  int _selectedIndex = 0;
+
+  List<String> get _filtered {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return widget.files;
+    return widget.files
+        .where((file) => file.toLowerCase().contains(query))
+        .toList(growable: false);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_resetSelection);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  void _resetSelection() => setState(() => _selectedIndex = 0);
+
+  void _move(int delta) {
+    final count = _filtered.length;
+    if (count == 0) return;
+    setState(() => _selectedIndex = (_selectedIndex + delta + count) % count);
+  }
+
+  void _focusList() {
+    _focusNode.requestFocus();
+  }
+
+  void _confirm() {
+    final files = _filtered;
+    if (files.isNotEmpty) Navigator.of(context).pop(files[_selectedIndex]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const panel = Color(0xFFFFFFFF);
+    const ink = Color(0xFF1F2937);
+    const secondary = Color(0xFF4B5563);
+    const muted = Color(0xFF6B7280);
+    const sunken = Color(0xFFF3F4F6);
+    final files = _filtered;
+    final index = files.isEmpty ? 0 : _selectedIndex.clamp(0, files.length - 1);
+    return Dialog(
+      backgroundColor: panel,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 620,
+        height: 560,
+        child: Focus(
+          focusNode: _focusNode,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            // 搜索框获得焦点时保留上下键的文字光标行为；↓进入目录列表。
+            if (_searchFocusNode.hasFocus) {
+              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                _focusList();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              if (_selectedIndex == 0) {
+                _searchFocusNode.requestFocus();
+                return KeyEventResult.handled;
+              }
+              _move(-1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              _move(1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.enter) {
+              _confirm();
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.escape) {
+              Navigator.of(context).pop();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: Text('工作区目录（${files.length}）', style: const TextStyle(color: ink, fontSize: 15, fontWeight: FontWeight.w600))),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, size: 18, color: muted)),
+              ]),
+              TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: '搜索文件名或路径',
+                  prefixIcon: const Icon(Icons.search, color: muted),
+                  isDense: true,
+                  filled: true,
+                  fillColor: sunken,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: files.isEmpty
+                    ? const Center(child: Text('没有匹配的目录', style: TextStyle(color: muted)))
+                    : ListView.builder(
+                        itemCount: files.length,
+                        itemBuilder: (_, i) => InkWell(
+                          onTap: () => Navigator.of(context).pop(files[i]),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(color: i == index ? const Color(0xFFE8F0FE) : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+                            child: Text(files[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: secondary, fontSize: 13, fontFamily: _fontFamily)),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 6),
+              const Text('↑↓ 选择  Enter 插入  Esc 关闭', style: TextStyle(color: muted, fontSize: 12)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_resetSelection);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _focusNode.dispose();
+    super.dispose();
   }
 }

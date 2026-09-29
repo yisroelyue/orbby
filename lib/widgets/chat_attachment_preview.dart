@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../models/chat_attachment.dart';
 import '../services/chat_attachment_controller.dart';
+import '../theme/chat_theme.dart';
 import 'chat_attachment_viewer.dart';
 
 /// 输入框上方的附件缩略图条：读取中/失败/就绪三态 + 删除 + 点击看大图。
-/// 配色与 CommandPalette 同系；状态全部来自 [ChatAttachmentController]，
-/// 本组件只渲染，删除/查看动作回调宿主。
+/// 配色与 CommandPalette 同系（raised 卡 + 12px 圆角 + line 描边）；
+/// 状态全部来自 [ChatAttachmentController]，本组件只渲染，删除/查看动作回调宿主。
 class ChatAttachmentPreview extends StatelessWidget {
   const ChatAttachmentPreview({
     super.key,
@@ -21,11 +22,9 @@ class ChatAttachmentPreview extends StatelessWidget {
   /// 点击缩略图打开大图；不传则用内置默认查看器
   final ValueChanged<ChatAttachment>? onOpen;
 
-  static const _bg = Color(0xFF1E1E1E);
-  static const _errorText = Color(0xFFEF9A9A);
-
   @override
   Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -36,9 +35,9 @@ class ChatAttachmentPreview extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: _bg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            color: theme.raised,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.line),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,8 +48,8 @@ class ChatAttachmentPreview extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     error,
-                    style: const TextStyle(
-                        color: _errorText, fontSize: 12, fontFamily: 'Sarasa Mono SC'),
+                    style: TextStyle(
+                        color: theme.danger, fontSize: 13, fontFamily: ChatTheme.fontFamily),
                   ),
                 ),
               if (items.isNotEmpty)
@@ -101,6 +100,7 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
@@ -113,9 +113,9 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
           margin: const EdgeInsets.only(right: 8),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            color: const Color(0xFF292929),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: theme.line),
+            color: theme.sunken,
           ),
           child: Stack(
             fit: StackFit.expand,
@@ -142,19 +142,20 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
   }
 
   Widget _buildBody() {
+    final theme = ChatTheme.of(context);
     final attachment = widget.attachment;
     switch (attachment.status) {
       case ChatAttachmentStatus.loading:
-        return const Center(
+        return Center(
           child: SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+            child: CircularProgressIndicator(strokeWidth: 2, color: theme.ink3),
           ),
         );
       case ChatAttachmentStatus.error:
-        return const Center(
-          child: Icon(Icons.broken_image_outlined, size: 22, color: Colors.white38),
+        return Center(
+          child: Icon(Icons.broken_image_outlined, size: 22, color: theme.ink3),
         );
       case ChatAttachmentStatus.ready:
         // 图片优先用内存缩略图（重载会话后为空则回退文件解码）
@@ -166,11 +167,11 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
           final file = File(attachment.localPath);
           if (file.existsSync()) {
             return Image.file(file, fit: BoxFit.cover, gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image_outlined, size: 22, color: Colors.white38));
+                errorBuilder: (_, __, ___) => Icon(
+                    Icons.broken_image_outlined, size: 22, color: theme.ink3));
           }
-          return const Icon(Icons.image_not_supported_outlined,
-              size: 22, color: Colors.white38);
+          return Icon(Icons.image_not_supported_outlined,
+              size: 22, color: theme.ink3);
         }
         // 非图片附件：类型图标 + 文件名 + 大小
         return Padding(
@@ -178,20 +179,20 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(_iconForAttachment(attachment), size: 22, color: Colors.white54),
+              Icon(_iconForAttachment(attachment), size: 22, color: theme.ink2),
               const SizedBox(height: 4),
               Text(
                 attachment.fileName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 10, fontFamily: 'Sarasa Mono SC'),
+                style: TextStyle(
+                    color: theme.ink2, fontSize: 11, fontFamily: ChatTheme.fontFamily),
               ),
               const SizedBox(height: 2),
               Text(
                 _sizeLabel(attachment.sizeBytes),
-                style: const TextStyle(color: Colors.white24, fontSize: 9),
+                style: TextStyle(color: theme.ink3, fontSize: 10),
               ),
             ],
           ),

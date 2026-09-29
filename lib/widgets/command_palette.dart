@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../services/chat_command.dart';
+import '../theme/chat_theme.dart';
 
-/// 输入框上方的 '/' 命令提示列表（终端风格：左列命令名，右列说明）。
+/// 输入框上方的 '/' 命令提示列表（左列命令名，右列说明）。
 ///
 /// 纯展示组件：可见性、过滤结果与键盘选中项均来自 [CommandPaletteController]，
 /// 本组件只负责渲染与点击；确认动作通过 [onConfirm] 交回宿主处理。
+/// 视觉与提问卡片同源（参考稿 .pop）：raised 卡片 + 12px 圆角 + 浮层阴影。
 class CommandPalette extends StatefulWidget {
   const CommandPalette({
     super.key,
@@ -21,18 +23,13 @@ class CommandPalette extends StatefulWidget {
 }
 
 class _CommandPaletteState extends State<CommandPalette> {
-  /// 与聊天区统一的终端字体
-  static const _fontFamily = 'Sarasa Mono SC';
+  /// 与聊天区统一（[ChatTheme.fontFamily]）
+  static const _fontFamily = ChatTheme.fontFamily;
 
-  static const _rowHeight = 36.0;
+  static const _rowHeight = 34.0;
+  static const _headerHeight = 32.0;
   static const _maxVisibleRows = 6;
-  static const _nameWidth = 132.0;
-
-  static const _bg = Color(0xFF1E1E1E);
-  static const _selectedBg = Color(0x24FFFFFF);
-  static const _hoverBg = Color(0x12FFFFFF);
-  static const _nameText = Color(0xFFEAEAEA);
-  static const _descText = Color(0x73FFFFFF);
+  static const _nameWidth = 126.0;
 
   final _scrollController = ScrollController();
   int? _hoverIndex;
@@ -83,29 +80,64 @@ class _CommandPaletteState extends State<CommandPalette> {
     final controller = widget.controller;
     if (!controller.visible) return const SizedBox.shrink();
 
+    final theme = ChatTheme.of(context);
     final rows = controller.filtered;
     return Container(
       // 不可见时是 shrink 的空盒，间距随面板一起出现/消失
-      margin: const EdgeInsets.only(bottom: 6),
-      constraints: BoxConstraints(maxHeight: _rowHeight * _maxVisibleRows + 8),
-      decoration: BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      margin: const EdgeInsets.only(bottom: 8),
+      constraints: BoxConstraints(
+        maxHeight: _headerHeight + _rowHeight * _maxVisibleRows,
       ),
-      child: ListView.builder(
-        controller: _scrollController,
-        shrinkWrap: true,
-        itemExtent: _rowHeight,
-        padding: const EdgeInsets.symmetric(vertical: 0),
-        itemCount: rows.length,
-        itemBuilder: (_, index) =>
-            _buildRow(rows[index], index, index == controller.selectedIndex),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.raised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.line),
+        boxShadow: theme.popShadows,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: _headerHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '命令（${rows.length}）',
+                  style: TextStyle(
+                    color: theme.ink2,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    fontFamily: _fontFamily,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              controller: _scrollController,
+              shrinkWrap: true,
+              itemExtent: _rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              itemCount: rows.length,
+              itemBuilder: (_, index) => _buildRow(
+                rows[index],
+                index,
+                index == controller.selectedIndex,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildRow(ChatCommand command, int index, bool selected) {
+    final theme = ChatTheme.of(context);
     final hovered = _hoverIndex == index;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -117,34 +149,46 @@ class _CommandPaletteState extends State<CommandPalette> {
         child: Container(
           height: _rowHeight,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          color: selected
-              ? _selectedBg
-              : hovered
-                  ? _hoverBg
-                  : Colors.transparent,
+          decoration: BoxDecoration(
+            color: selected || hovered
+                ? const Color(0xFFF3F4F6)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Row(
             children: [
               SizedBox(
                 width: _nameWidth,
-                child: Text(
-                  '/${command.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _nameText,
-                    fontSize: 13,
-                    fontFamily: _fontFamily,
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      '/${command.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected ? theme.ink : theme.ink2,
+                        fontSize: 13.5,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        fontFamily: _fontFamily,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              Icon(
+                _iconForCommand(command.name),
+                size: 16,
+                color: selected ? theme.ink : theme.ink2,
+              ),
+              const SizedBox(width: 7),
               Expanded(
                 child: Text(
                   command.description,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _descText,
-                    fontSize: 12,
+                  style: TextStyle(
+                    color: theme.ink3,
+                    fontSize: 13,
                     fontFamily: _fontFamily,
                   ),
                 ),
@@ -155,4 +199,22 @@ class _CommandPaletteState extends State<CommandPalette> {
       ),
     );
   }
+
+  IconData _iconForCommand(String name) => switch (name) {
+        'help' => Icons.help_outline,
+        'session' => Icons.history,
+        'new' => Icons.add_circle_outline,
+        'close' || 'clear' || 'clear-session' => Icons.delete_outline,
+        'compact' => Icons.compress,
+        'status' => Icons.info_outline,
+        'cd' => Icons.folder_open,
+        'personality' => Icons.face_outlined,
+        'rollback' => Icons.undo,
+        'retry' => Icons.refresh,
+        'copy' || 'copy-txt' => Icons.content_copy,
+        'apps' => Icons.apps,
+        'sys_setting' || 'setting' => Icons.settings_outlined,
+        'permission-off' || 'permission-all' || 'permission-read' || 'permission' => Icons.lock_outline,
+        _ => Icons.terminal,
+      };
 }

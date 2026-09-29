@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="noteIconTitle">
+    <title id="noteIconTitle">笔记图标</title>
+
+    <rect x="96" y="120" width="320" height="24" rx="12" fill="#1F2A44"/>
+    <rect x="96" y="244" width="216" height="24" rx="12" fill="#1F2A44" opacity="0.55"/>
+    <rect x="96" y="368" width="296" height="24" rx="12" fill="#FFC145"/>
+</svg>

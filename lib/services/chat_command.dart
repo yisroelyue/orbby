@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'palette_filter.dart';
+
 /// 命令确认后的行为：
 /// - immediate：立即执行（现有全部命令）
 /// - prepareInput：不执行动作，只把 `/命令名 ` 写入输入框，
@@ -95,8 +97,14 @@ class CommandPaletteController extends ChangeNotifier {
   /// （不区分大小写）。例如输入 `/cs` 可匹配 `/clear-session`，输入 `/st` 可匹配
   /// `/setting`。
   void updateQuery(String text) {
-    if (text == _query) return;
-    _query = text;
+    // 只用最后一个 '/' 后的命令片段过滤，允许用户在同一输入框中
+    // 先输入 /cd 路径，再输入 /file 打开文件/目录选择器。
+    final slashIndex = text.lastIndexOf('/');
+    final query = slashIndex < 0 ? '' : text.substring(slashIndex);
+    final end = query.indexOf(RegExp(r'[\s]'));
+    final commandQuery = end < 0 ? query : query.substring(0, end);
+    if (commandQuery == _query) return;
+    _query = commandQuery;
     _dismissedAt = null;
     _refilter();
     notifyListeners();
@@ -126,49 +134,31 @@ class CommandPaletteController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 强制隐藏并清空 query（供宿主在 '/' 命令面板与 '@' 技能面板间
+  /// 按最后触发字符互斥路由）；再次输入 '/' 时正常重新弹出
+  void hide() {
+    if (_query.isEmpty && _filtered.isEmpty) return;
+    _query = '';
+    _dismissedAt = null;
+    _filtered.clear();
+    _selectedIndex = 0;
+    notifyListeners();
+  }
+
   void _refilter() {
     final keyword =
         _query.length > 1 ? _query.substring(1).toLowerCase() : '';
     _filtered
       ..clear()
       ..addAll(
-        _commands.where((c) => _matches(c.name, keyword)),
+        _commands.where((c) => paletteMatches(c.name, keyword)),
       )
       ..sort((a, b) {
-        final rank = _matchRank(a.name, keyword).compareTo(
-          _matchRank(b.name, keyword),
+        final rank = paletteMatchRank(a.name, keyword).compareTo(
+          paletteMatchRank(b.name, keyword),
         );
         return rank != 0 ? rank : _byName(a, b);
       });
     _selectedIndex = 0;
-  }
-
-  bool _matches(String name, String keyword) {
-    if (keyword.isEmpty) return true;
-    return _matchRank(name, keyword) < 3;
-  }
-
-  /// 匹配优先级：命令名前缀 > 分隔词首字母缩写 > 命令名字符顺序匹配。
-  int _matchRank(String name, String keyword) {
-    if (keyword.isEmpty) return 0;
-    final normalized = name.toLowerCase();
-    if (normalized.startsWith(keyword)) return 0;
-
-    final initials = normalized
-        .split(RegExp(r'[-_\s]+'))
-        .where((part) => part.isNotEmpty)
-        .map((part) => part[0])
-        .join();
-    if (initials.startsWith(keyword)) return 1;
-
-    // 允许输入的字符按顺序出现在命令名中，例如 `st` -> `setting`。
-    var keywordIndex = 0;
-    for (final character in normalized.split('')) {
-      if (character == keyword[keywordIndex]) {
-        keywordIndex++;
-        if (keywordIndex == keyword.length) return 2;
-      }
-    }
-    return 3;
   }
 }

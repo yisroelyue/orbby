@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="cardIconTitle">
+    <title id="cardIconTitle">银行卡图标</title>
+
+    <rect x="72" y="146" width="368" height="220" rx="44" fill="#1F2A44"/>
+    <rect x="112" y="204" width="288" height="32" rx="16" fill="#FFFFFF" opacity=".45"/>
+    <rect x="112" y="278" width="128" height="30" rx="15" fill="#FFC145"/>
+</svg>

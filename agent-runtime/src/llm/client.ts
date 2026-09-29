@@ -20,6 +20,9 @@ function anthropicHeaders(config: LlmConfig): Record<string, string> {
   return {'content-type': 'application/json', 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01'};
 }
 
+/** request.log 脱敏：完整 apiKey 不落盘，只留首尾片段供排查对照 */
+function maskKey(key: string) { return key.length > 12 ? `${key.slice(0, 6)}…${key.slice(-4)}` : '***'; }
+
 function openAiHeaders(config: LlmConfig): Record<string, string> {
   return {'content-type': 'application/json', authorization: `Bearer ${config.apiKey}`};
 }
@@ -108,7 +111,7 @@ export async function streamComplete(config: LlmConfig, messages: LlmMessage[], 
   const body = anthropic
     ? buildAnthropicBody(config, messages, tools, true)
     : buildOpenAiBody(config, messages, tools, true);
-  void conversationLog(config.conversationId, 'llm.request', {url:config.url,apiKey:config.apiKey,model:config.model,body});
+  void conversationLog(config.conversationId, 'llm.request', {url:config.url, apiKey: maskKey(config.apiKey), model:config.model, body});
   const response = await fetch(config.url, {method:'POST', signal, headers: anthropic ? anthropicHeaders(config) : openAiHeaders(config), body:JSON.stringify(body)});
   if (!response.ok || !response.body) throw Object.assign(new Error(`LLM request failed: ${response.status} ${await response.text()}`),{code:'LLM_REQUEST_ERROR'});
   const calls = new Map<number,{id:string;name:string;args:string}>(); let content='';

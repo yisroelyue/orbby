@@ -78,7 +78,7 @@ class _ViewerImage extends StatelessWidget {
           Text(
             '图片「${attachment.fileName}」文件不存在，可能已被清理，请重新粘贴',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 13),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 14),
           ),
         ],
       );
@@ -94,7 +94,7 @@ class _ViewerImage extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             '图片「${attachment.fileName}」读取失败',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 13),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 14),
           ),
         ],
       ),

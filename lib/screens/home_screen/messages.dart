@@ -9,6 +9,7 @@ class _UserAttachmentThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     final thumbnail = attachment.thumbnailBytes;
     Widget body;
     if (thumbnail != null) {
@@ -23,7 +24,7 @@ class _UserAttachmentThumb extends StatelessWidget {
                 ? Icons.picture_as_pdf_outlined
                 : Icons.text_snippet_outlined,
             size: 18,
-            color: Colors.white54,
+            color: theme.ink3,
           ),
           const SizedBox(height: 4),
           Padding(
@@ -33,18 +34,18 @@ class _UserAttachmentThumb extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: Colors.white54, fontSize: 9, fontFamily: 'Sarasa Mono SC'),
+              style: TextStyle(
+                  color: theme.ink3, fontSize: 10, fontFamily: _fontFamily),
             ),
           ),
         ],
       );
     } else if (attachment.localPath.isNotEmpty && File(attachment.localPath).existsSync()) {
       body = Image.file(File(attachment.localPath), fit: BoxFit.cover, gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined,
-              size: 16, color: Colors.white38));
+          errorBuilder: (_, __, ___) => Icon(Icons.broken_image_outlined,
+              size: 16, color: theme.ink3));
     } else {
-      body = const Icon(Icons.image_not_supported_outlined, size: 16, color: Colors.white38);
+      body = Icon(Icons.image_not_supported_outlined, size: 16, color: theme.ink3);
     }
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -55,9 +56,9 @@ class _UserAttachmentThumb extends StatelessWidget {
           height: 64,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            color: const Color(0xFF292929),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: theme.line),
+            color: theme.sunken,
           ),
           child: body,
         ),
@@ -67,11 +68,11 @@ class _UserAttachmentThumb extends StatelessWidget {
 }
 
 /// 消息渲染：聊天列表、用户/Agent 气泡、工具调用行、文件变更面板、
-/// 问答留痕卡、消息操作按钮，以及底部跟随滚动。
+/// 问答留痕卡，以及底部跟随滚动。
 extension _HomeScreenMessages on _HomeScreenState {
   Widget _buildChatList() {
     return Theme(
-      data: _listTheme,
+      data: _listThemes[_themeData.isDark]!,
       child: Stack(
         children: [
           SelectionArea(
@@ -86,16 +87,9 @@ extension _HomeScreenMessages on _HomeScreenState {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 12,
+              bottom: 10,
               child: Center(
-                child: FloatingActionButton.small(
-                  heroTag: 'scroll-to-bottom',
-                  tooltip: '滚动到底部',
-                  backgroundColor: Color(0xFF3A3A3A),
-                  foregroundColor: Colors.white,
-                  onPressed: () => _scrollToBottom(force: true),
-                  child: const Icon(Icons.keyboard_arrow_down),
-                ),
+                child: _ScrollToBottomButton(onTap: () => _scrollToBottom(force: true)),
               ),
             ),
         ],
@@ -114,6 +108,7 @@ extension _HomeScreenMessages on _HomeScreenState {
   }
 
   Widget _buildMessageBubble(_ChatMessage msg) {
+    final theme = _themeData;
     // step/turn 事件可能创建没有文本和内容的占位消息；完成后不应留下空白气泡。
     if (!msg.isUser &&
         !msg.streaming &&
@@ -123,12 +118,21 @@ extension _HomeScreenMessages on _HomeScreenState {
       return const SizedBox.shrink();
     }
     if (msg.isUser) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.sunken,
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const MessageStatusDot(status: MessageStatus.user),
+            const MessageStatusDot(
+              status: MessageStatus.user,
+              // 与下面用户正文同一行高，圆点才能落在首行中线上
+              lineHeight: _userFontSize * _userLineHeightFactor,
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,7 +140,7 @@ extension _HomeScreenMessages on _HomeScreenState {
                   // 消息附件缩略图（重载会话后无内存缩略图，直接读本地文件）
                   if (msg.attachments.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Wrap(
                         spacing: 6,
                         runSpacing: 6,
@@ -153,9 +157,10 @@ extension _HomeScreenMessages on _HomeScreenState {
                     Text(
                       msg.text,
                       style: TextStyle(
-                        color: _bubbleText,
-                        fontSize: 13,
-                        height: 1.4,
+                        color: theme.ink,
+                        fontSize: _userFontSize,
+                        height: _userLineHeightFactor,
+                        letterSpacing: 0.1,
                         fontFamily: _fontFamily,
                       ),
                     ),
@@ -169,7 +174,7 @@ extension _HomeScreenMessages on _HomeScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 工具行：单条直出；≥2 条折叠为步骤组（默认只显示概览 + 第一条，见 tool_steps.dart）
+        // 工具行：单条直出；≥2 条折叠为步骤组（默认只显示概览，见 tool_steps.dart）
         if (msg.toolEvents.length == 1)
           _buildToolRow(msg.toolEvents.first)
         else if (msg.toolEvents.length > 1)
@@ -179,85 +184,77 @@ extension _HomeScreenMessages on _HomeScreenState {
             blinkOn: _toolBlinkOn,
             onToggle: () => setState(() => msg.toolsExpanded = !msg.toolsExpanded),
             rowBuilder: _buildToolRow,
+            theme: theme,
           ),
         // 正文气泡：只在有文本或（等待占位且还没有工具行）时渲染。
         // fileChanges/diff 与问答卡都挂在工具行下，正文区只剩状态点时不渲染，
         // 否则会出现孤立圆点（工具行之间的 completed 绿点/processing 灰点）
         if (msg.text.trim().isNotEmpty || (msg.streaming && msg.toolEvents.isEmpty))
-          Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 3),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MessageStatusDot(
-                status: msg.terminated
-                    ? MessageStatus.terminated
-                    : msg.streaming
-                        ? MessageStatus.processing
-                        : MessageStatus.completed,
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    MarkdownBody(
-            data: msg.streaming ? '${msg.text}▌' : msg.text,
-            selectable: false,
-            builders: {
-              // 只接管代码块文字颜色（含外边距与横向滚动）；背景/圆角/边框仍走样式表
-              'pre': _PreTextBuilder(
-                TextStyle(
-                  color: _codeBlockText,
-                  fontSize: 13,
-                  fontFamily: _codeFont,
-                  fontFamilyFallback: [_fontFamily],
-                  ),
-              ),
-            },
-            styleSheet: _markdownStyleSheet(),
-                    ),
-                  ],
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MessageStatusDot(
+                  status: msg.terminated
+                      ? MessageStatus.terminated
+                      : msg.streaming
+                          ? MessageStatus.processing
+                          : MessageStatus.completed,
+                  // 与 Markdown 段落同一行高（见 markdown.dart 的 p 样式）
+                  lineHeight: _bodyFontSize * _bodyLineHeightFactor,
                 ),
-              ),
-            ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      MarkdownBody(
+                        data: msg.streaming ? '${msg.text}▌' : msg.text,
+                        selectable: false,
+                        builders: {
+                          // 接管代码块（语言标签 + 复制按钮）与行内代码
+                          // （灰底 chip）；样式取当前主题
+                          'pre': _PreTextBuilder(theme: theme),
+                          'code': _InlineCodeBuilder(theme: theme),
+                        },
+                        styleSheet: _markdownStyleSheet(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        // 临时隐藏：复制 / 重新生成按钮
-        // if (!msg.streaming)
-        //   Padding(
-        //     padding: const EdgeInsets.only(left: 12, right: 12, top: 6),
-        //     child: Row(
-        //       children: [
-        //         _buildActionButton('assets/svg/复制.svg', '复制', () {
-        //           Clipboard.setData(ClipboardData(text: msg.text));
-        //         }),
-        //         const SizedBox(width: 14),
-        //         _buildActionButton('assets/svg/重新.svg', '重新生成', () {
-        //           // TODO: 重新生成
-        //         }),
-        //       ],
-        //     ),
-        //   ),
       ],
     );
   }
 
   /// 单条工具调用行：直出与折叠组的展开详情共用同一实现
   Widget _buildToolRow(_ToolEvent tool) {
+    final theme = _themeData;
     // 提问用户：挂起中（无留痕卡、无错误）整行不渲染，问答交互在输入框上方卡片；
     // 回答/跳过后渲染问答留痕卡
     if (tool.name == 'ask_user_question' && tool.questionPanels.isEmpty && tool.errorMessage == null) {
       return const SizedBox.shrink();
     }
+    final icon = toolIconAsset(tool.name);
     return Padding(
-      // 左缩进 20：工具块整体比正文（28）更靠右一档，弱化辅助信息
-      padding: const EdgeInsets.fromLTRB(20, 5, 12, 2),
+      // 左缩进 38：工具块比正文（状态点轨）再退一档，弱化辅助信息（参考稿）
+      padding: const EdgeInsets.fromLTRB(38, 2, 12, 2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // 圆点暂时隐藏：等宽占位（7 icon + 8 gap）保持文字位置不变，
-        // 且与概览头前缀（点7+gap4+箭头16+gap4=31）+ 缩进16 恰好对齐（12+15+16=43）
-        const SizedBox(width: 15),
+        // 工具图标（行首）：染 ink2 与标题同色；
+        // top 按标题首行行高估算居中（12.5 × 默认行高 ≈1.4 ≈ 17.5 → (17.5-14)/2 ≈ 2）。
+        // 无映射的工具不占位（行首直接是标题）。
+        if (icon != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 6),
+            child: SvgPicture.asset(
+              icon,
+              width: 14,
+              height: 14,
+              colorFilter: ColorFilter.mode(theme.ink2, BlendMode.srcIn),
+            ),
+          ),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // 标题与参数同一行（「读取文件：path: ...」），超宽软换行；
           // 错误不走详情（_formatToolDetails），只渲染下面独立错误行，防双写。
@@ -267,18 +264,18 @@ extension _HomeScreenMessages on _HomeScreenState {
               _toolTitleSpan(tool),
               maxLines: 6,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, fontFamily: _fontFamily),
+              style: TextStyle(color: theme.ink2, fontSize: 12.5, fontWeight: FontWeight.w600, letterSpacing: 0.2, fontFamily: _fontFamily),
             ),
           if (tool.errorMessage != null)
             Padding(
-              padding: const EdgeInsets.only(left: 16),
+              padding: const EdgeInsets.only(top: 2),
               child: Text(
                 tool.errorMessage!,
                 maxLines: 5,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: tool.errorMessage == '提问已搁置' ? Colors.white38 : Colors.redAccent,
-                  fontSize: 11,
+                  color: tool.errorMessage == '提问已搁置' ? theme.ink3 : theme.danger,
+                  fontSize: 12,
                   fontFamily: _fontFamily,
                 ),
               ),
@@ -297,47 +294,6 @@ extension _HomeScreenMessages on _HomeScreenState {
             ),
         ])),
       ]),
-    );
-  }
-
-  Widget _buildActionButton(
-      String svgAsset, String label, VoidCallback onTap) {
-    final isHovered = _hoveredAction == label;
-    final isSelected = _selectedAction == label;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hoveredAction = label),
-      onExit: (_) => setState(() => _hoveredAction = null),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _selectedAction = label);
-          onTap();
-          Future.delayed(const Duration(milliseconds: 150), () {
-            if (mounted) setState(() => _selectedAction = null);
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? _chipActiveBg
-                : isHovered
-                    ? _chipActiveBg.withValues(alpha: 0.4)
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SvgPicture.asset(
-            svgAsset,
-            width: 16,
-            height: 16,
-            colorFilter: ColorFilter.mode(
-              isSelected || isHovered ? _chipActiveText : _statusText,
-              BlendMode.srcIn,
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -360,5 +316,51 @@ extension _HomeScreenMessages on _HomeScreenState {
         );
       }
     });
+  }
+}
+
+/// 回到底部浮钮（参考稿 .jump）：32px 描边白卡圆钮 + 浮层阴影
+class _ScrollToBottomButton extends StatefulWidget {
+  const _ScrollToBottomButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_ScrollToBottomButton> createState() => _ScrollToBottomButtonState();
+}
+
+class _ScrollToBottomButtonState extends State<_ScrollToBottomButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Tooltip(
+          message: '滚动到底部',
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: theme.raised,
+              shape: BoxShape.circle,
+              border: Border.all(color: theme.line),
+              boxShadow: theme.popShadows,
+            ),
+            child: Icon(
+              Icons.keyboard_arrow_down,
+              size: 18,
+              color: _hovered ? theme.ink : theme.ink2,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

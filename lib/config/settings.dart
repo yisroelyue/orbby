@@ -74,6 +74,7 @@ class AppSettings {
     this.agentSystemPrompt = '',
     this.agentUsageRules = '',
     this.panelAppIds = const [],
+    this.showSessionTabs = true,
     Map<String, PlatformApiConfig>? apiConfigs,
     Map<String, LogCategoryConfig>? logCategories,
   }) : apiConfigs =
@@ -106,6 +107,7 @@ class AppSettings {
   String agentSystemPrompt;
   String agentUsageRules;
   List<String> panelAppIds; // 服务面板展示的应用 id 列表
+  bool showSessionTabs; // HomeScreen 顶部是否显示会话标签
   Map<String, PlatformApiConfig> apiConfigs;
 
   /// 当前平台的便捷访问器
@@ -171,6 +173,7 @@ class AppSettings {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      showSessionTabs: json['showSessionTabs'] as bool? ?? true,
       apiConfigs: configs,
     );
   }
@@ -220,6 +223,7 @@ class AppSettings {
     'agentSystemPrompt': agentSystemPrompt,
     'agentUsageRules': agentUsageRules,
     'panelAppIds': panelAppIds,
+    'showSessionTabs': showSessionTabs,
   };
 }
 

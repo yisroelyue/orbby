@@ -1,106 +1,119 @@
 part of 'home_screen.dart';
 
-/// 页面展示骨架：聊天主体容器、欢迎页、建议入口图标、聊天区域编排。
 extension _HomeScreenWidgets on _HomeScreenState {
   Widget _buildChatBody() {
     final isEmpty = _messages.isEmpty && !_isSending;
+    final theme = _themeData;
     return Container(
-      decoration: const BoxDecoration(
-        color: _scaffoldBg,
-        // 底部贴面板底边，圆角交给外层 ClipRRect 裁
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      color: theme.surface,
       child: Column(
         children: [
-          // 顶部会话 tab 栏（多会话切换/关闭，新建走 /new）：自带 _panelBg 栏底与 top 圆角、
-          // 贴满容器顶部；激活 tab 用 _scaffoldBg 与内容区同色衔接（Windows Terminal 式
-          // "从页面凸出的一块"），所以内容区 padding 移到这里单独包
-          _buildSessionTabs(),
+          if (_showSessionTabs) _buildSessionTabs(),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-              child: isEmpty ? _buildWelcomeScreen() : _buildChatArea(),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: isEmpty
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 620),
+                          child: _buildAgentHints(),
+                        ),
+                      ],
+                    )
+                  : _buildChatList(),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWelcomeScreen() {
-    return Column(
-      children: [
-        const Spacer(),
-        // 临时隐藏：三个提示按钮
-        // _buildSuggestionIcons(),
-        // const SizedBox(height: 8),
-        _buildInputArea(),
-      ],
-    );
-  }
-
-  /// 三个提示入口：只有图标，水平排列，点击直接发送对应提问
-  Widget _buildSuggestionIcons() {
-    const items = [
-      ('assets/png/agentHint/1.png', '你好，请介绍你的功能。'),
-      ('assets/png/agentHint/2.svg', '给我一些创意灵感和建议。'),
-      ('assets/png/agentHint/3.svg', '请帮我写一段代码。'),
-    ];
-    return Row(
-      children: [
-        for (final (iconPath, prompt) in items) ...[
-          _buildSuggestionIconButton(iconPath, prompt),
-          const SizedBox(width: 12),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildSuggestionIconButton(String iconPath, String prompt) {
-    final isHovered = _hoveredAction == prompt;
-    final isSvg = iconPath.endsWith('.svg');
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hoveredAction = prompt),
-      onExit: (_) => setState(() => _hoveredAction = null),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          _inputController.text = prompt;
-          _sendMessage();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: isHovered
-                ? _chipActiveBg.withValues(alpha: 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: _buildInputArea(),
           ),
-          child: isSvg
-              ? SvgPicture.asset(iconPath, width: 16, height: 16)
-              : Image.asset(iconPath, width: 16, height: 16),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildChatArea() {
-    const showTyping = false;
+  Widget _buildAgentHints() => Align(
+        alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 430),
+          child: _AgentHints(),
+        ),
+      );
+}
+
+class _AgentHints extends StatefulWidget {
+  const _AgentHints();
+
+  @override
+  State<_AgentHints> createState() => _AgentHintsState();
+}
+
+class _AgentHintsState extends State<_AgentHints> {
+  int? _hoveredIndex;
+
+  static const _hints = [
+    ('assets/png/agentHint/1.png', '描述一个目标，让 Orbby 帮你拆解并完成它'),
+    ('assets/png/agentHint/2.svg', '让 Orbby 阅读文件、整理资料或分析复杂问题'),
+    ('assets/png/agentHint/3.svg', '输入 / 查看命令，快速唤起更多工作方式'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ChatTheme.of(context);
     return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _buildChatList()),
-        if (showTyping) ...[
-          const SizedBox(height: 8),
-          const TypingIndicator(),
-          const SizedBox(height: 8),
-        ],
-        // 内容区与输入框的间隔
-        const SizedBox(height: 30),
-        // 临时隐藏：三个提示按钮
-        // _buildSuggestionIcons(),
-        // const SizedBox(height: 8),
-        _buildInputArea(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Text(
+            'Orbby，让想法成为现实',
+            textAlign: TextAlign.left,
+            style: TextStyle(
+              color: theme.ink,
+              fontSize: 32,
+              fontWeight: FontWeight.w600,
+              fontFamily: _fontFamily,
+            ),
+          ),
+        ),
+        for (var i = 0; i < _hints.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(left: 20, bottom: 16),
+            child: MouseRegion(
+            onEnter: (_) => setState(() => _hoveredIndex = i),
+            onExit: (_) {
+              if (_hoveredIndex == i) {
+                setState(() => _hoveredIndex = null);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 9),
+              decoration: BoxDecoration(
+                color: _hoveredIndex == i
+                    ? theme.line.withValues(alpha: 0.35)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: _hints[i].$1.endsWith('.svg')
+                        ? SvgPicture.asset(_hints[i].$1)
+                        : Image.asset(_hints[i].$1),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(_hints[i].$2, textAlign: TextAlign.left, style: TextStyle(color: theme.ink2, fontSize: 13))),
+                ],
+              ),
+            ),
+            ),
+          ),
       ],
     );
   }

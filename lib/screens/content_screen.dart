@@ -21,6 +21,7 @@ class ContentScreen extends StatefulWidget {
 class _ContentScreenState extends State<ContentScreen>
     with WindowListener, WidgetsBindingObserver {
   final _input = TextEditingController();
+  final _inputFocus = FocusNode();
   TranslateLang _lang = TranslateLang.zhEn;
   String _result = '';
   bool _loading = false;
@@ -28,6 +29,60 @@ class _ContentScreenState extends State<ContentScreen>
   bool _wasFocused = false;
   bool _hiding = false;
   Timer? _contentClearTimer;
+
+  /// 键盘可选的功能按钮（←/→ 循环移动，回车执行）。
+  List<(String, VoidCallback)> get _actions => [
+        ('assets/svg/翻译.svg', _translate),
+        ('assets/svg/分析.svg', _analyze),
+      ];
+  int _selectedAction = 0;
+
+  void _moveSelection(int delta) {
+    final count = _actions.length;
+    setState(() {
+      _selectedAction = (_selectedAction + delta + count) % count;
+    });
+  }
+
+  void _runSelectedAction() {
+    if (_loading) return;
+    _actions[_selectedAction].$2();
+  }
+
+  /// 键盘接管：←/→ 无条件循环切换功能按钮（不控制输入框光标，定位文字用
+  /// Home/End 或点击）、回车执行选中功能（Shift+回车换行）、Esc 隐藏面板。
+  /// 挂在最外层 Focus 上沿焦点链冒泡生效——焦点在输入框或按钮上都走这里
+  /// （与 menu 窗口聊天输入框同一模式，见 home_screen/input.dart）。
+  /// 带修饰键的方向键不拦截：Shift+方向选区、Ctrl+方向跳词等编辑键不受影响。
+  /// 窗口隐藏时收不到键盘事件，Esc 无需判断显示状态；重复触发由
+  /// _hideAndClear 的 _hiding 标志防重入。
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      _hideAndClear();
+      return KeyEventResult.handled;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final plainArrows = !keyboard.isShiftPressed &&
+        !keyboard.isControlPressed &&
+        !keyboard.isAltPressed;
+    if (plainArrows && key == LogicalKeyboardKey.arrowLeft) {
+      _moveSelection(-1);
+      return KeyEventResult.handled;
+    }
+    if (plainArrows && key == LogicalKeyboardKey.arrowRight) {
+      _moveSelection(1);
+      return KeyEventResult.handled;
+    }
+    if ((key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter) &&
+        !keyboard.isShiftPressed) {
+      _runSelectedAction();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   void initState() {
@@ -57,6 +112,11 @@ class _ContentScreenState extends State<ContentScreen>
           (a['height'] as num).toDouble(),
         ));
         await windowManager.show();
+        await windowManager.focus();
+        // 焦点落在输入框：可直接打字/粘贴；回车与方向键由外层 Focus 接管。
+        if (!mounted) return;
+        setState(() => _selectedAction = 0);
+        _inputFocus.requestFocus();
       } else if (call.method == 'set_text' && call.arguments is String) {
         _input.text = call.arguments as String;
         _input.selection = TextSelection.collapsed(offset: _input.text.length);
@@ -72,6 +132,7 @@ class _ContentScreenState extends State<ContentScreen>
   void dispose() {
     _contentClearTimer?.cancel();
     _input.dispose();
+    _inputFocus.dispose();
     windowManager.removeListener(this);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -245,7 +306,11 @@ class _ContentScreenState extends State<ContentScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return Focus(
+      onKeyEvent: _handleKeyEvent,
+      canRequestFocus: false,
+      skipTraversal: true,
+      child: Material(
       color: Colors.transparent,
       child: Align(
         alignment: Alignment.bottomCenter,
@@ -270,6 +335,8 @@ class _ContentScreenState extends State<ContentScreen>
               children: [
                 TextField(
                 controller: _input,
+                focusNode: _inputFocus,
+                autofocus: true,
                 onChanged: (_) => setState(() {}),
                 minLines: 1,
                 maxLines: 30,
@@ -320,8 +387,13 @@ class _ContentScreenState extends State<ContentScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                _ActionButton('assets/svg/翻译.svg', _translate, _loading),
-                _ActionButton('assets/svg/分析.svg', _analyze, _loading),
+                for (final (index, action) in _actions.indexed)
+                  _ActionButton(
+                    action.$1,
+                    action.$2,
+                    _loading,
+                    selected: _selectedAction == index,
+                  ),
               ],
             ),
             const SizedBox(height: 6),
@@ -330,15 +402,17 @@ class _ContentScreenState extends State<ContentScreen>
       ),
         ),
       ),
+        ),
     );
   }
 }
 
 class _ActionButton extends StatefulWidget {
-  const _ActionButton(this.asset, this.onPressed, this.disabled);
+  const _ActionButton(this.asset, this.onPressed, this.disabled, {this.selected = false});
   final String asset;
   final VoidCallback onPressed;
   final bool disabled;
+  final bool selected;
 
   @override
   State<_ActionButton> createState() => _ActionButtonState();
@@ -396,7 +470,12 @@ class _ActionButtonState extends State<_ActionButton>
                 ),
             ),
             style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(Colors.transparent),
+              backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                if (widget.disabled) return Colors.transparent;
+                // 键盘选中态与鼠标 hover overlay 同色，视觉上等同悬停效果。
+                if (widget.selected) return const Color(0x0f000000);
+                return Colors.transparent;
+              }),
               foregroundColor: WidgetStateProperty.all(Colors.transparent),
               shadowColor: WidgetStateProperty.all(Colors.transparent),
               padding: WidgetStateProperty.all(EdgeInsets.zero),

@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbby 主界面 · UI 重设计参考图（浅色 / 深色）</title>
+<style>
+  /* =====================================================================
+     设计稿页面外壳
+     ===================================================================== */
+  :root{
+    --font:-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+           "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    --mono:ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas,
+           "Sarasa Mono SC", "Microsoft YaHei", monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    font-family:var(--font);
+    background:#EDEAE4;
+    color:#1F2A44;
+    -webkit-font-smoothing:antialiased;
+    padding:44px 48px 88px;
+  }
+
+  .page{width:100%;max-width:2400px;margin:0 auto}
+
+  .page-head{
+    display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;
+    padding-bottom:20px;margin-bottom:34px;
+    border-bottom:1px solid rgba(31,42,68,.10);
+  }
+  .page-head h1{font-size:21px;font-weight:650;letter-spacing:-.01em}
+  .page-head p{font-size:12.5px;color:#5D6577;margin-top:6px;letter-spacing:.01em}
+  .page-head p+p{font-size:11.5px;color:#9AA1AF;margin-top:9px;font-variant-numeric:tabular-nums}
+  .swatches{margin-left:auto;display:flex;gap:8px}
+  .sw{width:34px;height:34px;border-radius:10px;border:1px solid rgba(31,42,68,.09);position:relative}
+  .sw span{position:absolute;top:38px;left:50%;transform:translateX(-50%);
+    font-size:9.5px;color:#9AA1AF;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* =====================================================================
+     主题块：浅色 / 深色各一块，块内 3 个画板横向并列、整行等比缩放
+     画板逻辑尺寸恒为 640 × 1000（= 1920 屏宽 1/3 × 可见屏高，真实窗口比例）
+     ===================================================================== */
+  .theme{border-radius:26px;padding:26px 26px 32px;margin-bottom:32px}
+  .theme.light{
+    background:radial-gradient(rgba(31,42,68,.05) 1px, transparent 1px) 0 0/22px 22px, #EDEAE4;
+  }
+  .theme.dark{
+    background:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px) 0 0/22px 22px, #0E0F11;
+  }
+
+  .theme-head{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+  .theme-name{font-size:13px;font-weight:650;letter-spacing:.02em}
+  .theme.light .theme-name{color:#1F2A44}
+  .theme.dark  .theme-name{color:#E9EBF0}
+  .theme-note{font-size:11.5px;letter-spacing:.01em}
+  .theme.light .theme-note{color:#9AA1AF}
+  .theme.dark  .theme-note{color:#6C7482}
+  .theme-chips{margin-left:auto;display:flex;gap:6px}
+  .chip{height:22px;padding:0 9px;border-radius:6px;font-size:10.5px;font-weight:650;
+    display:flex;align-items:center;font-variant-numeric:tabular-nums}
+  .theme.light .chip{background:#FFFFFF;border:1px solid #E7E3DB;color:#5D6577}
+  .theme.dark  .chip{background:#23262B;border:1px solid #2E3239;color:#9BA2B0}
+
+  .col-main{
+    --s:1;
+    display:flex;flex-wrap:nowrap;justify-content:center;align-items:flex-start;gap:32px;
+  }
+  .col-main > div{flex:none;width:calc(640px * var(--s))}
+  /* 缩放只作用于窗口本体，用负外边距抵消未缩放的 1000px 占位高度 */
+  .col-main > div > .window{
+    transform:scale(var(--s));transform-origin:top left;
+    margin-bottom:calc(-1000px * (1 - var(--s)));
+  }
+
+  .cap{font-size:11px;font-weight:650;letter-spacing:.09em;margin-bottom:12px;
+    display:flex;align-items:center;gap:9px}
+  .theme.light .cap{color:#9AA1AF}
+  .theme.dark  .cap{color:#6C7482}
+  .cap::after{content:"";flex:1;height:1px}
+  .theme.light .cap::after{background:rgba(31,42,68,.09)}
+  .theme.dark  .cap::after{background:rgba(255,255,255,.09)}
+
+  /* 缩放档位：按屏宽切换，预留滚动条与留白余量（3 板 = 1920px × s） */
+  @media (max-width:2100px){.col-main{--s:.90}}
+  @media (max-width:1930px){.col-main{--s:.82}}
+  @media (max-width:1710px){.col-main{--s:.72}}
+  @media (max-width:1520px){.col-main{--s:.64}}
+  @media (max-width:1370px){.col-main{--s:1;flex-wrap:wrap;row-gap:40px}}
+
+  /* =====================================================================
+     主题 Token（浅 / 深一一对应，结构完全同构）
+     ===================================================================== */
+  .theme.light{
+    --surface:#FCFBF9;      /* 窗口底 + 内容区底 */
+    --raised:#FFFFFF;       /* 卡片、激活 tab、输入框 */
+    --sunken:#F6F3EE;       /* 代码块、diff 正文底 */
+    --line:#E7E3DB;
+    --line-soft:#EFEBE4;
+    --ink:#1F2A44;          /* 最强文字：用户消息、标题 */
+    --body:#3B4250;         /* 次强：Agent 正文 */
+    --ink-2:#5D6577;        /* 元信息：工具行、问题 */
+    --ink-3:#9AA1AF;        /* 最弱：时间、参数、占位 */
+    --accent:#FFC145;
+    --accent-deep:#9C6E14;
+    --accent-soft:#FFF6E2;
+    --hover:#F4F2ED;
+    --danger:#C0483C;
+    --danger-soft:#FBEDEA;
+    --ok:#3E9E63;
+    --ok-soft:#EAF6EF;
+    --info:#3E7BC4;
+    --info-soft:#EAF1FA;
+    --user-dot:#E0912F;
+    --run:#E08A2B;
+    --done:#4FB477;
+    --term:#D9534F;
+    --mark-bg:#1F2A44;
+    --mark-fg:#FFFFFF;
+    --mark-line:transparent;
+    --shadow-window:0 1px 2px rgba(31,42,68,.07), 0 26px 60px -18px rgba(31,42,68,.30);
+    --shadow-card:0 1px 2px rgba(31,42,68,.045);
+    --shadow-pop:0 1px 2px rgba(31,42,68,.06), 0 14px 30px -12px rgba(31,42,68,.20);
+  }
+  .theme.dark{
+    --surface:#1B1D21;
+    --raised:#23262B;
+    --sunken:#141619;
+    --line:#2E3239;
+    --line-soft:#25292F;
+    --ink:#E9EBF0;
+    --body:#C3C9D4;
+    --ink-2:#9BA2B0;
+    --ink-3:#6C7482;
+    --accent:#FFC145;
+    --accent-deep:#F0B93C;
+    --accent-soft:rgba(255,193,69,.14);
+    --hover:#262A2F;
+    --danger:#E4705F;
+    --danger-soft:rgba(228,112,95,.14);
+    --ok:#5CC98A;
+    --ok-soft:rgba(92,201,138,.13);
+    --info:#75A9E6;
+    --info-soft:rgba(117,169,230,.14);
+    --user-dot:#EDA24F;
+    --run:#F0A94B;
+    --done:#57C88A;
+    --term:#E4685C;
+    --mark-bg:#2C313A;
+    --mark-fg:#F2F4F8;
+    --mark-line:rgba(255,255,255,.10);
+    --shadow-window:0 1px 2px rgba(0,0,0,.5), 0 30px 64px -20px rgba(0,0,0,.75);
+    --shadow-card:0 1px 2px rgba(0,0,0,.35);
+    --shadow-pop:0 1px 2px rgba(0,0,0,.4), 0 16px 34px -14px rgba(0,0,0,.7);
+  }
+
+  /* =====================================================================
+     窗口本体 640 × 1000
+     ===================================================================== */
+  .window{
+    width:640px;height:1000px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:18px;
+    box-shadow:var(--shadow-window);
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* ---------------- 顶部：会话 tab 栏 ---------------- */
+  .win-top{
+    flex:none;height:50px;
+    display:flex;align-items:center;
+    padding:0 10px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .tab{
+    height:32px;width:155px;flex:none;
+    display:flex;align-items:center;gap:6px;
+    padding:0 5px 0 10px;
+    border-radius:9px;
+    border:1px solid transparent;
+    font-size:12.5px;letter-spacing:.01em;
+    color:var(--ink-2);
+  }
+  .tab .tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab.active{
+    background:var(--raised);
+    border-color:var(--line);
+    box-shadow:var(--shadow-card);
+    color:var(--ink);font-weight:600;
+  }
+  .tab:not(.active){color:var(--ink-2)}
+
+  .tdot{flex:none;width:6px;height:6px;border-radius:50%}
+  .tdot.run{background:var(--run);animation:blink 1.1s ease-in-out infinite}
+  .tdot.ask{background:var(--danger)}
+
+  .tclose{flex:none;width:16px;height:16px;border-radius:50%;
+    display:grid;place-items:center;color:var(--ink-3)}
+  .tab.active .tclose{color:var(--ink-2)}
+  .tab-add{
+    margin-left:8px;width:30px;height:30px;border-radius:9px;
+    display:grid;place-items:center;color:var(--ink-3);
+  }
+  .tab-add svg{width:14px;height:14px}
+
+  /* ---------------- 内容区 ---------------- */
+  .win-body{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;
+    padding:16px 16px 16px;
+  }
+  .msgs{
+    flex:1;min-height:0;position:relative;
+    display:flex;flex-direction:column;justify-content:flex-end;
+    gap:3px;
+  }
+  .msgs.empty-area{justify-content:center;align-items:center;padding-bottom:20px}
+
+  /* ---------------- 空态 ---------------- */
+  .brand-mark{
+    width:44px;height:44px;border-radius:14px;
+    background:var(--mark-bg);border:1px solid var(--mark-line);
+    display:grid;place-items:center;
+    box-shadow:var(--shadow-card);
+  }
+  .brand-mark svg{width:22px;height:22px}
+  .brand-title{margin-top:15px;font-size:16px;font-weight:650;letter-spacing:-.005em;color:var(--ink)}
+  .brand-sub{margin-top:7px;font-size:12px;letter-spacing:.02em;color:var(--ink-3)}
+
+  /* ---------------- 消息 ---------------- */
+  .row{display:flex;gap:10px;padding:7px 0}
+  .rail{flex:none;width:14px;display:flex;justify-content:center;padding-top:6px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--user-dot)}
+  .dot.sm{width:6px;height:6px;margin-top:1px}
+  .dot.proc{background:var(--ink-3);animation:pulse 1.6s ease-in-out infinite}
+  .dot.done{background:var(--done)}
+  .dot.term{background:var(--term)}
+  .u-col{flex:1;min-width:0}
+  .u-text{font-size:13.5px;line-height:1.7;color:var(--ink);letter-spacing:.01em}
+
+  /* 附件缩略图（用户消息内） */
+  .thumbs{display:flex;gap:6px;margin-bottom:8px}
+  .thumb{
+    width:64px;height:64px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);position:relative;
+  }
+  .thumb::after{
+    content:attr(data-tag);position:absolute;left:5px;bottom:4px;
+    font-size:8.5px;font-weight:650;letter-spacing:.06em;
+    color:rgba(255,255,255,.92);text-shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+  .t1{background:linear-gradient(140deg,#DDE4EE,#B7C5D9 58%,#95A9C4)}
+  .t2{background:linear-gradient(140deg,#F4E5D0,#E2C49A 56%,#C8A26C)}
+
+  /* ---------------- Markdown 正文 ---------------- */
+  .md{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+  .md p{font-size:13.5px;line-height:1.75;color:var(--body);letter-spacing:.01em}
+  .md .hl{color:var(--ink);font-weight:600}
+  .md ul{display:flex;flex-direction:column;gap:6px}
+  .md li{display:flex;gap:9px;font-size:13.5px;line-height:1.7;color:var(--body)}
+  .md li i{flex:none;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:9px}
+  code{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:0;
+    color:var(--accent-deep);background:var(--accent-soft);
+    padding:1px 5px;border-radius:5px;
+  }
+  .caret{display:inline-block;width:2px;height:14px;vertical-align:-2px;
+    background:var(--accent);animation:blink 1.05s steps(1) infinite;border-radius:2px}
+
+  /* 代码块 */
+  .code{
+    border-radius:10px;overflow:hidden;
+    background:var(--sunken);border:1px solid var(--line-soft);
+  }
+  .code-head{
+    display:flex;align-items:center;height:30px;padding:0 8px 0 11px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .code-lang{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-3)}
+  .code-copy{margin-left:auto;width:24px;height:24px;border-radius:6px;
+    display:grid;place-items:center;color:var(--ink-3)}
+  .code-copy svg{width:13px;height:13px}
+  .code-body{
+    padding:10px 12px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.8;
+    color:var(--body);white-space:pre;
+  }
+  .code-body .c{color:var(--ink-3)}
+
+  /* ---------------- 工具行 / 工具步骤折叠组 ---------------- */
+  .tool-head{
+    display:flex;align-items:center;gap:7px;
+    padding:7px 0 5px 24px;
+  }
+  .tool-head .chev{flex:none;width:14px;height:14px;color:var(--ink-3)}
+  .tool-head .chev.open{transform:rotate(90deg)}
+  .gs{flex:1;min-width:0;font-size:11.5px;font-weight:650;letter-spacing:.01em;
+    color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gs em{font-style:normal;color:var(--danger)}
+  .gdot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--run)}
+  .gdot.blue{background:var(--info)}
+  .gdot.red{background:var(--danger)}
+  .gdot.blink{animation:blink 1.1s ease-in-out infinite}
+
+  .tool{display:flex;gap:9px;align-items:flex-start;padding:2px 0 2px 38px}
+  .tool i{flex:none;width:5px;height:5px;border-radius:2px;background:var(--ink-3);
+    opacity:.6;margin-top:7px}
+  .tool .tt{font-size:11.5px;line-height:1.6;color:var(--ink-2);font-weight:600;
+    font-family:var(--mono);letter-spacing:0}
+  .tool .tt em{font-style:normal;font-weight:400;color:var(--ink-3)}
+  .tool .tt b{font-weight:400;color:var(--danger)}
+
+  /* ---------------- 文件变更面板 ---------------- */
+  .diff{
+    margin:8px 0 6px 38px;border-radius:12px;overflow:hidden;
+    background:var(--raised);border:1px solid var(--line);box-shadow:var(--shadow-card);
+  }
+  .diff-head{display:flex;align-items:center;gap:8px;padding:9px 12px;
+    border-bottom:1px solid var(--line-soft)}
+  .op{flex:none;font-size:10px;font-weight:650;letter-spacing:.02em;
+    padding:2px 7px;border-radius:5px;background:var(--info-soft);color:var(--info)}
+  .op.new{background:var(--ok-soft);color:var(--ok)}
+  .diff-path{flex:1;min-width:0;font-family:var(--mono);font-size:11.5px;
+    color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .diff-stat{flex:none;display:flex;gap:7px;font-family:var(--mono);font-size:11px;font-weight:600}
+  .diff-stat .a{color:var(--ok)}
+  .diff-stat .d{color:var(--danger)}
+  .diff-body{background:var(--sunken);padding:8px 0;font-family:var(--mono);
+    font-size:11.5px;line-height:1.7}
+  .dl{padding:0 12px;white-space:pre;color:var(--ink-3)}
+  .dl.a{background:var(--ok-soft);color:var(--ok)}
+  .dl.d{background:var(--danger-soft);color:var(--danger)}
+
+  /* ---------------- 问答留痕卡 ---------------- */
+  .qcard{
+    margin:8px 0 6px 38px;padding:11px 12px;border-radius:12px;
+    background:var(--raised);border:1px solid var(--line);box-shadow:var(--shadow-card);
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .qcard .q+ .q{border-top:1px solid var(--line-soft);padding-top:10px}
+  .q-top{display:flex;align-items:flex-start;gap:9px}
+  .q-text{flex:1;min-width:0;font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+  .q-tag{flex:none;font-size:10px;font-weight:650;letter-spacing:.02em;
+    padding:2px 7px;border-radius:5px;background:var(--accent-soft);color:var(--accent-deep)}
+  .q-ans{margin-top:5px;font-size:11.5px;line-height:1.55;color:var(--ink-3)}
+  .q-ans b{font-weight:600;color:var(--ink)}
+  .q-ans.skip b{font-weight:400;color:var(--ink-3)}
+
+  /* ---------------- 输入区 ---------------- */
+  .composer-area{flex:none;padding-top:14px}
+  .pop{
+    margin-bottom:8px;border-radius:12px;overflow:hidden;
+    background:var(--raised);border:1px solid var(--line);box-shadow:var(--shadow-pop);
+  }
+  .prow{display:flex;align-items:center;height:34px;padding:0 12px;gap:12px}
+  .prow + .prow{box-shadow:inset 0 1px 0 var(--line-soft)}
+  .prow.sel{background:var(--hover)}
+  .pname{flex:none;width:126px;font-family:var(--mono);font-size:12.5px;
+    color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow.sel .pname{color:var(--ink);font-weight:600}
+  .pdesc{flex:1;min-width:0;font-size:12px;color:var(--ink-3);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .qbody{padding:12px}
+  .opt{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:8px;
+    font-size:12.5px;color:var(--ink-2)}
+  .opt + .opt{margin-top:2px}
+  .opt.sel{background:var(--hover);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
+  .opt-desc{margin-left:auto;font-size:11.5px;color:var(--ink-3);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .field{
+    margin-top:6px;height:34px;border-radius:8px;display:flex;align-items:center;
+    padding:0 11px;font-size:12.5px;color:var(--ink-3);
+    background:var(--sunken);border:1px solid var(--line-soft);
+  }
+  .pop-foot{margin-top:9px;font-size:11px;letter-spacing:.02em;color:var(--ink-3)}
+
+  .composer{
+    display:flex;align-items:flex-end;gap:8px;
+    padding:11px 10px 11px 14px;min-height:48px;
+    background:var(--raised);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow-card);
+  }
+  .composer.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .composer .txt{flex:1;min-width:0;font-size:13px;line-height:1.65;
+    color:var(--ink);letter-spacing:.01em}
+  .composer .txt.ph{color:var(--ink-3)}
+  .send{
+    flex:none;width:30px;height:30px;border-radius:50%;
+    background:var(--accent);display:grid;place-items:center;
+    color:#1F2A44;box-shadow:0 1px 2px rgba(31,42,68,.18);
+  }
+  .send svg{width:16px;height:16px}
+
+  /* ---------------- 回到底部浮钮 ---------------- */
+  .jump{
+    position:absolute;left:50%;bottom:10px;transform:translateX(-50%);
+    width:32px;height:32px;border-radius:50%;
+    background:var(--raised);border:1px solid var(--line);
+    box-shadow:var(--shadow-pop);display:grid;place-items:center;color:var(--ink-2);
+  }
+  .jump svg{width:16px;height:16px}
+
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+  /* =====================================================================
+     规范区
+     ===================================================================== */
+  .specs-section{margin-top:44px;padding-top:30px;border-top:1px solid rgba(31,42,68,.12)}
+  .specs-title{font-size:14px;font-weight:650;letter-spacing:.02em;margin-bottom:20px}
+
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}
+  .card{
+    background:#FFFFFF;border:1px solid #E7E3DB;border-radius:14px;
+    padding:16px 18px;box-shadow:0 1px 2px rgba(31,42,68,.04);
+  }
+  .card h3{font-size:12.5px;font-weight:650;letter-spacing:.02em;margin-bottom:12px;color:#1F2A44}
+  .card h3 .sub{font-weight:400;color:#9AA1AF;font-size:11px;margin-left:6px}
+
+  table.tok{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.tok th{text-align:left;font-weight:650;color:#9AA1AF;font-size:10.5px;
+    letter-spacing:.06em;padding:0 0 8px}
+  table.tok td{padding:5px 0;border-top:1px solid #EFEBE4;color:#3B4250;vertical-align:middle}
+  table.tok td.k{font-family:var(--mono);font-size:11px;color:#5D6577;white-space:nowrap}
+  table.tok td.v{font-family:var(--mono);font-size:11px;white-space:nowrap;color:#1F2A44}
+  .dotsw{display:inline-block;width:10px;height:10px;border-radius:3px;
+    border:1px solid rgba(31,42,68,.14);vertical-align:-1px;margin-right:6px}
+
+  .kv{display:flex;flex-direction:column;gap:9px}
+  .kvr{display:flex;gap:10px;align-items:baseline;font-size:11.5px;line-height:1.6}
+  .kvr b{flex:none;font-family:var(--mono);font-size:11px;color:#9C6E14;
+    background:#FFF6E2;padding:1px 6px;border-radius:5px;min-width:96px;text-align:center;
+    font-variant-numeric:tabular-nums}
+  .kvr span{color:#3B4250}
+
+  .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+    gap:13px 30px;margin-top:8px}
+  .note{display:flex;gap:11px;align-items:baseline}
+  .note i{flex:none;width:4px;height:4px;border-radius:50%;background:#C6CBD6;margin-top:6px}
+  .note p{font-size:12px;line-height:1.7;color:#5D6577}
+  .note p b{color:#1F2A44;font-weight:600}
+  .note p code{
+    font-family:var(--mono);font-size:11px;color:#9C6E14;background:#FFF6E2;
+    padding:1px 5px;border-radius:5px;letter-spacing:0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-head">
+    <div>
+      <h1>Orbby 主界面 · UI 重设计参考图（浅色 / 深色）</h1>
+      <p>不改窗口形态、不改交互与功能：无边框菜单窗口、贴屏右上、会话 tab 栏、消息流、输入区与回到底部浮钮全部保留 · 仅重做视觉层</p>
+      <p>画板逻辑尺寸恒为 640 × 1000（= 1920 屏宽 1/3 × 可见屏高，真实窗口比例）· 每行 3 个状态横向并列，整行等比缩放 1.00 / 0.90 / 0.82 / 0.72 / 0.64（≤1370px 自动折行）</p>
+    </div>
+    <div class="swatches">
+      <div class="sw" style="background:#FFC145"><span>#FFC145</span></div>
+      <div class="sw" style="background:#1F2A44"><span>#1F2A44</span></div>
+      <div class="sw" style="background:#FFF6E2"><span>#FFF6E2</span></div>
+      <div class="sw" style="background:#FCFBF9"><span>#FCFBF9</span></div>
+      <div class="sw" style="background:#EDEAE4"><span>#EDEAE4</span></div>
+      <div class="sw" style="background:#1B1D21"><span>#1B1D21</span></div>
+      <div class="sw" style="background:#141619"><span>#141619</span></div>
+    </div>
+  </header>
+
+  <!-- ==================================================================
+       主题 A：浅色（暖白 · 琥珀）
+       ================================================================== -->
+  <section class="theme light">
+    <div class="theme-head">
+      <span class="theme-name">A · 浅色（暖白底 · 琥珀主色）</span>
+      <span class="theme-note">沿用参考稿《笔记浮窗 · 密码本集成设计稿》的色彩体系，两窗视觉同源</span>
+      <div class="theme-chips">
+        <span class="chip">surface #FCFBF9</span>
+        <span class="chip">raised #FFFFFF</span>
+        <span class="chip">line #E7E3DB</span>
+        <span class="chip">accent #FFC145</span>
+      </div>
+    </div>
+
+    <section class="col-main">
+
+      <!-- ---------- ① 空态 · 命令面板 ---------- -->
+      <div>
+        <div class="cap">① 空态 · 命令面板展开</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tt">新会话</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab"><span class="tt">周报数据核对</span></div>
+            <div class="tab"><span class="tt">图标规范落地</span></div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs empty-area">
+              <div class="brand-mark">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="var(--mark-fg)"/>
+                  <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="var(--mark-fg)" opacity=".5"/>
+                  <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="var(--accent)"/>
+                </svg>
+              </div>
+              <div class="brand-title">Orbby</div>
+              <div class="brand-sub">输入消息开始对话 · 输入 / 唤起命令</div>
+            </div>
+
+            <div class="composer-area">
+              <div class="pop">
+                <div class="prow sel"><span class="pname">/help</span><span class="pdesc">查看所有命令</span></div>
+                <div class="prow"><span class="pname">/session</span><span class="pdesc">查看并切换历史会话</span></div>
+                <div class="prow"><span class="pname">/new</span><span class="pdesc">另开一个新的会话标签页（旧会话保留在 tab 栏可切回）</span></div>
+                <div class="prow"><span class="pname">/close</span><span class="pdesc">关闭当前会话标签页</span></div>
+                <div class="prow"><span class="pname">/clear</span><span class="pdesc">清空当前上下文和当前会话历史</span></div>
+                <div class="prow"><span class="pname">/compact</span><span class="pdesc">压缩对话上下文</span></div>
+              </div>
+              <div class="composer focus">
+                <span class="txt">/</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ---------- ② 对话中 ---------- -->
+      <div>
+        <div class="cap">② 对话中 · 工具步骤折叠 + Markdown 回复</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tdot run"></span>
+              <span class="tt">周报数据核对</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab"><span class="tt">图标规范落地</span></div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs">
+
+              <!-- 用户① -->
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <div class="u-col">
+                  <div class="thumbs">
+                    <span class="thumb t1" data-tag="IMG_01"></span>
+                    <span class="thumb t2" data-tag="IMG_02"></span>
+                  </div>
+                  <span class="u-text">把这两张图里的评审意见整理成一份台账，目录里的三份文档一起合并</span>
+                </div>
+              </div>
+
+              <!-- Agent① -->
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 4 项操作：读取文件、搜索内容、执行 PowerShell、写入文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>三份意见读完了，重复项合并后得到 <span class="hl">3 类问题</span>，台账已写到 <code>评审台账.md</code>，下面是归并脚本：</p>
+                  <div class="code">
+                    <div class="code-head">
+                      <span class="code-lang">powershell</span>
+                      <span class="code-copy">
+                        <svg viewBox="0 0 16 16" fill="none"><rect x="5.6" y="5.6" width="7.8" height="7.8" rx="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M10.8 3.1H5.5A2.4 2.4 0 0 0 3.1 5.5v5.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                      </span>
+                    </div>
+                    <div class="code-body"><span class="c"># 合并三份评审意见，按标题去重</span>
+Get-ChildItem ./reviews -Filter *.md |
+  ForEach-Object { Convert-Review $_.FullName } |
+  Export-Csv ./dist/台账.csv -Encoding utf8</div>
+                  </div>
+                  <p>三份里共 21 条意见，去重后 14 条，其中 4 条被标为「待确认」。</p>
+                </div>
+              </div>
+
+              <!-- 用户② -->
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">「待确认」的条目单独列出来，我要在会上逐条过</span>
+              </div>
+
+              <!-- Agent② -->
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 2 项操作：读取文件、编辑文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>已单列一节，会上按下面顺序过即可：</p>
+                  <ul>
+                    <li><i></i><span>口径类 · 2 条：成本分摊方式、数据导出范围</span></li>
+                    <li><i></i><span>依赖类 · 1 条：等图标规范定稿后再排期</span></li>
+                    <li><i></i><span>责任类 · 1 条：移动端崩溃率的整改归属</span></li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 用户③ -->
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">再核对一遍重复项的判定口径</span>
+              </div>
+
+              <!-- Agent③（进行中） -->
+              <div class="tool-head">
+                <span class="gdot blink"></span>
+                <svg class="chev open" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">正在执行 3 项操作：读取文件、搜索内容、编辑文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm proc"></span></span>
+                <div class="md">
+                  <p>我正在逐条比对标题归一化之后的相似度<span class="caret"></span></p>
+                </div>
+              </div>
+
+              <div class="jump">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M4 6.4 8 10.4l4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+
+            <div class="composer-area">
+              <div class="composer">
+                <span class="txt ph">输入消息，或使用 <span class="cmd">/help</span> 查看命令</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ---------- ③ 工具展开 · 变更面板 · 提问卡片 ---------- -->
+      <div>
+        <div class="cap">③ 细节态 · 工具展开 + 文件变更 + 问答留痕 + 提问卡片</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tdot ask"></span>
+              <span class="tt">周报数据核对</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab">
+              <span class="tdot run"></span>
+              <span class="tt">图标规范落地</span>
+            </div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs">
+
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">把判定口径写进脚本注释里，顺手把重复项的统计也加上</span>
+              </div>
+
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev open" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 4 项操作：读取文件、搜索内容、编辑器、执行命令</span>
+              </div>
+              <div class="tool"><i></i><span class="tt">读取文件<em>：path: lib/screens/home_screen/input.dart</em></span></div>
+              <div class="tool"><i></i><span class="tt">搜索内容<em>：pattern: _inputHint</em></span></div>
+              <div class="tool"><i></i><span class="tt">编辑器 · str_replace<em>：path: lib/screens/home_screen/input.dart，old_str: 28 字符，new_str: 41 字符</em></span></div>
+              <div class="tool"><i></i><span class="tt">执行命令<em>：flutter analyze --no-pub</em></span></div>
+
+              <div class="diff">
+                <div class="diff-head">
+                  <span class="op">编辑</span>
+                  <span class="diff-path">lib/screens/home_screen/input.dart</span>
+                  <span class="diff-stat"><span class="a">+6</span><span class="d">−3</span></span>
+                </div>
+                <div class="diff-body"><div class="dl">       hintStyle: TextStyle(</div><div class="dl d">-          color: _inputHint,</div><div class="dl a">+          color: _inputHintSoft,</div><div class="dl">           fontSize: 14,</div><div class="dl d">-          fontFamily: _fontFamily),</div><div class="dl a">+          fontFamily: _fontFamily,</div><div class="dl a">+          height: 1.6),</div></div>
+              </div>
+
+              <div class="qcard">
+                <div class="q">
+                  <div class="q-top">
+                    <span class="q-text">重复项以什么为准？</span>
+                    <span class="q-tag">判定口径</span>
+                  </div>
+                  <div class="q-ans">用户回复：<b>标题完全一致即算重复</b></div>
+                </div>
+                <div class="q">
+                  <div class="q-top">
+                    <span class="q-text">是否需要保留原始三份评审文件？</span>
+                    <span class="q-tag">文件留存</span>
+                  </div>
+                  <div class="q-ans skip">用户回复：已跳过</div>
+                </div>
+              </div>
+
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>脚本注释与统计都补好了。<span class="hl">为了避免口径不一致</span>，先确认一下统计方式：</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer-area">
+              <div class="pop">
+                <div class="qbody">
+                  <div class="q-top">
+                    <span class="q-tag">确认范围</span>
+                    <span class="q-text">下面按哪种口径统计重复项？</span>
+                  </div>
+                  <div class="opt sel" style="margin-top:10px">
+                    <span>按标题去重</span>
+                    <span class="opt-desc">标题完全相同即算重复</span>
+                  </div>
+                  <div class="opt">
+                    <span>按标题 + 类型去重</span>
+                    <span class="opt-desc">同类目下的同标题才算重复</span>
+                  </div>
+                  <div class="opt">
+                    <span>全部保留，只做标记</span>
+                    <span class="opt-desc">不改条目数，只加重复标记列</span>
+                  </div>
+                  <div class="field">或输入自定义答案</div>
+                  <div class="pop-foot">↑↓ 选择 · Enter 确认 · Esc 跳过</div>
+                </div>
+              </div>
+              <div class="composer">
+                <span class="txt ph">输入消息，或使用 <span class="cmd">/help</span> 查看命令</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+  </section>
+
+  <!-- ==================================================================
+       主题 B：深色（墨底 · 琥珀）
+       ================================================================== -->
+  <section class="theme dark">
+    <div class="theme-head">
+      <span class="theme-name">B · 深色（墨底 · 琥珀）</span>
+      <span class="theme-note">结构与 A 完全同构，仅替换 token；延续原深色窗口的「无边框浮窗」气质</span>
+      <div class="theme-chips">
+        <span class="chip">surface #1B1D21</span>
+        <span class="chip">raised #23262B</span>
+        <span class="chip">line #2E3239</span>
+        <span class="chip">accent #FFC145</span>
+      </div>
+    </div>
+
+    <section class="col-main">
+
+      <!-- ---------- ④ 空态 · 命令面板 ---------- -->
+      <div>
+        <div class="cap">④ 空态 · 命令面板展开</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tt">新会话</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab"><span class="tt">周报数据核对</span></div>
+            <div class="tab"><span class="tt">图标规范落地</span></div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs empty-area">
+              <div class="brand-mark">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="4" y="6" width="16" height="2.2" rx="1.1" fill="var(--mark-fg)"/>
+                  <rect x="4" y="10.9" width="11" height="2.2" rx="1.1" fill="var(--mark-fg)" opacity=".5"/>
+                  <rect x="4" y="15.8" width="15" height="2.2" rx="1.1" fill="var(--accent)"/>
+                </svg>
+              </div>
+              <div class="brand-title">Orbby</div>
+              <div class="brand-sub">输入消息开始对话 · 输入 / 唤起命令</div>
+            </div>
+
+            <div class="composer-area">
+              <div class="pop">
+                <div class="prow sel"><span class="pname">/help</span><span class="pdesc">查看所有命令</span></div>
+                <div class="prow"><span class="pname">/session</span><span class="pdesc">查看并切换历史会话</span></div>
+                <div class="prow"><span class="pname">/new</span><span class="pdesc">另开一个新的会话标签页（旧会话保留在 tab 栏可切回）</span></div>
+                <div class="prow"><span class="pname">/close</span><span class="pdesc">关闭当前会话标签页</span></div>
+                <div class="prow"><span class="pname">/clear</span><span class="pdesc">清空当前上下文和当前会话历史</span></div>
+                <div class="prow"><span class="pname">/compact</span><span class="pdesc">压缩对话上下文</span></div>
+              </div>
+              <div class="composer focus">
+                <span class="txt">/</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ---------- ⑤ 对话中 ---------- -->
+      <div>
+        <div class="cap">⑤ 对话中 · 工具步骤折叠 + Markdown 回复</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tdot run"></span>
+              <span class="tt">周报数据核对</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab"><span class="tt">图标规范落地</span></div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs">
+
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <div class="u-col">
+                  <div class="thumbs">
+                    <span class="thumb t1" data-tag="IMG_01"></span>
+                    <span class="thumb t2" data-tag="IMG_02"></span>
+                  </div>
+                  <span class="u-text">把这两张图里的评审意见整理成一份台账，目录里的三份文档一起合并</span>
+                </div>
+              </div>
+
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 4 项操作：读取文件、搜索内容、执行 PowerShell、写入文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>三份意见读完了，重复项合并后得到 <span class="hl">3 类问题</span>，台账已写到 <code>评审台账.md</code>，下面是归并脚本：</p>
+                  <div class="code">
+                    <div class="code-head">
+                      <span class="code-lang">powershell</span>
+                      <span class="code-copy">
+                        <svg viewBox="0 0 16 16" fill="none"><rect x="5.6" y="5.6" width="7.8" height="7.8" rx="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M10.8 3.1H5.5A2.4 2.4 0 0 0 3.1 5.5v5.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                      </span>
+                    </div>
+                    <div class="code-body"><span class="c"># 合并三份评审意见，按标题去重</span>
+Get-ChildItem ./reviews -Filter *.md |
+  ForEach-Object { Convert-Review $_.FullName } |
+  Export-Csv ./dist/台账.csv -Encoding utf8</div>
+                  </div>
+                  <p>三份里共 21 条意见，去重后 14 条，其中 4 条被标为「待确认」。</p>
+                </div>
+              </div>
+
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">「待确认」的条目单独列出来，我要在会上逐条过</span>
+              </div>
+
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 2 项操作：读取文件、编辑文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>已单列一节，会上按下面顺序过即可：</p>
+                  <ul>
+                    <li><i></i><span>口径类 · 2 条：成本分摊方式、数据导出范围</span></li>
+                    <li><i></i><span>依赖类 · 1 条：等图标规范定稿后再排期</span></li>
+                    <li><i></i><span>责任类 · 1 条：移动端崩溃率的整改归属</span></li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">再核对一遍重复项的判定口径</span>
+              </div>
+
+              <div class="tool-head">
+                <span class="gdot blink"></span>
+                <svg class="chev open" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">正在执行 3 项操作：读取文件、搜索内容、编辑文件</span>
+              </div>
+              <div class="row">
+                <span class="rail"><span class="dot sm proc"></span></span>
+                <div class="md">
+                  <p>我正在逐条比对标题归一化之后的相似度<span class="caret"></span></p>
+                </div>
+              </div>
+
+              <div class="jump">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M4 6.4 8 10.4l4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+
+            <div class="composer-area">
+              <div class="composer">
+                <span class="txt ph">输入消息，或使用 <span class="cmd">/help</span> 查看命令</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ---------- ⑥ 细节态 ---------- -->
+      <div>
+        <div class="cap">⑥ 细节态 · 工具展开 + 文件变更 + 问答留痕 + 提问卡片</div>
+        <div class="window">
+
+          <div class="win-top">
+            <div class="tab active">
+              <span class="tdot ask"></span>
+              <span class="tt">周报数据核对</span>
+              <span class="tclose">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M3.4 3.4l5.2 5.2M8.6 3.4l-5.2 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <div class="tab">
+              <span class="tdot run"></span>
+              <span class="tt">图标规范落地</span>
+            </div>
+            <div class="tab-add">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M7 2.6v8.8M2.6 7h8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+
+          <div class="win-body">
+            <div class="msgs">
+
+              <div class="row">
+                <span class="rail"><span class="dot"></span></span>
+                <span class="u-text">把判定口径写进脚本注释里，顺手把重复项的统计也加上</span>
+              </div>
+
+              <div class="tool-head">
+                <span class="gdot blue"></span>
+                <svg class="chev open" viewBox="0 0 14 14" fill="none"><path d="M5.5 3.5 9 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="gs">已执行 4 项操作：读取文件、搜索内容、编辑器、执行命令</span>
+              </div>
+              <div class="tool"><i></i><span class="tt">读取文件<em>：path: lib/screens/home_screen/input.dart</em></span></div>
+              <div class="tool"><i></i><span class="tt">搜索内容<em>：pattern: _inputHint</em></span></div>
+              <div class="tool"><i></i><span class="tt">编辑器 · str_replace<em>：path: lib/screens/home_screen/input.dart，old_str: 28 字符，new_str: 41 字符</em></span></div>
+              <div class="tool"><i></i><span class="tt">执行命令<em>：flutter analyze --no-pub</em></span></div>
+
+              <div class="diff">
+                <div class="diff-head">
+                  <span class="op">编辑</span>
+                  <span class="diff-path">lib/screens/home_screen/input.dart</span>
+                  <span class="diff-stat"><span class="a">+6</span><span class="d">−3</span></span>
+                </div>
+                <div class="diff-body"><div class="dl">       hintStyle: TextStyle(</div><div class="dl d">-          color: _inputHint,</div><div class="dl a">+          color: _inputHintSoft,</div><div class="dl">           fontSize: 14,</div><div class="dl d">-          fontFamily: _fontFamily),</div><div class="dl a">+          fontFamily: _fontFamily,</div><div class="dl a">+          height: 1.6),</div></div>
+              </div>
+
+              <div class="qcard">
+                <div class="q">
+                  <div class="q-top">
+                    <span class="q-text">重复项以什么为准？</span>
+                    <span class="q-tag">判定口径</span>
+                  </div>
+                  <div class="q-ans">用户回复：<b>标题完全一致即算重复</b></div>
+                </div>
+                <div class="q">
+                  <div class="q-top">
+                    <span class="q-text">是否需要保留原始三份评审文件？</span>
+                    <span class="q-tag">文件留存</span>
+                  </div>
+                  <div class="q-ans skip">用户回复：已跳过</div>
+                </div>
+              </div>
+
+              <div class="row">
+                <span class="rail"><span class="dot sm done"></span></span>
+                <div class="md">
+                  <p>脚本注释与统计都补好了。<span class="hl">为了避免口径不一致</span>，先确认一下统计方式：</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer-area">
+              <div class="pop">
+                <div class="qbody">
+                  <div class="q-top">
+                    <span class="q-tag">确认范围</span>
+                    <span class="q-text">下面按哪种口径统计重复项？</span>
+                  </div>
+                  <div class="opt sel" style="margin-top:10px">
+                    <span>按标题去重</span>
+                    <span class="opt-desc">标题完全相同即算重复</span>
+                  </div>
+                  <div class="opt">
+                    <span>按标题 + 类型去重</span>
+                    <span class="opt-desc">同类目下的同标题才算重复</span>
+                  </div>
+                  <div class="opt">
+                    <span>全部保留，只做标记</span>
+                    <span class="opt-desc">不改条目数，只加重复标记列</span>
+                  </div>
+                  <div class="field">或输入自定义答案</div>
+                  <div class="pop-foot">↑↓ 选择 · Enter 确认 · Esc 跳过</div>
+                </div>
+              </div>
+              <div class="composer">
+                <span class="txt ph">输入消息，或使用 <span class="cmd">/help</span> 查看命令</span>
+                <span class="send">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M21.2 3.4 3.6 10.7c-.75.32-.72 1.38.04 1.66l6.36 2.32 2.32 6.36c.28.76 1.34.79 1.66.04L21.2 3.4Z" fill="currentColor"/>
+                    <path d="M21.2 3.4 10.1 14.6" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+  </section>
+
+  <!-- ==================================================================
+       规范
+       ================================================================== -->
+  <section class="specs-section">
+    <div class="specs-title">规范 · Token 对照与实现要点</div>
+
+    <div class="grid3">
+
+      <div class="card">
+        <h3>色彩 Token 对照 <span class="sub">浅色 → 深色</span></h3>
+        <table class="tok">
+          <tr><th>用途</th><th>浅色</th><th>深色</th></tr>
+          <tr>
+            <td class="k">surface</td>
+            <td class="v">#FCFBF9</td>
+            <td class="v">#1B1D21</td>
+          </tr>
+          <tr>
+            <td class="k">raised</td>
+            <td class="v">#FFFFFF</td>
+            <td class="v">#23262B</td>
+          </tr>
+          <tr>
+            <td class="k">sunken</td>
+            <td class="v">#F6F3EE</td>
+            <td class="v">#141619</td>
+          </tr>
+          <tr>
+            <td class="k">line / line-soft</td>
+            <td class="v">#E7E3DB / #EFEBE4</td>
+            <td class="v">#2E3239 / #25292F</td>
+          </tr>
+          <tr>
+            <td class="k">ink / body</td>
+            <td class="v">#1F2A44 / #3B4250</td>
+            <td class="v">#E9EBF0 / #C3C9D4</td>
+          </tr>
+          <tr>
+            <td class="k">ink-2 / ink-3</td>
+            <td class="v">#5D6577 / #9AA1AF</td>
+            <td class="v">#9BA2B0 / #6C7482</td>
+          </tr>
+          <tr>
+            <td class="k">accent / soft</td>
+            <td class="v">#FFC145 / #FFF6E2</td>
+            <td class="v">#FFC145 / 14% α</td>
+          </tr>
+          <tr>
+            <td class="k">ok / danger</td>
+            <td class="v">#3E9E63 / #C0483C</td>
+            <td class="v">#5CC98A / #E4705F</td>
+          </tr>
+          <tr>
+            <td class="k">info</td>
+            <td class="v">#3E7BC4</td>
+            <td class="v">#75A9E6</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>尺寸与间距</h3>
+        <div class="kv">
+          <div class="kvr"><b>640 × 1000</b><span>窗口逻辑尺寸（屏宽 1/3 × 可见屏高），最小高 200 不变</span></div>
+          <div class="kvr"><b>18px</b><span>窗口圆角；面板 / 输入框 14px；卡片 12px；tab 9px；小标签 5px</span></div>
+          <div class="kvr"><b>50px</b><span>顶部 tab 栏高；tab 本体 32px 高、宽 = 栏宽 1/4（155px）</span></div>
+          <div class="kvr"><b>16px</b><span>内容区左右内边距；消息上下 7px；正文行高 1.75</span></div>
+          <div class="kvr"><b>24 / 38px</b><span>正文左缩进 24px（状态点轨 14 + 间距 10）；工具块再退一档到 38px</span></div>
+          <div class="kvr"><b>13.5 / 12.5 / 11.5px</b><span>消息正文 / 代码与命令 / 工具行与元信息</span></div>
+          <div class="kvr"><b>1px 描边</b><span>层次全部由描边 + 底色反转表达，不叠阴影；阴影只用于浮层与窗口</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>层次规则 <span class="sub">三层底色 + 三级文字</span></h3>
+        <div class="kv">
+          <div class="kvr"><b>surface</b><span>窗口底 = 内容区底，两者同色，靠 tab 栏 hairline 分隔，不做横向分区</span></div>
+          <div class="kvr"><b>raised</b><span>需要「浮起来」的东西：激活 tab、输入框、命令面板、提问卡片、变更面板、留痕卡</span></div>
+          <div class="kvr"><b>sunken</b><span>需要「沉下去」的东西：代码块、diff 正文底、提问卡片内的自定义输入框</span></div>
+          <div class="kvr"><b>ink</b><span>最强：用户消息正文、卡片标题、路径</span></div>
+          <div class="kvr"><b>body</b><span>次强：Agent 正文、代码正文</span></div>
+          <div class="kvr"><b>ink-2 / ink-3</b><span>元信息：工具行标题 / 工具参数、问题文案、占位、提示</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:28px">
+      <div class="card">
+        <h3>设计要点 <span class="sub">逐条对应现有实现，功能与交互零改动</span></h3>
+        <div class="notes">
+          <div class="note"><i></i><p><b>窗口形态完全保留</b>：无边框、贴屏右上、宽度 = 屏宽 1/3、可拖拽调宽、最小高 200；只把直角换成 <code>18px</code> 圆角并加 1px 描边，浅色由「透明 + 外部投影」改为「暖白面板 + 柔和投影」。</p></div>
+          <div class="note"><i></i><p><b>会话 tab 栏由「凸出色块」改为「浮动胶囊」</b>：原 Windows Terminal 式色块依赖「激活 tab 与内容区同色」，浅色体系下同色即失去辨识度，故改为激活 tab 浮起为 <code>raised</code> + 描边，非激活透明融入栏底、hover 浮出浅底；仍为 4 等分、最多 4 个、右端横向滚动。</p></div>
+          <div class="note"><i></i><p><b>状态语义全部保留</b>：运行中橙点闪烁、挂起提问红点常亮（后台会话提醒）、用户消息琥珀点 9px、Agent 运行灰点呼吸 / 完成绿点 6px / 终止红点 6px——仅统一色值并都在左侧同一条 14px 轨道上，正文起始位置全窗口对齐。</p></div>
+          <div class="note"><i></i><p><b>工具调用去「终端裸文本」化</b>：原本靠 15px 占位对齐的隐藏圆点改为真实的小方点层级标记；工具行标题保持 <code>w600</code>，参数更淡更小，编辑器类仍带子命令（如「编辑器 · str_replace」），折叠组概览文案「正在执行 N 项操作：…」与失败数红字逻辑不变。</p></div>
+          <div class="note"><i></i><p><b>文件变更面板与问答留痕卡同构</b>：都从深灰 <code>#202328</code> 块改为 <code>raised</code> 卡片 + 描边，头部一行放「操作标签 + 路径 + 加减行数」；diff 正文沉到 <code>sunken</code>，新增 / 删除行用 13% 透明度的绿红底，等宽字体不变。</p></div>
+          <div class="note"><i></i><p><b>问答留痕卡的 header 标签改用主色系</b>：原蓝底标签 <code>#56A8F5</code> 与新的琥珀主色混用会花，标签统一为 <code>accent-soft / accent-deep</code>；「已跳过」降为 <code>ink-3</code>，与已回答形成强弱对比。</p></div>
+          <div class="note"><i></i><p><b>命令面板与提问卡片视觉同源</b>：统一为 <code>raised</code> 卡片 + 12px 圆角 + 浮层阴影，行高 34px、左列 <code>/命令名</code> 固定 126px 宽（原 132px），说明右对齐截断；提问卡片选项行 32px、选中态为浅底 + 内描边，多选方框、自定义答案输入框、底部键位提示全部保留。</p></div>
+          <div class="note"><i></i><p><b>输入框从「深灰填充块」改为「白卡描边」</b>：<code>raised</code> 底 + 14px 圆角，聚焦时琥珀描边 + 3px 光环；发送按钮改为 30px 琥珀圆钮 + 墨色纸飞机（深色主题同款），位置与原 <code>suffixIcon</code> 一致，仍为单行起、最多 10 行，Enter 发送 / Shift+Enter 换行不变。</p></div>
+          <div class="note"><i></i><p><b>回到底部浮钮</b>：由实心深灰圆钮改为描边白卡圆钮，位置、显隐阈值（距底 &gt; 50px 出现）、点击行为不变。</p></div>
+          <div class="note"><i></i><p><b>正文字体建议</b>：设计稿正文用系统无衬线、等宽只留给代码 / 参数 / 路径。若想保留原「终端等宽格子感」，把消息正文与输入框换回 <code>Sarasa Mono SC</code> 即可，其余 token 无需改动。</p></div>
+          <div class="note"><i></i><p><b>两处新增（可选，需确认）</b>：① tab 栏右端「＋」按钮——只是把已有 <code>/new</code> 命令显式化，达到 4 个上限时同样提示先关闭；② 空态的品牌标识与一行副标题——原标题区为空，如不需要可只留输入框。两处都不改变任何既有逻辑。</p></div>
+          <div class="note"><i></i><p><b>文案</b>：输入框占位由英文 <code>Type something or use /help to list commands</code> 改为「输入消息，或使用 <code>/help</code> 查看命令」，其中 <code>/help</code> 与后续命令词统一用琥珀 chip 样式；是否替换由你定。</p></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</div>
+</body>
+</html>

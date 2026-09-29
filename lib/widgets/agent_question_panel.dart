@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/agent_question.dart';
+import '../theme/chat_theme.dart';
 
 /// Agent 提问卡片的三层结构（与 CommandPalette 同构）：
 /// [AgentQuestionPanelController] 纯逻辑（状态/键盘导航/答案组装），
@@ -147,14 +148,7 @@ class AgentQuestionPanel extends StatefulWidget {
 }
 
 class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
-  static const _fontFamily = 'Sarasa Mono SC';
-
-  static const _bg = Color(0xFF1E1E1E);
-  static const _selectedBg = Color(0x24FFFFFF);
-  static const _hoverBg = Color(0x12FFFFFF);
-  static const _mainText = Color(0xFFEAEAEA);
-  static const _descText = Color(0x73FFFFFF);
-  static const _fieldBg = Color(0xFF161616);
+  static const _fontFamily = ChatTheme.fontFamily;
 
   int? _hoverCursor;
   late final List<FocusNode> _textFocusNodes = [for (final _ in widget.controller.questions) FocusNode()];
@@ -195,17 +189,20 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
+    final theme = ChatTheme.of(context);
     return Container(
       // 与 CommandPalette 一致：间距随卡片一起出现/消失
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 8),
       constraints: const BoxConstraints(maxHeight: 360),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: theme.raised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.line),
+        boxShadow: theme.popShadows,
       ),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,6 +220,7 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   }
 
   Widget _buildQuestion(AgentQuestion question, int qi) {
+    final theme = ChatTheme.of(context);
     final controller = widget.controller;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,24 +230,24 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
           children: [
             if (question.header != null && question.header!.isNotEmpty) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  // 与消息留痕卡右上角的问题类型 tag 保持一致
-                  color: const Color(0xFF56A8F5).withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(6),
+                  // 琥珀主色系标签，与留痕卡的 header tag 同款（参考稿 .q-tag）
+                  color: theme.accentSoft,
+                  borderRadius: BorderRadius.circular(5),
                 ),
                 child: Text(
                   question.header!,
                   style: TextStyle(
-                    color: const Color(0xFF7CB9F8),
-                    fontSize: 10,
+                    color: theme.accentDeep,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
+                    letterSpacing: 0.2,
                     fontFamily: _fontFamily,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 9),
             ],
             Expanded(
               child: Text(
@@ -257,15 +255,16 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: _mainText,
-                  fontSize: 13,
+                  color: theme.ink2,
+                  fontSize: 12.5,
+                  height: 1.55,
                   fontFamily: _fontFamily,
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         if (question.type == 'choice') ...[
           for (var oi = 0; oi < question.options.length; oi++)
             _buildOption(question, qi, oi),
@@ -274,7 +273,7 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
               alignment: Alignment.centerLeft,
               child: _buildSubmitButton(qi),
             ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           _buildTextField(question, qi, controller, hintText: '或输入自定义答案'),
         ]
         else
@@ -284,6 +283,7 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   }
 
   Widget _buildOption(AgentQuestion question, int qi, int oi) {
+    final theme = ChatTheme.of(context);
     final controller = widget.controller;
     final selected = controller.selectionsOf(qi).contains(oi);
     final cursorHere = controller.cursorInfo == (qi, oi);
@@ -306,14 +306,17 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
         },
         child: Container(
           height: 32,
+          margin: const EdgeInsets.only(bottom: 2),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: selected
-                ? _selectedBg
-                : cursorHere || hovered
-                    ? _hoverBg
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
+            // 选中/游标/hover 共用 hover 底色，选中额外加 line 内描边（参考稿 .opt.sel）
+            color: selected || cursorHere || hovered
+                ? theme.hover
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected ? theme.line : Colors.transparent,
+            ),
           ),
           child: Row(
             children: [
@@ -325,14 +328,14 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
                         ? Icons.check_box
                         : Icons.check_box_outline_blank,
                     size: 15,
-                    color: selected ? _mainText : _descText,
+                    color: selected ? theme.ink : theme.ink3,
                   ),
                 ),
               Text(
                 question.options[oi].label,
                 style: TextStyle(
-                  color: _mainText,
-                  fontSize: 13,
+                  color: selected ? theme.ink : theme.ink2,
+                  fontSize: 13.5,
                   fontFamily: _fontFamily,
                 ),
               ),
@@ -344,8 +347,8 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: _descText,
-                      fontSize: 12,
+                      color: theme.ink3,
+                      fontSize: 12.5,
                       fontFamily: _fontFamily,
                     ),
                   ),
@@ -364,13 +367,15 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
     AgentQuestionPanelController controller, {
     String hintText = 'Type an answer',
   }) {
+    final theme = ChatTheme.of(context);
     final cursorHere = controller.cursorInfo == (qi, null);
     return Container(
+      height: 34,
       decoration: BoxDecoration(
-        color: _fieldBg,
-        borderRadius: BorderRadius.circular(4),
+        color: theme.sunken,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withValues(alpha: cursorHere ? 0.24 : 0.08),
+          color: cursorHere ? theme.line : theme.lineSoft,
         ),
       ),
       child: Focus(
@@ -389,20 +394,21 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
         child: TextField(
         controller: controller.textCtrlOf(qi),
         focusNode: _textFocusNodes[qi],
-        cursorColor: Colors.white,
+        cursorColor: theme.accentDeep,
         // 卡片内没有 choice 区块时才自动抢焦点，避免打断浏览
         autofocus: qi == 0 &&
             !controller.questions.any((q) => q.type == 'choice'),
         style: TextStyle(
-          color: _mainText,
-          fontSize: 13,
+          color: theme.ink,
+          fontSize: 13.5,
           fontFamily: _fontFamily,
         ),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
           border: InputBorder.none,
           hintText: hintText,
+          hintStyle: TextStyle(color: theme.ink3, fontSize: 13.5, fontFamily: _fontFamily),
         ),
         onSubmitted: (_) => widget.onSubmit(),
         ),
@@ -411,14 +417,15 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   }
 
   Widget _buildFooter() {
+    final theme = ChatTheme.of(context);
     return Row(
       children: [
         Expanded(
           child: Text(
             '↑↓ 选择 · Enter 确认 · Esc 跳过',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.28),
-              fontSize: 11,
+              color: theme.ink3,
+              fontSize: 12,
               fontFamily: _fontFamily,
             ),
           ),
@@ -428,6 +435,7 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
   }
 
   Widget _buildSubmitButton(int qi) {
+    final theme = ChatTheme.of(context);
     final controller = widget.controller;
     final cursorHere = controller.cursorInfo == (qi, -1);
     return SizedBox(
@@ -436,25 +444,25 @@ class _AgentQuestionPanelState extends State<AgentQuestionPanel> {
         child: TextButton(
       onPressed: widget.onSubmit,
       style: TextButton.styleFrom(
-        foregroundColor: _mainText,
-        backgroundColor: cursorHere ? _selectedBg : Colors.transparent,
+        foregroundColor: theme.ink2,
+        backgroundColor: cursorHere ? theme.hover : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
         ),
       ),
-          child: const Row(
+          child: Row(
             children: [
               Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: Icon(Icons.check_box_outline_blank, size: 15, color: _descText),
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(Icons.check_box_outline_blank, size: 15, color: theme.ink3),
               ),
               Text(
               '提交答案',
         style: TextStyle(
-          fontSize: 13,
+          fontSize: 13.5,
           fontFamily: _fontFamily,
         ),
               ),
@@ -496,86 +504,111 @@ class QuestionRecordCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(0, 4, 0, 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF202328),
-        borderRadius: BorderRadius.circular(7),
-      ),
+    final theme = ChatTheme.of(context);
+    // 一问题一卡：顶部条放问题、内容区放回复（与代码块同构的两段式卡片）。
+    // 多问题时纵向叠卡，不再挤在同一张卡里分行。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var qi = 0; qi < questions.length; qi++) ...[
-            if (qi > 0) const SizedBox(height: 8),
-            _buildQuestionRow(qi),
-            const SizedBox(height: 3),
-            _buildAnswerRow(qi),
+            if (qi > 0) const SizedBox(height: 6),
+            _buildCard(qi, theme),
           ],
         ],
       ),
     );
   }
 
-  /// 问题行：问题全文（最多两行）+ header 标签靠右上角
-  Widget _buildQuestionRow(int qi) {
+  /// 单张问答卡：顶部条（sunken 底 + 问题文本 + header 标签）+ 回复内容区
+  Widget _buildCard(int qi, ChatThemeData theme) {
     final header = questions[qi].header;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Text(
-              questions[qi].question,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.62),
-                fontSize: 11,
-                height: 1.4,
-                fontFamily: 'Sarasa Mono SC',
-              ),
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        // 参考稿 .qcard：raised 卡 + 12 圆角 + line 描边 + 卡片阴影
+        color: theme.raised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.line),
+        boxShadow: theme.cardShadows,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 顶部条：问题全文（最多两行）+ header 小标签靠右
+          Container(
+            padding: const EdgeInsets.fromLTRB(11, 7, 10, 8),
+            color: theme.barBg,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    questions[qi].question,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.ink,
+                      fontSize: 12,
+                      height: 1.45,
+                      fontFamily: ChatTheme.fontFamily,
+                    ),
+                  ),
+                ),
+                if (header != null && header.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 120),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      // 琥珀主色系标签，与提问卡片的 header tag 同款
+                      color: theme.accentSoft,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      header,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: theme.accentDeep, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.2, fontFamily: ChatTheme.fontFamily),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-        ),
-        if (header != null && header.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Container(
-            constraints: const BoxConstraints(maxWidth: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              // 彩色标签底：低饱和蓝，与聊天内代码/链接蓝同系
-              color: const Color(0xFF56A8F5).withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: Text(
-              header,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF7CB9F8), fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.3, fontFamily: 'Sarasa Mono SC'),
-            ),
+          // 内容区：用户回复
+          Padding(
+            padding: const EdgeInsets.fromLTRB(11, 8, 10, 9),
+            child: _buildAnswerRow(qi, theme),
           ),
         ],
-      ],
+      ),
     );
   }
 
-  /// 答案行：「用户回复：」前缀 + 答案（与问题同色）；跳过置灰
-  Widget _buildAnswerRow(int qi) {
+  /// 答案行：「用户回复：」前缀 ink3 + 答案 ink w600；跳过态整体降 ink3
+  Widget _buildAnswerRow(int qi, ChatThemeData theme) {
     final answer = _answerText(qi);
     final skippedThis = answer == '已跳过';
     return Text.rich(
       TextSpan(
         text: '用户回复：',
-        children: [TextSpan(text: answer)],
+        children: [
+          TextSpan(
+            text: answer,
+            style: skippedThis
+                ? null
+                : TextStyle(color: theme.ink, fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: skippedThis ? Colors.white.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.62),
-        fontSize: 11,
-        fontFamily: 'Sarasa Mono SC',
+        color: theme.ink3,
+        fontSize: 12,
+        fontFamily: ChatTheme.fontFamily,
       ),
     );
   }
