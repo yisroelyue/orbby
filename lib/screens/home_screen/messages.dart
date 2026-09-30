@@ -77,6 +77,7 @@ extension _HomeScreenMessages on _HomeScreenState {
         children: [
           SelectionArea(
             child: ListView.builder(
+              key: ObjectKey(_current),
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(vertical: 4),
               itemCount: _messages.length,
@@ -98,8 +99,8 @@ extension _HomeScreenMessages on _HomeScreenState {
   }
 
   void _onChatScroll() {
-    if (!_scrollController.hasClients) return;
-    final show = _scrollController.position.maxScrollExtent -
+    final show = _scrollController.hasClients &&
+        _scrollController.position.maxScrollExtent -
             _scrollController.position.pixels >
         50;
     if (show != _showScrollToBottom && mounted) {
@@ -118,56 +119,63 @@ extension _HomeScreenMessages on _HomeScreenState {
       return const SizedBox.shrink();
     }
     if (msg.isUser) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 7),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: theme.sunken,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const MessageStatusDot(
-              status: MessageStatus.user,
-              // 与下面用户正文同一行高，圆点才能落在首行中线上
-              lineHeight: _userFontSize * _userLineHeightFactor,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 消息附件缩略图（重载会话后无内存缩略图，直接读本地文件）
-                  if (msg.attachments.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final attachment in msg.attachments)
-                            _UserAttachmentThumb(
-                              attachment: attachment,
-                              onOpen: () => _viewAttachment(attachment),
-                            ),
-                        ],
-                      ),
-                    ),
-                  if (msg.text.isNotEmpty)
-                    Text(
-                      msg.text,
-                      style: TextStyle(
-                        color: theme.ink,
-                        fontSize: _userFontSize,
-                        height: _userLineHeightFactor,
-                        letterSpacing: 0.1,
-                        fontFamily: _fontFamily,
-                      ),
-                    ),
-                ],
+      return LayoutBuilder(
+        builder: (context, constraints) => Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.85),
+            margin: const EdgeInsets.symmetric(vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.sunken,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
               ),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 消息附件缩略图（重载会话后无内存缩略图，直接读本地文件）
+                      if (msg.attachments.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final attachment in msg.attachments)
+                                _UserAttachmentThumb(
+                                  attachment: attachment,
+                                  onOpen: () => _viewAttachment(attachment),
+                                ),
+                            ],
+                          ),
+                        ),
+                      if (msg.text.isNotEmpty)
+                        Text(
+                          msg.text,
+                          style: TextStyle(
+                            color: theme.ink,
+                            fontSize: _userFontSize,
+                            height: _userLineHeightFactor,
+                            letterSpacing: 0.1,
+                            fontFamily: _fontFamily,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -300,7 +308,8 @@ extension _HomeScreenMessages on _HomeScreenState {
   /// [view] 指定消息所属会话：仅当它是当前 tab 时才滚动（共享 scrollController，
   /// 后台会话流式增长不得拽动前台视图）；不传 = 当前会话（命令本地消息等）
   void _scrollToBottom({bool force = false, ChatSessionView? view}) {
-    if (view != null && !identical(view, _current)) return;
+    final targetView = view ?? _current;
+    if (!mounted || !identical(targetView, _current)) return;
     // 在当前帧提交前判断是否跟随，避免内容增长后 maxScrollExtent 变化导致
     // 原本在底部的用户被误判为“已滚动到前面”。
     final shouldFollow = force ||
@@ -308,6 +317,7 @@ extension _HomeScreenMessages on _HomeScreenState {
         _scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 50;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(targetView, _current)) return;
       if (_scrollController.hasClients && shouldFollow) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,

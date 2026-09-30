@@ -86,8 +86,9 @@ class _SkillPaletteState extends State<SkillPalette> {
     return Container(
       // 不可见时是 shrink 的空盒，间距随面板一起出现/消失
       margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8),
       constraints: BoxConstraints(
-        maxHeight: _headerHeight + _rowHeight * _maxVisibleRows,
+        maxHeight: _headerHeight + _rowHeight * _maxVisibleRows + 8,
       ),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -109,7 +110,7 @@ class _SkillPaletteState extends State<SkillPalette> {
                 child: Text(
                   '技能（${rows.length}）',
                   style: TextStyle(
-                    color: theme.ink2,
+                    color: theme.isDark ? Colors.white : theme.ink2,
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
                     fontFamily: _fontFamily,
@@ -153,7 +154,7 @@ class _SkillPaletteState extends State<SkillPalette> {
           decoration: BoxDecoration(
             // 与命令面板同款选中/悬停高亮（视觉一致）
             color: selected || hovered
-                ? const Color(0xFFF3F4F6)
+                ? (theme.isDark ? theme.hover : const Color(0xFFF3F4F6))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -168,7 +169,9 @@ class _SkillPaletteState extends State<SkillPalette> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: selected ? theme.ink : theme.ink2,
+                        color: theme.isDark
+                            ? Colors.white
+                            : (selected ? theme.ink : theme.ink2),
                         fontSize: 13.5,
                         fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                         fontFamily: _fontFamily,
@@ -177,19 +180,13 @@ class _SkillPaletteState extends State<SkillPalette> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.auto_awesome,
-                size: 16,
-                color: selected ? theme.ink : theme.ink2,
-              ),
-              const SizedBox(width: 7),
               Expanded(
                 child: Text(
                   skill.description,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: theme.ink3,
+                    color: theme.isDark ? Colors.white : theme.ink3,
                     fontSize: 13,
                     fontFamily: _fontFamily,
                   ),

@@ -46,6 +46,8 @@
 - `markdown.dart`：MarkdownBody 样式表 `_markdownStyleSheet()` + 代码块渲染（`_PreTextBuilder`/`_CodeCopyButton` 顶层类）。
 - 代码块语法高亮由独立组件 `lib/widgets/code_highlight_text.dart` 负责，使用 `re_highlight` 按语言标签解析（支持库内语言别名），仅修改文字颜色，保留宿主字体、行高和背景；行号、复制、滚动仍由 `_PreTextBuilder` 管理。组件缓存当前渲染结果，代码/语言/主题/样式变化时失效；无语言、未知语言、解析失败或超过 20000 字符时显示完整纯文本，不做自动语言猜测。
 - `widgets.dart`：页面骨架（聊天主体/欢迎页/聊天区域/建议图标）。
+- 聊天滚动位置由各 `ChatSessionView` 保存、`tabs.dart` 恢复；共享 ScrollController 禁用 PageStorage 偏移恢复，列表以会话对象为 key 隔离滚动动画。延迟滚动回调必须检查 mounted 和目标会话身份，切换/新建时清除旧回底按钮状态，再按当前列表刷新。
+- `function_bar.dart`：顶部横向功能条，独立管理展开/折叠状态，通过 TapRegion 在点击外部时收起；功能入口由宿主传入回调，窄窗口横向滚动，不内联业务逻辑。
 - `models.dart`：`_ChatMessage`/`_ToolEvent`/`_QuestionPanel` 数据模型。
 - `helpers.dart`：工具名称/参数/结果的显示格式化（纯展示辅助 extension）。
 

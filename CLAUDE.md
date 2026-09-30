@@ -55,18 +55,23 @@
 - `lib/widgets/command_palette.dart`：纯展示列表，只读 controller 状态，确认回调交回宿主。
 - `lib/screens/home_screen.dart` `_buildCommands()`：命令注册表。**新增命令 = 在这里加一条 `ChatCommand`**；execute 里操作 HomeScreen 状态需自行 mounted 保护。
 - 交互：↑/↓ 选择、Enter/Tab 确认（清空输入并执行）、Esc 收起、点击行确认；`/` 开头的输入不作为普通消息发送，按命令精确匹配执行。
-- 内置命令：`/help`、`/new`（另开新的会话 tab，走 `_openNewSessionTab`；旧会话原地保留可切回）、`/session`（历史会话弹窗，见下）、`/clear`（清空当前 tab 上下文并删除该会话文件）、`/clear-session`（删除全部历史会话文件，关闭所有多余 tab 只留一个空 tab；不走 `_closeSessionTab` 防落盘把删除的文件写回）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/cd`（prepareInput，切换 Agent 工作区：`/cd 路径` 相对路径按当前工作区解析、空参数查看当前，Node 侧校验并持久化）、`/apps`、`/settings`（走 menuChannel）。本地结果消息统一走 `_addLocalMessage`。
+- 内置命令：`/help`、`/new`（另开新的会话 tab，走 `_openNewSessionTab`；旧会话原地保留可切回）、`/session`（历史会话弹窗，见下）、`/clear`（清空当前 tab 上下文并删除该会话文件）、`/clear-session`（删除全部历史会话文件，关闭所有多余 tab 只留一个空 tab；不走 `_closeSessionTab` 防落盘把删除的文件写回）、`/compact`（AgentService.compact 压缩上下文，走 `_runCompact`）、`/rollback`（FileUndoService 还原最近一次文件改动）、`/retry`（删除末位回复并经 `_sendText` 重发，`_sendText` 是输入发送共用的核心流程；带附件时重发会恢复附件）、`/copy`（复制当前会话 JSON）、`/copy-txt`（复制当前会话文本）、`/cd`（prepareInput，切换 Agent 工作区：`/cd 路径` 相对路径按当前工作区解析、空参数查看当前，Node 侧校验并持久化）、`/apps`、`/settings`（走 menuChannel）、`/reload-skill`（重扫技能目录并清 Node 技能缓存，见「聊天 '@' 技能」）。本地结果消息统一走 `_addLocalMessage`。
 
 ## 聊天 '@' 技能
 
 输入框输入 `@` 弹出技能提示（HomeScreen 输入框上方），与 '/' 命令面板同构的三层，新增技能不碰代码（数据在磁盘）：
 
-- `lib/services/chat_skill.dart`：`ChatSkill`（name/description/fileName）+ `SkillPaletteController`（纯逻辑 ChangeNotifier，过滤/键盘导航与命令面板同款）。**触发语义与命令不同**：技能嵌在正文中引用，只有 `@` 片段位于**文本末尾**（`@` 之后无空白）面板才可见——空格续写正文即自然收起，Enter 发送不被劫持；确认是把末尾 `@ 片段`替换为 `@技能名 `（保留前后正文，不清空输入框，见 `home_screen/skills.dart` 的 `_confirmSkill`）。
-- `lib/services/skill_service.dart`：扫 `~/.orbby/skills/` 下 markdown，一文件一技能，frontmatter 极简解析 `name`/`description`（name 缺省用文件名 stem，含空白的跳过——`@` 引用片段以空白截止）；目录不存在时创建并 seed 一个 `demo.md` 测试技能。
+- `lib/services/chat_skill.dart`：`ChatSkill`（name/description）+ `SkillPaletteController`（纯逻辑 ChangeNotifier，过滤/键盘导航与命令面板同款）。**触发语义与命令不同**：技能嵌在正文中引用，只有 `@` 片段位于**文本末尾**（`@` 之后无空白）面板才可见——空格续写正文即自然收起，Enter 发送不被劫持；确认是把末尾 `@ 片段`替换为 `@技能名 `（保留前后正文，不清空输入框，见 `home_screen/skills.dart` 的 `_confirmSkill`）。
+- `lib/services/skill_service.dart`：扫 `~/.orbby/skills/`，**两种技能形态可混用**：目录式（推荐，子目录内 `SKILL.md` = frontmatter `name`/`description` + 正文，同目录其余文件是脚本/模板等技能资源；name 缺省用目录名）与散装单 md（name 缺省用文件名 stem）；frontmatter 极简解析，name 含空白的跳过（`@` 引用片段以空白截止）；**同名技能目录式优先**；目录不存在时创建并 seed 目录式 demo 技能（SKILL.md + usage.txt）。
 - `lib/widgets/skill_palette.dart`：纯展示列表，视觉与 CommandPalette 同源。
 - **'/' 与 '@' 面板互斥路由**：`home_screen.dart` 的 `_onInputChanged` 按最后出现的触发字符（`lastIndexOf` 比较）只路由给一个 controller，另一个 `hide()`（两面板永不同时 visible；键盘接管分支在 `input.dart` 命令面板之后并列）。
 - **面板共用关键词匹配**抽在 `lib/services/palette_filter.dart`（`paletteMatchRank`：前缀 > 分隔词缩写 > 顺序匹配），命令/技能两个 controller 复用，勿在其中一处另写匹配规则。
-- **发送链路尚未接入**：`@技能名` 目前随消息原样作为普通文本发送；后续生效方案（Flutter 侧注入 prompt 或 Node 侧识别加载）接入时改 `_sendText`/agent-runtime，技能正文经 `fileName` 回读。
+- **发送链路（Node 侧展开）**：`agent-runtime/src/services/skill-service.ts` 与 Flutter 共用 `~/.orbby/skills/`，扫同两种形态（同样目录式优先），读 md 正文；`runtime.ts` 的 `chat()` 在两处调 `expandSkillRefs`——当前轮 user 消息、以及会话重开时 history 回放的 user 轮（Flutter 传回的 history 是原始文本，不展开则重开后引用轮丢技能正文）。**展开形态 = 原句保留 + 末尾附加技能指令块**（同名去重、未注册的 `@xxx` 原样保留、`@` 后到空白或常见中英文标点截止）；目录式技能的注入块附带**资源目录绝对路径 + 一层文件清单**（>20 项截断），LLM 经命令工具以绝对路径执行脚本、read 工具读资源——技能作者不硬编码路径。UI 气泡与会话落盘仍是原始文本，仅发给 LLM 的上下文带正文。
+- **技能名与目录名支持中文**（两端扫描、面板过滤、注入均兼容）；中文引用与正文粘连（"用@磁盘扫描整理一下"无空格分隔）由 `resolveSkillRef` 的**最长前缀兜底**解决——精确匹配失败时取"是引用串前缀"的技能中最长者，手打与面板选中（自动补尾随空格）两条路径都能展开。技能附带 `.ps1` 脚本须**纯 ASCII**：无 BOM 的 UTF-8 会被 PowerShell 5.1 按 GBK 读，中文注释/输出即乱码（同 runner C++ 的坑）。
+- **技能目录只读白名单**：`workspace-permission.ts` 的 `ensure` 对 `~/.orbby/skills` 下的 read 操作直接放行（LLM 会主动读注入的资源路径，逐次弹确认体验差）；write/execute 仍走原授权模型。
+- 技能列表两端都在内存缓存；**`/reload-skill` 命令热加载**：Flutter 重扫（`SkillPaletteController.replaceAll` 整表替换）+ `skills.reload` 消息清 Node 缓存（`clearSkillCache`，下次 `expandSkillRefs` 重扫），加/改技能文件无需重启应用。改了 agent-runtime 的 src 记得 `npx tsc` 编译 dist（Flutter 从 `dist/main.js` 启动 Node）。
+- **技能目录变更自动热加载（监听，无需命令）**：Node 侧 `skill-service.ts` 的 `startSkillsWatch` 用 `fs.watch(recursive)` 监听 `~/.orbby/skills`（目录不存在先建、watcher 异常 5s 后重建），变更防抖 1s 后 `clearSkillCache` 并由 server 向所有连接广播 `skills.changed`；连接建立时也补推一次（断连期间错过的变更兜底）。Flutter 侧 `AgentService.serverEvents`（`AgentWsClient.events` 直通）暴露推送流，HomeScreen 的 `_subscribeSkillChanges`（skills.dart）过滤 `skills.changed` 后静默 `_loadSkills()` 重扫面板——LLM 创建技能/用户手改文件后立即可 `@` 引用，`/reload-skill` 降级为兜底。订阅 serverEvents 必须 `onError` 吞断连错误（broadcast 流的错误发给所有订阅者）。**新增服务端主动推送类型照此模式**：server 广播 + AgentService.serverEvents 暴露 + 消费方按 type 过滤，不走请求-响应。
+- **`@创建技能` 元技能**（`~/.orbby/skills/创建技能/`）：教 LLM 按用户需求创建新技能（在技能根目录建子目录 + SKILL.md + 可选脚本，引用 `<技能资源目录>` 父目录推导根目录），写完靠上面的目录监听自动生效。写入技能目录**仍走授权弹窗**（read 才白名单）——技能正文是指令注入载体，放行 write 等于技能可无感改写技能库，这条线刻意不开。
 
 ## 附件（图片/文本/PDF）与 /image-analyze
 

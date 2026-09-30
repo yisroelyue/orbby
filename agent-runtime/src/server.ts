@@ -10,6 +10,7 @@ import { registerSkillTools } from './tools/skill-tools.js';
 import { registerAskUserTool } from './tools/ask-user.js';
 import { conversationLog } from './conversation-log.js';
 import { loadPermissionMode, savePermissionMode, PermissionMode } from './services/permission-storage.js';
+import { clearSkillCache, startSkillsWatch } from './services/skill-service.js';
 
 /** 挂起中的用户提问：cancel/断连时经 reject 唤醒卡在 await 上的工具 worker */
 type PendingQuestion = { requestId: string; resolve: (value: string[][]) => void; reject: (error: Error) => void };
@@ -24,10 +25,19 @@ export function startServer(port = Number(process.env.ORBBY_AGENT_PORT ?? 43127)
   registerAskUserTool(registry);
   const agent = new AgentRuntime(registry);
   const wss = new WebSocketServer({host: '127.0.0.1', port});
+  // 技能目录监听：任何文件变化（LLM 创建技能/用户手改）自动清缓存并广播，
+  // Flutter 收到 skills.changed 静默重扫面板——等效自动 /reload-skill，
+  // 创建/修改技能后立即可 @ 引用，无需手动命令或重启
+  startSkillsWatch(() => {
+    clearSkillCache();
+    for (const client of wss.clients) send(client, { type: 'skills.changed' });
+  });
   // active/answers 按连接隔离：断连时只清理本连接的挂起请求，不误伤其他连接
   wss.on('connection', socket => {
     const active = new Map<string, AbortController>();
     const answers = new Map<string, PendingQuestion>();
+    // 断连期间错过的目录变化，在重连建立时补一次通知（重扫幂等，无变化时无害）
+    send(socket, { type: 'skills.changed' });
     socket.on('message', raw => void handle(socket, agent, active, answers, JSON.parse(raw.toString()) as ClientMessage));
     socket.on('close', () => {
       for (const [questionId, entry] of answers) { entry.reject(new Error('connection closed')); answers.delete(questionId); }
@@ -50,6 +60,8 @@ async function handle(socket: WebSocket, agent: AgentRuntime, active: Map<string
     // /cd 工作区切换：按会话隔离（多会话并发时互不影响）；set 校验失败（目录不存在）走外层 catch 回 agent.error
     if (message.type === 'workspace.get') return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace: agent.getWorkspace(sessionId ?? 'default')}));
     if (message.type === 'workspace.set') { const workspace = await agent.setWorkspace(sessionId ?? 'default', String(message.payload.path ?? '')); return send(socket, reply('workspace.status', message.requestId, sessionId, {workspace})); }
+    // /reload-skill：清技能缓存（面板侧重扫由 Flutter 完成），下次引用展开时重扫
+    if (message.type === 'skills.reload') { clearSkillCache(); return send(socket, reply('skills.status', message.requestId, sessionId, {reloaded: true})); }
     if (message.type === 'user.answer') {
       const entry = answers.get(message.payload.questionId);
       if (entry) { answers.delete(message.payload.questionId); entry.resolve(message.payload.answers); void conversationLog(conversationId, 'event', {type:'user.answer', payload:{questionId:message.payload.questionId, answers:message.payload.answers}}); }

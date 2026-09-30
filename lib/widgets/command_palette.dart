@@ -85,8 +85,9 @@ class _CommandPaletteState extends State<CommandPalette> {
     return Container(
       // 不可见时是 shrink 的空盒，间距随面板一起出现/消失
       margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8),
       constraints: BoxConstraints(
-        maxHeight: _headerHeight + _rowHeight * _maxVisibleRows,
+        maxHeight: _headerHeight + _rowHeight * _maxVisibleRows + 8,
       ),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -108,7 +109,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                 child: Text(
                   '命令（${rows.length}）',
                   style: TextStyle(
-                    color: theme.ink2,
+                    color: theme.isDark ? Colors.white : theme.ink2,
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
                     fontFamily: _fontFamily,
@@ -151,7 +152,7 @@ class _CommandPaletteState extends State<CommandPalette> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: selected || hovered
-                ? const Color(0xFFF3F4F6)
+                ? (theme.isDark ? theme.hover : const Color(0xFFF3F4F6))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -166,7 +167,9 @@ class _CommandPaletteState extends State<CommandPalette> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: selected ? theme.ink : theme.ink2,
+                        color: theme.isDark
+                            ? Colors.white
+                            : (selected ? theme.ink : theme.ink2),
                         fontSize: 13.5,
                         fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                         fontFamily: _fontFamily,
@@ -187,7 +190,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: theme.ink3,
+                    color: theme.isDark ? Colors.white : theme.ink3,
                     fontSize: 13,
                     fontFamily: _fontFamily,
                   ),
@@ -213,6 +216,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         'retry' => Icons.refresh,
         'copy' || 'copy-txt' => Icons.content_copy,
         'apps' => Icons.apps,
+        'reload-skill' => Icons.auto_awesome,
         'sys_setting' || 'setting' => Icons.settings_outlined,
         'permission-off' || 'permission-all' || 'permission-read' || 'permission' => Icons.lock_outline,
         _ => Icons.terminal,

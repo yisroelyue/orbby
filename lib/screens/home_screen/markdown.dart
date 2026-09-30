@@ -13,7 +13,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
         color: theme.body,
         fontSize: _bodyFontSize,
         height: _bodyLineHeightFactor,
-        letterSpacing: 0.1,
+        letterSpacing: 0.5,
         fontWeight: FontWeight.w400,
         fontFamily: _fontFamily,
       ),
@@ -63,7 +63,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       ),
       a: TextStyle(
         color: theme.info,
-        letterSpacing: 0.1,
+        letterSpacing: 0.5,
         fontFamily: _fontFamily,
       ),
       blockquoteDecoration: BoxDecoration(
@@ -93,12 +93,15 @@ extension _HomeScreenMarkdown on _HomeScreenState {
         color: theme.body,
         fontSize: 14,
         height: 1.65,
-        letterSpacing: 0.1,
+        letterSpacing: 0.5,
         fontFamily: _fontFamily,
       ),
       tablePadding: const EdgeInsets.symmetric(vertical: 16),
       tableBorder: TableBorder(
-        horizontalInside: BorderSide(color: theme.lineSoft, width: 1),
+        horizontalInside: BorderSide(
+          color: theme.isDark ? const Color(0x59D8DADF) : theme.lineSoft,
+          width: 1,
+        ),
       ),
       tableCellsPadding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
       // 整表容器：surface 底 + line 描边 + 10px 圆角，表头灰带等内容
@@ -106,9 +109,15 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       tableDecoration: BoxDecoration(
         color: theme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.line),
+        border: Border.all(
+          color: theme.isDark ? const Color(0x59D8DADF) : theme.line,
+        ),
       ),
-      tableHeadDecoration: BoxDecoration(color: theme.barBg),
+      tableHeadDecoration: BoxDecoration(
+        color: theme.isDark
+            ? const Color(0x26D8DADF)
+            : Color.alphaBlend(const Color(0x08000000), theme.barBg),
+      ),
       tableCellsDecoration: const BoxDecoration(),
       horizontalRuleDecoration: BoxDecoration(
         border: Border(
@@ -184,7 +193,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
                     style: codeStyle.copyWith(
                       fontSize: 11.5,
                       letterSpacing: 0.8,
-                      color: theme.ink3,
+                      color: theme.isDark ? theme.body : theme.ink3,
                     ),
                   ),
                 const Spacer(),
@@ -205,7 +214,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
                 // 行号列：固定在左侧、不随代码横向滚动（与编辑器一致），
                 // 宽度由最长行号自然撑开
                 Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 8, top: 10, bottom: 10),
+                  padding: const EdgeInsets.only(left: 12, right: 8, top: 6, bottom: 6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -218,7 +227,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(0, 10, 12, 10),
+                    padding: const EdgeInsets.fromLTRB(0, 6, 12, 6),
                     child: CodeHighlightText(
                       source: source,
                       language: language,
@@ -259,7 +268,7 @@ class _InlineCodeBuilder extends MarkdownElementBuilder {
     return Container(
       // Wrap 换行时保留灰底之间的空隙，表格单元格内同样生效。
       margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: theme.codeInlineBg,
         borderRadius: BorderRadius.circular(5),
@@ -310,10 +319,16 @@ class _CodeCopyButtonState extends State<_CodeCopyButton> {
                 : theme.ink.withValues(alpha: 0),
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Icon(
-            Icons.copy_outlined,
-            size: 13,
-            color: _hovered ? theme.ink : theme.ink3,
+          child: SvgPicture.asset(
+            'assets/svg/复制.svg',
+            width: 13,
+            height: 13,
+            colorFilter: ColorFilter.mode(
+              theme.isDark
+                  ? Colors.white
+                  : (_hovered ? theme.ink : theme.ink3),
+              BlendMode.srcIn,
+            ),
           ),
         ),
       ),

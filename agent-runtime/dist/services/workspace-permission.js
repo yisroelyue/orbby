@@ -1,4 +1,12 @@
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+/** 技能资源目录（~/.orbby/skills）的只读白名单：引用展开时注入的目录路径
+ *  LLM 会主动去读，逐次弹确认体验太差；写入与执行仍走原授权模型。 */
+function isUnderSkillsDir(target) {
+    const root = join(homedir(), '.orbby', 'skills').toLowerCase();
+    const lower = target.toLowerCase();
+    return lower === root || lower.startsWith(`${root}\\`) || lower.startsWith(`${root}/`);
+}
 export class WorkspacePermissionService {
     mode = 'ask';
     setMode(mode) { if (mode === 'all' || mode === 'read' || mode === 'ask')
@@ -6,6 +14,8 @@ export class WorkspacePermissionService {
     async ensure(path, permission, askUser) {
         const target = resolve(path);
         if (this.mode === 'all' || (this.mode === 'read' && permission === 'read'))
+            return;
+        if (permission === 'read' && isUnderSkillsDir(target))
             return;
         if (!askUser)
             throw new Error(`Permission denied: ${target}`);

@@ -137,6 +137,11 @@ extension _HomeScreenCommands on _HomeScreenState {
       ChatCommand(name: 'permission-all', description: '全局授权所有读写执行操作', execute: () => _setPermissionMode('all', '已开启全局授权，后续操作不再询问。')),
       ChatCommand(name: 'permission-read', description: '只读授权，读取操作不再询问', execute: () => _setPermissionMode('read', '已开启只读授权，读取操作不再询问。')),
       ChatCommand(name: 'permission', description: '查看当前授权模式和已保存权限', execute: _showPermissionStatus),
+      ChatCommand(
+        name: 'reload-skill',
+        description: '重新扫描技能目录（加/改技能文件后生效，无需重启）',
+        execute: _reloadSkillsCommand,
+      ),
     ];
   }
 

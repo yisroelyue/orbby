@@ -5,7 +5,8 @@ export type ClientMessage =
   | { type: 'agent.compact'; requestId: string; sessionId: string; payload?: {llm?: {url?:string;apiKey?:string;model?:string;platform?:string;systemPrompt?:string;usageRules?:string}} }
   | { type: 'user.answer'; requestId: string; sessionId: string; payload: { questionId: string; answers: string[][] } }
   | { type: 'workspace.set'; requestId: string; sessionId: string; payload: { path: string } }
-  | { type: 'workspace.get'; requestId: string; sessionId: string };
+  | { type: 'workspace.get'; requestId: string; sessionId: string }
+  | { type: 'skills.reload'; requestId: string; sessionId: string };
   
 
 /** ask_user_question / 目录权限确认共用的结构化问题（type 省略时按 options 是否为空推断） */

@@ -379,6 +379,14 @@ class _MarkdownWidgetState extends State<MarkdownWidget>
   }
 
   @override
+  void reassemble() {
+    super.reassemble();
+    // Custom builders can change during hot reload without data/style changes.
+    // Rebuild cached widgets so their updated presentation becomes visible.
+    _parseMarkdown();
+  }
+
+  @override
   void dispose() {
     _disposeRecognizers();
     super.dispose();

@@ -22,6 +22,9 @@ extension _HomeScreenInput on _HomeScreenState {
 
   Widget _buildInputArea() {
     final theme = _themeData;
+    final inputInk = theme.isDark ? const Color(0xFFE2E4E8) : theme.ink;
+    final inputMuted = theme.isDark ? const Color(0xFFCDD0D6) : theme.ink2;
+    final inputHint = theme.isDark ? const Color(0xFFB9BEC7) : theme.ink3;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,15 +57,19 @@ extension _HomeScreenInput on _HomeScreenState {
             return Container(
               padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFE0E0E0),
+                color: theme.isDark
+                    ? Colors.transparent
+                    : const Color(0xFFE0E0E0),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  color: theme.surface,
-                  border: Border.all(color: theme.line),
+                  color: theme.isDark ? const Color(0xFF303238) : theme.surface,
+                  border: Border.all(
+                    color: theme.isDark ? Colors.transparent : theme.line,
+                  ),
                   boxShadow: const <BoxShadow>[],
                 ),
                 child: Focus(
@@ -76,9 +83,9 @@ extension _HomeScreenInput on _HomeScreenState {
                         minLines: 2,
                         maxLines: 10,
                         enabled: true,
-                        cursorColor: theme.accentDeep,
+                        cursorColor: theme.isDark ? inputInk : theme.accentDeep,
                         style: TextStyle(
-                          color: theme.ink,
+                          color: inputInk,
                           fontSize: 15,
                           height: 1.65,
                           letterSpacing: 0.3,
@@ -92,14 +99,14 @@ extension _HomeScreenInput on _HomeScreenState {
                                   overflow: TextOverflow.ellipsis,
                                   text: TextSpan(
                                     style: TextStyle(
-                                      color: theme.ink3,
+                                      color: inputHint,
                                       fontSize: 15,
                                       letterSpacing: 0.3,
                                       fontFamily: _fontFamily,
                                     ),
                                     children: [
                                       const TextSpan(
-                                        text: '描述你的需求，/help 查看常用命令及说明， @ 调用技能。',
+                                        text: '描述你的需求，使用 /help 查看常用命令及说明，使用 @ 调用技能。',
                                       ),
                                       // const TextSpan(text: '描述你的需求，'),
                                       // TextSpan(
@@ -120,7 +127,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                   ),
                                 ),
                           hintStyle: TextStyle(
-                            color: theme.ink3,
+                            color: inputHint,
                             fontSize: 15,
                             letterSpacing: 0.3,
                             fontFamily: _fontFamily,
@@ -175,6 +182,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                           'assets/svg/工作区.svg',
                                           width: 16,
                                           height: 16,
+                                          colorFilter: ColorFilter.mode(inputMuted, BlendMode.srcIn),
                                         ),
                                         const SizedBox(width: 6),
                                         Flexible(
@@ -183,7 +191,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              color: Colors.black,
+                                              color: inputMuted,
                                               fontSize: 12,
                                               letterSpacing: 0.2,
                                               fontFamily: _fontFamily,
@@ -225,6 +233,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                         'assets/svg/大模型.svg',
                                         width: 16,
                                         height: 16,
+                                        colorFilter: ColorFilter.mode(inputMuted, BlendMode.srcIn),
                                       ),
                                       const SizedBox(width: 6),
                                       ConstrainedBox(
@@ -236,7 +245,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: Colors.black,
+                                            color: inputMuted,
                                             fontSize: 12,
                                             letterSpacing: 0.2,
                                             fontFamily: _fontFamily,
@@ -244,10 +253,10 @@ extension _HomeScreenInput on _HomeScreenState {
                                         ),
                                       ),
                                       const SizedBox(width: 3),
-                                      const Icon(
+                                      Icon(
                                         Icons.keyboard_arrow_down,
                                         size: 17,
-                                        color: Colors.black,
+                                        color: inputMuted,
                                       ),
                                     ],
                                   ),

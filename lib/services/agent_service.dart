@@ -21,6 +21,11 @@ class AgentService {
   static String newSessionId() =>
       'session-${DateTime.now().microsecondsSinceEpoch}';
 
+  /// Node 侧主动推送（非请求-响应）的事件流（如 skills.changed 技能目录
+  /// 变化通知）。订阅方自行按 type 过滤，listen 必须带 onError 容忍断连
+  /// （broadcast 流的错误会发给所有订阅者，不吞会炸 zone）
+  static Stream<Map<String, dynamic>> get serverEvents => _client.events;
+
   /// 取消指定会话当前进行中的请求；不传 sessionId 取默认会话
   static void cancelCurrent({String? sessionId}) {
     final sid = sessionId ?? _sessionId;
@@ -46,6 +51,12 @@ class AgentService {
   static Future<String> setWorkspace(String path, {String? sessionId}) async {
     final result = await _client.request('workspace.set', _id(), sessionId: sessionId ?? _sessionId, payload: {'path': path});
     return ((result['payload'] as Map?)?['workspace'] ?? '').toString();
+  }
+
+  /// 重载技能：清 Node 侧技能缓存（面板侧重扫由 HomeScreen 完成），
+  /// 下次 @ 引用展开时按目录现状重扫——加/改技能文件无需重启应用
+  static Future<void> reloadSkills({String? sessionId}) async {
+    await _client.request('skills.reload', _id(), sessionId: sessionId ?? _sessionId);
   }
 
   /// Compatibility hook retained for callers from the pre-WebSocket Agent.

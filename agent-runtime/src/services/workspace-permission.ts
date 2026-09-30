@@ -1,8 +1,17 @@
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { AgentQuestion } from '../protocol.js';
 
 export type Permission = 'read' | 'write' | 'execute';
 type Entry = { path: string; permissions: Permission[] };
+
+/** 技能资源目录（~/.orbby/skills）的只读白名单：引用展开时注入的目录路径
+ *  LLM 会主动去读，逐次弹确认体验太差；写入与执行仍走原授权模型。 */
+function isUnderSkillsDir(target: string): boolean {
+  const root = join(homedir(), '.orbby', 'skills').toLowerCase();
+  const lower = target.toLowerCase();
+  return lower === root || lower.startsWith(`${root}\\`) || lower.startsWith(`${root}/`);
+}
 
 export class WorkspacePermissionService {
   private mode: 'ask' | 'all' | 'read' = 'ask';
@@ -10,6 +19,7 @@ export class WorkspacePermissionService {
   async ensure(path: string, permission: Permission, askUser?: (questions: AgentQuestion[]) => Promise<string[][]>) {
     const target = resolve(path);
     if (this.mode === 'all' || (this.mode === 'read' && permission === 'read')) return;
+    if (permission === 'read' && isUnderSkillsDir(target)) return;
     if (!askUser) throw new Error(`Permission denied: ${target}`);
     const answer = await askUser([{question:`允许 Agent 对目录 ${target} 执行 ${permission} 操作吗？`, header:'目录权限', type:'choice', options:[{label:'允许'},{label:'拒绝'}]}]);
     // 结构化答案：第一个问题的第一个选中项精确等于"允许"才放行

@@ -4,6 +4,7 @@ import { streamComplete, complete } from '../llm/client.js';
 import { toPlainText, toUserContent } from '../llm/content-adapter.js';
 import { extractAttachments } from '../llm/attachment-extractor.js';
 import { AGENT_SYSTEM_PROMPT } from './system-prompt.js';
+import { expandSkillRefs } from '../services/skill-service.js';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
@@ -52,9 +53,15 @@ export class AgentRuntime {
             onEvent('turn.start', { turn: session.turn });
             // 工作区在轮开始时取本会话快照：轮内工具与提示都用同一基准，其他会话（或本会话排队期间）的 /cd 不影响进行中的一轮
             const workspacePath = this.sessionWorkspace(sessionId);
-            // 历史轮只回放文本（多模态块经 toPlainText 归一化），图片仅当前轮发送
-            if (session.messages.length === 0 && history.length)
-                session.messages.push(...history.map(item => ({ role: item.role, content: toPlainText(item.content) })));
+            // 历史轮只回放文本（多模态块经 toPlainText 归一化），图片仅当前轮发送；
+            // user 轮的 @技能 引用同步展开——Flutter 传入的 history 是原始文本
+            // （会话文件存原文），不展开则重开会话后引用轮丢技能正文
+            if (session.messages.length === 0 && history.length) {
+                for (const item of history) {
+                    const text = toPlainText(item.content);
+                    session.messages.push({ role: item.role, content: item.role === 'user' ? await expandSkillRefs(text) : text });
+                }
+            }
             session.messages.push({ role: 'system', content: AGENT_SYSTEM_PROMPT });
             // 工作区基准随 /cd 变化，每轮注入最新值，保证 LLM 知道相对路径的解析基准
             session.messages.push({ role: 'system', content: `当前工作区目录：${workspacePath}。read/write/edit/glob/grep 与命令工具的相对路径一律以该目录为基准。` });
@@ -66,7 +73,10 @@ export class AgentRuntime {
             }
             // 文本/PDF 附件先在 Node 侧提取为文本，再统一多模态组装（图片在前、文字在后）
             await extractAttachments(attachments, signal);
-            session.messages.push({ role: 'user', content: toUserContent(message, attachments) });
+            // @技能 引用在本轮展开（原句保留、末尾附加技能指令块，见 skill-service.ts）；
+            // UI 气泡与会话落盘仍是原始文本，仅发给 LLM 的上下文带技能正文
+            const expandedMessage = await expandSkillRefs(message);
+            session.messages.push({ role: 'user', content: toUserContent(expandedMessage, attachments) });
             for (let iteration = 1; iteration <= 30; iteration++) {
                 signal.throwIfAborted();
                 session.step = iteration;

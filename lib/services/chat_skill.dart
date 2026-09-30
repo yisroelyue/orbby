@@ -3,23 +3,17 @@ import 'package:flutter/foundation.dart';
 import 'palette_filter.dart';
 
 /// 单条技能：输入 '@' 前缀触发的可引用能力。
-/// 定义来自 ~/.orbby/skills/ 下的 markdown 文件（解析见 SkillService）；
-/// 当前仅承载面板展示所需字段，发送链路生效时再扩展正文加载。
+/// 定义来自 ~/.orbby/skills/（目录式 SKILL.md 或散装单 md，解析见
+/// SkillService）；技能正文与脚本资源由 Node 侧加载注入，Flutter 侧
+/// 只承载面板展示所需的元数据。
 class ChatSkill {
-  const ChatSkill({
-    required this.name,
-    required this.description,
-    required this.fileName,
-  });
+  const ChatSkill({required this.name, required this.description});
 
   /// 技能名（不含前导 '@'），同时也是输入过滤的关键词；不含空白
   final String name;
 
   /// 提示列表中展示的一句话说明
   final String description;
-
-  /// 所属技能文件名（含扩展名），发送链路按它回读技能正文
-  final String fileName;
 }
 
 /// 技能面板状态：与 [CommandPaletteController] 同构的过滤与键盘导航，
@@ -47,6 +41,17 @@ class SkillPaletteController extends ChangeNotifier {
   /// 运行时扩展点：注册新技能，自动按名称排序
   void register(ChatSkill skill) {
     _skills..add(skill)..sort(_byName);
+    _refilter();
+    notifyListeners();
+  }
+
+  /// 整表替换（启动加载与 /reload-skill 重扫共用）；
+  /// 保持当前 query 重新过滤，正在输入的过滤态不被打断
+  void replaceAll(List<ChatSkill> skills) {
+    _skills
+      ..clear()
+      ..addAll(skills)
+      ..sort(_byName);
     _refilter();
     notifyListeners();
   }

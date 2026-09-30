@@ -777,6 +777,8 @@ class MarkdownStyleSheet {
         other.tableColumnWidth == tableColumnWidth &&
         other.tableCellsPadding == tableCellsPadding &&
         other.tableCellsDecoration == tableCellsDecoration &&
+        other.tableHeadDecoration == tableHeadDecoration &&
+        other.tableDecoration == tableDecoration &&
         other.tableVerticalAlignment == tableVerticalAlignment &&
         other.blockquotePadding == blockquotePadding &&
         other.blockquoteDecoration == blockquoteDecoration &&
@@ -836,6 +838,8 @@ class MarkdownStyleSheet {
       tableColumnWidth,
       tableCellsPadding,
       tableCellsDecoration,
+      tableHeadDecoration,
+      tableDecoration,
       tableVerticalAlignment,
       blockquotePadding,
       blockquoteDecoration,

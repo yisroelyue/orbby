@@ -8,10 +8,22 @@ extension _HomeScreenWidgets on _HomeScreenState {
       color: theme.surface,
       child: Column(
         children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: _HomeFunctionBar(
+              actions: [
+                (icon: Icons.add, label: '新建会话', onPressed: _startNewConversation),
+                (icon: Icons.history, label: '历史会话', onPressed: _showSessionPicker),
+                (icon: Icons.apps, label: '应用中心', onPressed: () { HomeScreen.menuChannel.invokeMethod('open_app_center'); }),
+                (icon: Icons.settings_outlined, label: '设置', onPressed: _showAgentSettings),
+              ],
+            ),
+          ),
           if (_showSessionTabs) _buildSessionTabs(),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
               child: isEmpty
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,

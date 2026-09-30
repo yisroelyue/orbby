@@ -49,7 +49,10 @@ extension _HomeScreenCommandActions on _HomeScreenState {
   Future<String?> _pickWorkspaceFile(List<String> directories) {
     return showDialog<String>(
       context: context,
-      builder: (dialogContext) => _WorkspaceFilePickerDialog(files: directories),
+      builder: (dialogContext) => ChatThemeScope(
+        data: _themeData,
+        child: _WorkspaceFilePickerDialog(files: directories),
+      ),
     );
   }
 
@@ -240,11 +243,13 @@ class _WorkspaceFilePickerDialogState
 
   @override
   Widget build(BuildContext context) {
-    const panel = Color(0xFFFFFFFF);
-    const ink = Color(0xFF1F2937);
-    const secondary = Color(0xFF4B5563);
-    const muted = Color(0xFF6B7280);
-    const sunken = Color(0xFFF3F4F6);
+    final theme = ChatTheme.of(context);
+    final panel = theme.isDark ? theme.raised : const Color(0xFFFFFFFF);
+    final ink = theme.isDark ? theme.ink : const Color(0xFF1F2937);
+    final secondary = theme.isDark ? theme.body : const Color(0xFF4B5563);
+    final muted = theme.isDark ? theme.ink2 : const Color(0xFF6B7280);
+    final sunken = theme.isDark ? theme.sunken : const Color(0xFFF3F4F6);
+    final selected = theme.isDark ? theme.hover : const Color(0xFFE8F0FE);
     final files = _filtered;
     final index = files.isEmpty ? 0 : _selectedIndex.clamp(0, files.length - 1);
     return Dialog(
@@ -291,16 +296,19 @@ class _WorkspaceFilePickerDialogState
             padding: const EdgeInsets.all(14),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
-                Expanded(child: Text('工作区目录（${files.length}）', style: const TextStyle(color: ink, fontSize: 15, fontWeight: FontWeight.w600))),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, size: 18, color: muted)),
+                Expanded(child: Text('工作区目录（${files.length}）', style: TextStyle(color: ink, fontSize: 15, fontWeight: FontWeight.w600))),
+                IconButton(onPressed: () => Navigator.pop(context), icon: Icon(Icons.close, size: 18, color: muted)),
               ]),
               TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 autofocus: true,
+                style: theme.isDark ? TextStyle(color: ink) : null,
+                cursorColor: theme.isDark ? theme.accentDeep : null,
                 decoration: InputDecoration(
                   hintText: '搜索文件名或路径',
-                  prefixIcon: const Icon(Icons.search, color: muted),
+                  hintStyle: theme.isDark ? TextStyle(color: muted) : null,
+                  prefixIcon: Icon(Icons.search, color: muted),
                   isDense: true,
                   filled: true,
                   fillColor: sunken,
@@ -310,21 +318,21 @@ class _WorkspaceFilePickerDialogState
               const SizedBox(height: 10),
               Expanded(
                 child: files.isEmpty
-                    ? const Center(child: Text('没有匹配的目录', style: TextStyle(color: muted)))
+                    ? Center(child: Text('没有匹配的目录', style: TextStyle(color: muted)))
                     : ListView.builder(
                         itemCount: files.length,
                         itemBuilder: (_, i) => InkWell(
                           onTap: () => Navigator.of(context).pop(files[i]),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(color: i == index ? const Color(0xFFE8F0FE) : Colors.transparent, borderRadius: BorderRadius.circular(7)),
-                            child: Text(files[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: secondary, fontSize: 13, fontFamily: _fontFamily)),
+                            decoration: BoxDecoration(color: i == index ? selected : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+                            child: Text(files[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: secondary, fontSize: 13, fontFamily: _fontFamily)),
                           ),
                         ),
                       ),
               ),
               const SizedBox(height: 6),
-              const Text('↑↓ 选择  Enter 插入  Esc 关闭', style: TextStyle(color: muted, fontSize: 12)),
+              Text('↑↓ 选择  Enter 插入  Esc 关闭', style: TextStyle(color: muted, fontSize: 12)),
             ]),
           ),
         ),

@@ -63,6 +63,7 @@ part 'tool_steps.dart';
 part 'tabs.dart';
 part 'markdown.dart';
 part 'widgets.dart';
+part 'function_bar.dart';
 part 'models.dart';
 part 'helpers.dart';
 
@@ -169,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ─── 聊天状态 ────────────────────────────────────────────────────────────
 
-  final _scrollController = ScrollController();
+  final _scrollController = ScrollController(keepScrollOffset: false);
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
   String _modelLabel = '加载模型中…';
@@ -217,6 +218,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// [_HomeScreenSkills._loadSkills]），启动时异步扫描注册
   late final _skillPalette = SkillPaletteController();
 
+  /// Node 侧 skills.changed 推送（技能目录文件变化）的订阅，
+  /// 见 [_HomeScreenSkills._subscribeSkillChanges]
+  StreamSubscription<Map<String, dynamic>>? _skillsChangedSub;
+
   /// MaterialApp 内部的 Navigator context：
   /// HomeScreen 自身在 MaterialApp 之上，它的 context 弹窗找不到 MaterialLocalizations
   final _navigatorKey = GlobalKey<NavigatorState>();
@@ -233,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _views.add(ChatSessionView(agentSessionId: AgentService.newSessionId()));
     _loadWorkspaceLabel();
     _loadSkills();
+    _subscribeSkillChanges();
     HomeScreen.menuChannel.invokeMethod('ready');
     // 恢复持久化的主题偏好（引擎就绪后一次性刷新）
     MenuThemeService.load().then((dark) {
@@ -296,6 +302,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _inputController.removeListener(_onInputChanged);
     _palette.dispose();
     _skillPalette.dispose();
+    _skillsChangedSub?.cancel();
     // 所有 tab 的挂起提问卡片与附件 controller 一并释放
     for (final view in _views) {
       view.questionCtrl?.dispose();

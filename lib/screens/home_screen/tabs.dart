@@ -216,8 +216,13 @@ extension _HomeScreenTabs on _HomeScreenState {
   /// 时的位置（会话内容变短时 clamp 到底部）。瞬时 jumpTo，无动画
   void _restoreScrollState() {
     final view = _current;
+    _showScrollToBottom = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!identical(view, _current) || !_scrollController.hasClients) return;
+      if (!mounted || !identical(view, _current)) return;
+      if (!_scrollController.hasClients) {
+        _onChatScroll();
+        return;
+      }
       final position = _scrollController.position;
       final target = (view.atBottom || view.scrollOffset == null)
           ? position.maxScrollExtent
@@ -243,6 +248,7 @@ extension _HomeScreenTabs on _HomeScreenState {
       _activeIndex = _views.length - 1;
       _inputController.clear();
     });
+    _restoreScrollState();
     _focusInput();
   }
 
