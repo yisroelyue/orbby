@@ -32,6 +32,7 @@ class MarkdownStyleSheet {
     this.img,
     this.checkbox,
     this.blockSpacing,
+    this.listItemSpacing,
     this.listIndent,
     this.listBullet,
     this.listBulletPadding,
@@ -369,6 +370,7 @@ class MarkdownStyleSheet {
     TextStyle? img,
     TextStyle? checkbox,
     double? blockSpacing,
+    double? listItemSpacing,
     double? listIndent,
     TextStyle? listBullet,
     EdgeInsets? listBulletPadding,
@@ -438,6 +440,7 @@ class MarkdownStyleSheet {
       img: img ?? this.img,
       checkbox: checkbox ?? this.checkbox,
       blockSpacing: blockSpacing ?? this.blockSpacing,
+      listItemSpacing: listItemSpacing ?? this.listItemSpacing,
       listIndent: listIndent ?? this.listIndent,
       listBullet: listBullet ?? this.listBullet,
       listBulletPadding: listBulletPadding ?? this.listBulletPadding,
@@ -508,6 +511,7 @@ class MarkdownStyleSheet {
       img: img!.merge(other.img),
       checkbox: checkbox!.merge(other.checkbox),
       blockSpacing: other.blockSpacing,
+      listItemSpacing: other.listItemSpacing ?? listItemSpacing,
       listIndent: other.listIndent,
       listBullet: listBullet!.merge(other.listBullet),
       listBulletPadding: other.listBulletPadding,
@@ -617,6 +621,9 @@ class MarkdownStyleSheet {
 
   /// The amount of vertical space to use between block-level elements.
   final double? blockSpacing;
+
+  /// Vertical spacing between list items. Falls back to [blockSpacing].
+  final double? listItemSpacing;
 
   /// The amount of horizontal space to indent list items.
   final double? listIndent;
@@ -766,6 +773,7 @@ class MarkdownStyleSheet {
         other.img == img &&
         other.checkbox == checkbox &&
         other.blockSpacing == blockSpacing &&
+        other.listItemSpacing == listItemSpacing &&
         other.listIndent == listIndent &&
         other.listBullet == listBullet &&
         other.listBulletPadding == listBulletPadding &&
@@ -827,6 +835,7 @@ class MarkdownStyleSheet {
       img,
       checkbox,
       blockSpacing,
+      listItemSpacing,
       listIndent,
       listBullet,
       listBulletPadding,

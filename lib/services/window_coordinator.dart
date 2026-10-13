@@ -36,9 +36,6 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   static const _menuChannel = WindowMethodChannel(
     'orbby_menu_events', mode: ChannelMode.unidirectional,
   );
-  static const _settingsChannel = WindowMethodChannel(
-    'orbby_settings_events', mode: ChannelMode.unidirectional,
-  );
   static const _hotkeyChannel = MethodChannel('orbby_hotkey');
   static const _dropChannel = MethodChannel('orbby_file_drop');
   static const _appBarChannel = WindowMethodChannel(
@@ -55,27 +52,22 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   WindowController? _appBarWindow;
   WindowController? _contentWindow;
   WindowController? _appCenterWindow;
-  WindowController? _settingsWindow;
   WindowController? _noteWindow;
   Completer<void>? _menuReady;
   Completer<void>? _appBarReady;
   Completer<void>? _contentReady;
-  Completer<void>? _settingsReady;
   Completer<void>? _noteReady;
   bool _menuVisible = false;
   bool _appBarVisible = false;
   bool _contentVisible = false;
-  bool _settingsVisible = false;
   Future<void> _menuOperation = Future.value();
   Future<void> _appBarOperation = Future.value();
   Future<void> _contentOperation = Future.value();
-  Future<void> _settingsOperation = Future.value();
 
   @override
   void initState() {
     super.initState();
     _menuChannel.setMethodCallHandler(_handleMenuEvent);
-    _settingsChannel.setMethodCallHandler(_handleSettingsEvent);
     _hotkeyChannel.setMethodCallHandler(_handleHotkeyEvent);
     _dropChannel.setMethodCallHandler(_handleDropEvent);
     _appBarChannel.setMethodCallHandler((call) async {
@@ -104,7 +96,6 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
   @override
   void dispose() {
     _menuChannel.setMethodCallHandler(null);
-    _settingsChannel.setMethodCallHandler(null);
     _hotkeyChannel.setMethodCallHandler(null);
     _dropChannel.setMethodCallHandler(null);
     _appBarChannel.setMethodCallHandler(null);
@@ -119,7 +110,7 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
         if (_menuReady != null && !_menuReady!.isCompleted) _menuReady!.complete();
         return null;
       case 'open_settings':
-        await _toggleSettings();
+        await _openSettings();
         return null;
       case 'open_app_center':
         await _showAppCenter();
@@ -130,14 +121,6 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
         return null;
       default:
         return null;
-    }
-  }
-
-  Future<dynamic> _handleSettingsEvent(MethodCall call) async {
-    if (call.method == 'ready' && _settingsReady != null && !_settingsReady!.isCompleted) {
-      _settingsReady!.complete();
-    } else if (call.method == 'hidden') {
-      _settingsVisible = false;
     }
   }
 
@@ -154,7 +137,7 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
         }
         return null;
       case 'open_settings':
-        await _toggleSettings();
+        await _openSettings();
         return null;
       case 'toggle_app_bar':
         await _toggleAppBar();
@@ -167,39 +150,16 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
 
   /// 把事件转发给所有子窗口；未创建或已销毁的窗口忽略
   void _broadcastEvent(String event) {
-    for (final window in [_menuWindow, _appBarWindow, _contentWindow, _appCenterWindow, _settingsWindow]) {
+    for (final window in [_menuWindow, _appBarWindow, _contentWindow, _appCenterWindow]) {
       window?.invokeMethod('app_event', event).catchError((_) => null);
     }
   }
 
-  /// 设置窗口：60% 屏幕宽高，居中
-  Map<String, double> _settingsBounds(Size size) => {
-        'left': size.width * 0.2,
-        'top': size.height * 0.2,
-        'width': size.width * 0.6,
-        'height': size.height * 0.6,
-      };
-
-  /// 创建（如未创建）设置窗口并等待其 engine 就绪；不负责显示
-  Future<void> _createSettingsWindow() async {
-    if (_settingsWindow != null) return;
-    _settingsReady = Completer<void>();
-    _settingsWindow = await WindowController.create(WindowConfiguration(
-      hiddenAtLaunch: true,
-      arguments: jsonEncode({'type': 'settings', ..._settingsBounds(await _screenSize())}),
-    ));
-    try { await _settingsReady!.future.timeout(const Duration(seconds: 5)); } catch (_) {}
-    _settingsReady = null;
-  }
-
-  Future<void> _toggleSettings() async {
-    _settingsOperation = _settingsOperation.then((_) async {
-      if (_settingsVisible) { _settingsVisible = false; await _settingsWindow?.hide(); return; }
-      await _createSettingsWindow();
-      await _settingsWindow!.invokeMethod('place', _settingsBounds(await _screenSize()));
-      _settingsVisible = true;
-    }).catchError((_) {});
-    await _settingsOperation;
+  /// 打开设置：设置已并入 menu 窗口的 /setting 弹窗——先确保 menu 可见，
+  /// 再定向通知 menu engine 弹出设置（托盘菜单与 Ctrl+Alt+` 快捷键共用）
+  Future<void> _openSettings() async {
+    await _showMenu();
+    await _menuWindow?.invokeMethod('open_settings').catchError((_) => null);
   }
 
   Future<void> _showMenu({bool show = true}) async {
@@ -339,14 +299,10 @@ class _WindowCoordinatorState extends State<WindowCoordinator> {
     // engine 启动存在时序竞态：紧跟上一窗口 ready 创建下一个 engine，偶发该
     // engine 的 Dart main() 永不执行（native 构造正常、isolate 不跑，ready 无限
     // 超时、place 报 CHANNEL_UNREGISTERED；2026-09-18 排查记录）。实测
-    // menu → app_bar → settings → content 顺序 + 固定间隔稳定；严禁改回
-    // "上一窗口 ready 后立即创建下一个"的紧凑序列（原 settings→app_bar 紧邻
-    // 顺序 4/4 复现必挂）。
+    // menu → app_bar → content 顺序 + 固定间隔稳定；严禁改回
+    // "上一窗口 ready 后立即创建下一个"的紧凑序列（原紧邻序列 4/4 复现必挂）。
     _appBarOperation = _appBarOperation.then((_) => _createAppBarWindow()).catchError((_) {});
     await _appBarOperation;
-    await Future<void>.delayed(const Duration(milliseconds: 1500));
-    _settingsOperation = _settingsOperation.then((_) => _createSettingsWindow()).catchError((_) {});
-    await _settingsOperation;
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     _contentOperation = _contentOperation.then((_) => _createContentWindow()).catchError((_) {});
     await _contentOperation;

@@ -217,7 +217,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         'copy' || 'copy-txt' => Icons.content_copy,
         'apps' => Icons.apps,
         'reload-skill' => Icons.auto_awesome,
-        'sys_setting' || 'setting' => Icons.settings_outlined,
+        'setting' => Icons.settings_outlined,
         'permission-off' || 'permission-all' || 'permission-read' || 'permission' => Icons.lock_outline,
         _ => Icons.terminal,
       };

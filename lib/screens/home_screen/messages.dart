@@ -76,12 +76,31 @@ extension _HomeScreenMessages on _HomeScreenState {
       child: Stack(
         children: [
           SelectionArea(
+            key: ObjectKey(_current),
             child: ListView.builder(
-              key: ObjectKey(_current),
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(vertical: 4),
               itemCount: _messages.length,
-              itemBuilder: (_, index) => _buildMessageBubble(_messages[index]),
+              itemBuilder: (_, index) {
+                final message = _messages[index];
+                // Keep each message's element and semantics subtree tied to
+                // the message object when new bubbles are inserted or the
+                // list is rebuilt during streaming/scrolling. Without a
+                // stable boundary, Flutter may reuse neighboring semantics
+                // nodes while their Markdown children are changing.
+                return Semantics(
+                  key: ObjectKey(message),
+                  container: true,
+                  explicitChildNodes: true,
+                  child: _buildMessageBubble(
+                    message,
+                    previous: index > 0 ? _messages[index - 1] : null,
+                    next: index < _messages.length - 1
+                        ? _messages[index + 1]
+                        : null,
+                  ),
+                );
+              },
             ),
           ),
           if (_showScrollToBottom)
@@ -108,7 +127,7 @@ extension _HomeScreenMessages on _HomeScreenState {
     }
   }
 
-  Widget _buildMessageBubble(_ChatMessage msg) {
+  Widget _buildMessageBubble(_ChatMessage msg, {_ChatMessage? previous, _ChatMessage? next}) {
     final theme = _themeData;
     // step/turn 事件可能创建没有文本和内容的占位消息；完成后不应留下空白气泡。
     if (!msg.isUser &&
@@ -124,14 +143,16 @@ extension _HomeScreenMessages on _HomeScreenState {
           alignment: Alignment.centerRight,
           child: Container(
             constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.85),
-            margin: const EdgeInsets.symmetric(vertical: 7),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            // 对齐主界面参考稿：气泡后留出回答间距，右下角保留小收尾。
+            margin: const EdgeInsets.only(top: 14, bottom: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: theme.sunken,
+              color: theme.userMessageBg,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(18),
-                topRight: Radius.circular(18),
-                bottomLeft: Radius.circular(18),
+                topLeft: Radius.circular(13),
+                topRight: Radius.circular(13),
+                bottomLeft: Radius.circular(13),
+                bottomRight: Radius.circular(3),
               ),
             ),
             child: Row(
@@ -166,7 +187,7 @@ extension _HomeScreenMessages on _HomeScreenState {
                             color: theme.ink,
                             fontSize: _userFontSize,
                             height: _userLineHeightFactor,
-                            letterSpacing: 0.1,
+                            letterSpacing: 0,
                             fontFamily: _fontFamily,
                           ),
                         ),
@@ -182,6 +203,12 @@ extension _HomeScreenMessages on _HomeScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ORBBY 标签（参考稿 .agent-label）：一次回答只显示一次。
+        // 按消息序列推断——前一条是非 local 的 AI 泡（切轮/切泡产生的续泡）
+        // 就归入同一次回答，不再重复打标签；不依赖落盘字段，历史会话同样正确。
+        // 命令本地消息（local）不是 AI 回答，不打标签。
+        if (!msg.local && !(previous != null && !previous.isUser && !previous.local))
+          _AgentLabel(terminated: msg.terminated, theme: theme),
         // 工具行：单条直出；≥2 条折叠为步骤组（默认只显示概览，见 tool_steps.dart）
         if (msg.toolEvents.length == 1)
           _buildToolRow(msg.toolEvents.first)
@@ -189,48 +216,41 @@ extension _HomeScreenMessages on _HomeScreenState {
           _ToolStepsGroup(
             events: msg.toolEvents,
             expanded: msg.toolsExpanded,
-            blinkOn: _toolBlinkOn,
             onToggle: () => setState(() => msg.toolsExpanded = !msg.toolsExpanded),
             rowBuilder: _buildToolRow,
             theme: theme,
           ),
-        // 正文气泡：只在有文本或（等待占位且还没有工具行）时渲染。
-        // fileChanges/diff 与问答卡都挂在工具行下，正文区只剩状态点时不渲染，
-        // 否则会出现孤立圆点（工具行之间的 completed 绿点/processing 灰点）
+        // 正文：只在有文本或（等待占位且还没有工具行）时渲染。
+        // fileChanges/diff 与问答卡都挂在工具行下，正文区空时不渲染占位
         if (msg.text.trim().isNotEmpty || (msg.streaming && msg.toolEvents.isEmpty))
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MessageStatusDot(
-                  status: msg.terminated
-                      ? MessageStatus.terminated
-                      : msg.streaming
-                          ? MessageStatus.processing
-                          : MessageStatus.completed,
-                  // 与 Markdown 段落同一行高（见 markdown.dart 的 p 样式）
-                  lineHeight: _bodyFontSize * _bodyLineHeightFactor,
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      MarkdownBody(
-                        data: msg.streaming ? '${msg.text}▌' : msg.text,
-                        selectable: false,
-                        builders: {
-                          // 接管代码块（语言标签 + 复制按钮）与行内代码
-                          // （灰底 chip）；样式取当前主题
-                          'pre': _PreTextBuilder(theme: theme),
-                          'code': _InlineCodeBuilder(theme: theme),
-                        },
-                        styleSheet: _markdownStyleSheet(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            // 工具提示后紧接正文；纯文本回答保留原有段落留白。
+            // bottom 22 是「正文 → 用户下一个气泡」的消息收尾间距；回答没完
+            // （下一条是同回答的续泡，判定与 ORBBY 标签推断对称）时收窄到 8，
+            // 否则 22 + 续泡工具行顶部会在泡间凭空多出一行空白。
+            padding: EdgeInsets.only(
+              top: msg.toolEvents.isNotEmpty ? 6 : 12,
+              bottom: next != null && !next.isUser && !next.local ? 8 : 22,
+            ),
+            child: msg.streaming
+                ? _StreamingMarkdown(
+                    data: msg.text,
+                    styleSheet: _markdownStyleSheet(),
+                    builders: {
+                      'pre': _PreTextBuilder(theme: theme),
+                      'code': _InlineCodeBuilder(theme: theme),
+                    },
+                  )
+                : MarkdownBody(
+              data: msg.text,
+              selectable: false,
+              builders: {
+                // 接管代码块（语言标签 + 复制按钮）与行内代码
+                // （灰底 chip）；样式取当前主题
+                'pre': _PreTextBuilder(theme: theme),
+                'code': _InlineCodeBuilder(theme: theme),
+              },
+              styleSheet: _markdownStyleSheet(),
             ),
           ),
       ],
@@ -246,16 +266,30 @@ extension _HomeScreenMessages on _HomeScreenState {
       return const SizedBox.shrink();
     }
     final icon = toolIconAsset(tool.name);
+    // 提问用户行不画左边框竖线：标题已去掉、整行只承载问答留痕卡，
+    // 竖线包着卡片视觉冗余；卡片直接与正文左对齐（其他工具行不变）
+    final isAskRow = tool.name == 'ask_user_question';
     return Padding(
-      // 左缩进 38：工具块比正文（状态点轨）再退一档，弱化辅助信息（参考稿）
-      padding: const EdgeInsets.fromLTRB(38, 2, 12, 2),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 与正文左对齐（无缩进），靠更小字号/更浅颜色弱化辅助信息。
+      // ask 行顶部收窄：卡片无标题行，上方已有用户气泡的回答间距(32)，
+      // 再叠常规标题行的 7 会显得空一大截
+      padding: EdgeInsets.fromLTRB(0, isAskRow ? 2 : 7, 12, 0),
+      child: Container(
+        padding: EdgeInsets.only(left: isAskRow ? 0 : 12),
+        decoration: isAskRow
+            ? null
+            : BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: theme.line, width: 1),
+                ),
+              ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // 工具图标（行首）：染 ink2 与标题同色；
-        // top 按标题首行行高估算居中（12.5 × 默认行高 ≈1.4 ≈ 17.5 → (17.5-14)/2 ≈ 2）。
+        // top 按标题首行行高估算居中（11.5 × 默认行高 ≈1.4 ≈ 16 → (16-14)/2 ≈ 1）。
         // 无映射的工具不占位（行首直接是标题）。
         if (icon != null)
           Padding(
-            padding: const EdgeInsets.only(top: 2, right: 6),
+            padding: const EdgeInsets.only(top: 1, right: 6),
             child: SvgPicture.asset(
               icon,
               width: 14,
@@ -270,9 +304,11 @@ extension _HomeScreenMessages on _HomeScreenState {
           if (tool.name != 'ask_user_question')
             Text.rich(
               _toolTitleSpan(tool),
-              maxLines: 6,
+              // 标题最多一行，超长 ellipsis（完整参数看展开详情/结果卡）
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: theme.ink2, fontSize: 12.5, fontWeight: FontWeight.w600, letterSpacing: 0.2, fontFamily: _fontFamily),
+              // 标题不加粗：Microsoft YaHei 只内嵌 400/700 两档，w600 实际渲染成 Bold
+              style: TextStyle(color: theme.ink2, fontSize: 11.5, fontWeight: FontWeight.w400, letterSpacing: 0.2, fontFamily: _fontFamily),
             ),
           if (tool.errorMessage != null)
             Padding(
@@ -301,7 +337,8 @@ extension _HomeScreenMessages on _HomeScreenState {
               skipped: panel.skipped,
             ),
         ])),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -326,6 +363,96 @@ extension _HomeScreenMessages on _HomeScreenState {
         );
       }
     });
+  }
+}
+
+/// 流式回复末尾的细竖线光标。通过切换 Markdown 文本末尾字符，
+/// 光标始终跟随最后一段文字，并避免使用实心方块字形。
+class _StreamingMarkdown extends StatefulWidget {
+  const _StreamingMarkdown({
+    required this.data,
+    required this.styleSheet,
+    required this.builders,
+  });
+
+  final String data;
+  final MarkdownStyleSheet styleSheet;
+  final Map<String, MarkdownElementBuilder> builders;
+
+  @override
+  State<_StreamingMarkdown> createState() => _StreamingMarkdownState();
+}
+
+class _StreamingMarkdownState extends State<_StreamingMarkdown> {
+  Timer? _timer;
+  bool _visible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 550), (_) {
+      if (mounted) setState(() => _visible = !_visible);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MarkdownBody(
+      data: '${widget.data}${_visible ? '│' : ''}',
+      selectable: false,
+      builders: widget.builders,
+      styleSheet: widget.styleSheet,
+    );
+  }
+}
+
+/// AI 回答的行首标签（参考稿 .agent-label）：状态圆点 + ORBBY。
+/// 一次回答只出现一次——续轮泡不打（见 _buildMessageBubble 的序列推断），
+/// 命令本地消息不带；圆点颜色保留原状态点语义（完成绿 / 终止红）。
+class _AgentLabel extends StatelessWidget {
+  const _AgentLabel({required this.terminated, required this.theme});
+
+  /// 回答被终止（Ctrl+C / 断连）时圆点转红
+  final bool terminated;
+
+  /// 宿主主题（消息渲染层直接读 State 字段，不经 context）
+  final ChatThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: terminated ? theme.term : theme.done,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            'ORBBY',
+            style: TextStyle(
+              color: theme.ink,
+              fontSize: 10,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 1,
+              height: 1,
+              fontFamily: _fontFamily,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 
 import '../../services/agent_service.dart';
+import '../../services/app_events.dart';
 import '../../services/chat_command.dart';
 import '../../services/chat_storage_service.dart';
 import '../../services/chat_log_service.dart';
@@ -20,17 +21,20 @@ import '../../services/menu_theme_service.dart';
 import '../../services/chat_attachment_controller.dart';
 import '../../services/clipboard_image_service.dart';
 import '../../services/personality_service.dart';
+import '../../services/model_picker.dart';
 import '../../services/chat_skill.dart';
 import '../../services/skill_service.dart';
 import '../../theme/chat_theme.dart';
+import '../../config/api_profile.dart';
 import '../../config/settings.dart';
 import '../../config/platform.dart';
 import '../../widgets/command_palette.dart';
 import '../../widgets/skill_palette.dart';
+import '../../widgets/model_picker_panel.dart';
 import '../../widgets/session_picker_dialog.dart';
 import '../../widgets/typing_indicator.dart';
-import '../../widgets/message_status_dot.dart';
 import '../../widgets/code_highlight_text.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/file_change_preview.dart';
 import '../../widgets/agent_question_panel.dart';
 import '../../widgets/chat_attachment_preview.dart';
@@ -40,21 +44,26 @@ import '../../models/agent_question.dart';
 import '../../models/chat_attachment.dart';
 
 // HomeScreen 按功能拆分的 part 文件（同库，可互访私有成员）：
-// - commands.dart    '/' 命令注册表 + Agent 设置弹窗
-// - skills.dart      '@' 技能目录加载 + 面板确认
-// - input.dart       输入区 UI、输入历史、键盘交互
-// - conversation.dart 会话创建/保存/切换/复制/解码
-// - agent.dart       消息发送、Agent 流处理、提问卡片应答
-// - messages.dart    聊天列表与消息气泡渲染
-// - tool_steps.dart  工具步骤折叠组（多工具调用默认折叠，概览头 + 可展开详情）
-// - tabs.dart        顶部会话 tab 栏（多会话切换/新建/关闭）
-// - markdown.dart    Markdown 样式表与代码块渲染
-// - widgets.dart     页面骨架、欢迎页、聊天区域
-// - models.dart      ChatSessionView/_ChatMessage/_ToolEvent/_QuestionPanel 数据模型
-// - helpers.dart     工具名称/参数/结果的显示格式化
+// - commands.dart      '/' 命令注册表 + prepareInput 命令分派
+// - settings_dialog.dart /setting 设置弹窗（原 settings 窗口的系统设置迁移合并）
+// - skills.dart        '@' 技能目录加载 + 面板确认
+// - model_switcher.dart 输入框右下角模型标签的切换浮层（拉取/选择/落盘）
+// - input.dart         输入区 UI、输入历史、键盘交互
+// - conversation.dart  会话创建/保存/切换/复制/解码
+// - agent.dart         消息发送、Agent 流处理、提问卡片应答
+// - messages.dart      聊天列表与消息气泡渲染
+// - tool_steps.dart    工具步骤折叠组（多工具调用默认折叠，概览头 + 可展开详情）
+// - tabs.dart          顶部会话 tab 栏（多会话切换/新建/关闭）
+// - markdown.dart      Markdown 样式表与代码块渲染
+// - widgets.dart       页面骨架、欢迎页、聊天区域
+// - workbench.dart     欢迎页工作台（时间问候 + 任务卡 + 技能橱窗 + 续接）
+// - models.dart        ChatSessionView/_ChatMessage/_ToolEvent/_QuestionPanel 数据模型
+// - helpers.dart       工具名称/参数/结果的显示格式化
 part 'commands.dart';
+part 'settings_dialog.dart';
 part 'skills.dart';
 part 'command_actions.dart';
+part 'model_switcher.dart';
 part 'input.dart';
 part 'conversation.dart';
 part 'agent.dart';
@@ -63,6 +72,7 @@ part 'tool_steps.dart';
 part 'tabs.dart';
 part 'markdown.dart';
 part 'widgets.dart';
+part 'workbench.dart';
 part 'function_bar.dart';
 part 'models.dart';
 part 'helpers.dart';
@@ -85,16 +95,16 @@ const _fontFamily = ChatTheme.fontFamily;
 const _codeFont = ChatTheme.codeFont;
 
 // ─── 正文排版：字号 × 行高倍数 ────────────────────────────────────────────
-// 消息正文的样式与「前面的状态圆点」共用这组值：圆点按首行行高垂直居中，
-// 不再用固定 top 魔数。改字号/行高只动这里，两处自动同步。
+// 用户消息与 AI 正文（Markdown）的字号/行高统一在这里改。
+// AI 回答行首是 ORBBY 标签（messages.dart 的 _AgentLabel），无行内状态点。
 
 /// 用户消息正文字号 / 行高倍数
-const _userFontSize = 15.0;
-const _userLineHeightFactor = 1.7;
+const _userFontSize = 14.0;
+const _userLineHeightFactor = 1.95;
 
 /// AI 正文（Markdown 段落、列表项）字号 / 行高倍数
-const _bodyFontSize = 15.0;
-const _bodyLineHeightFactor = 1.85;
+const _bodyFontSize = 14.0;
+const _bodyLineHeightFactor = 1.95;
 
 /// 图片分析时用户未补充说明的默认提问文案
 const _defaultImagePrompt = '请分析这些图片，并描述其中的重要内容';
@@ -126,6 +136,7 @@ final _listThemes = {
             ? ChatThemeData.dark.selectionColor
             : ChatThemeData.light.selectionColor,
       ),
+      // 聊天列表不显示滚动条（悬浮窗保持画面干净；回底部走右下浮钮）
       scrollbarTheme: const ScrollbarThemeData(
         thickness: WidgetStatePropertyAll(0),
       ),
@@ -176,9 +187,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _modelLabel = '加载模型中…';
   String _workspaceLabel = '工作区';
   Timer? _toolBlinkTimer;
-  Timer? _agentSettingsSaveTimer;
   bool _toolBlinkOn = true;
   bool _showScrollToBottom = false;
+
+  /// 设置弹窗是否已打开（/setting 命令、空态按钮、hub 定向 open_settings
+  /// 共用 [_showAgentSettings]，守卫防连击叠出多层弹窗）
+  bool _settingsDialogOpen = false;
 
   // ─── 多会话 tab 状态 ─────────────────────────────────────────────────────
   // 所有"会话内容"状态（消息/草稿/流式/提问/附件）都挂在 ChatSessionView 上；
@@ -218,6 +232,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// [_HomeScreenSkills._loadSkills]），启动时异步扫描注册
   late final _skillPalette = SkillPaletteController();
 
+  /// 模型切换浮层（输入框右下角模型标签展开，见 model_switcher.dart）
+  late final _modelPicker = ModelPickerController();
+
   /// Node 侧 skills.changed 推送（技能目录文件变化）的订阅，
   /// 见 [_HomeScreenSkills._subscribeSkillChanges]
   StreamSubscription<Map<String, dynamic>>? _skillsChangedSub;
@@ -246,11 +263,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     SettingsService.load().then((settings) {
       if (!mounted) return;
-      final model = settings.model.trim().isEmpty
-          ? PlatformConfig.defaultChatModel(settings.platform)
-          : settings.model.trim();
       setState(() {
-        _modelLabel = model;
+        _modelLabel = _modelLabelText(settings.activeProfile);
         _showSessionTabs = settings.showSessionTabs;
       });
     });
@@ -271,21 +285,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     // 每次窗口被显示时，输入框自动获得焦点
     menuWindowShown.addListener(_focusInput);
+    // hub 定向下发 open_settings（托盘菜单 / Ctrl+Alt+` 快捷键）时打开设置弹窗
+    menuSettingsRequested.addListener(_showAgentSettings);
     // 输入内容驱动命令面板的过滤
     _inputController.addListener(_onInputChanged);
     _scrollController.addListener(_onChatScroll);
   }
 
   /// 输入内容驱动命令/技能面板过滤；'/' 与 '@' 按最后出现的触发字符
-  /// 互斥路由（两个面板不会同时可见），未路由到的一方强制隐藏
+  /// 互斥路由（两个面板不会同时可见），未路由到的一方强制隐藏；
+  /// 用户转向输入（触发命令/技能面板）时一并收起模型浮层
   void _onInputChanged() {
     final text = _inputController.text;
     if (text.lastIndexOf('@') > text.lastIndexOf('/')) {
       _palette.hide();
       _skillPalette.updateQuery(text);
+      _modelPicker.close();
     } else {
       _skillPalette.hide();
       _palette.updateQuery(text);
+      _modelPicker.close();
     }
   }
 
@@ -296,12 +315,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _toolBlinkTimer?.cancel();
-    _agentSettingsSaveTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     menuWindowShown.removeListener(_focusInput);
+    menuSettingsRequested.removeListener(_showAgentSettings);
     _inputController.removeListener(_onInputChanged);
     _palette.dispose();
     _skillPalette.dispose();
+    _modelPicker.dispose();
     _skillsChangedSub?.cancel();
     // 所有 tab 的挂起提问卡片与附件 controller 一并释放
     for (final view in _views) {

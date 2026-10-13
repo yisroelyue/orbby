@@ -52,6 +52,13 @@ class CommandPaletteController extends ChangeNotifier {
 
   String _query = '';
 
+  /// 命令片段之后是否还有参数内容（如 `/cd 路径` 的"路径"部分）。
+  /// 有参数时面板隐藏——此时 Enter 的意图是发送整条命令（走宿主
+  /// `_sendMessage` 的 executeWithArgument），不是确认面板；与技能面板
+  /// "@ 片段必须位于文本末尾"同一语义。片段后只有空格仍算在末尾
+  /// （`/cd ` 刚准备完、还没输入参数时面板行为不变）。
+  bool _fragmentAtEnd = true;
+
   /// Esc 收起时的 query：文本不变则保持隐藏，一旦继续输入即恢复
   String? _dismissedAt;
 
@@ -64,9 +71,13 @@ class CommandPaletteController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 面板是否可见：输入以 '/' 开头、有匹配命令、且未被 Esc 收起
+  /// 面板是否可见：输入以 '/' 开头、命令片段在文本末尾（未跟参数）、
+  /// 有匹配命令、且未被 Esc 收起
   bool get visible =>
-      _query.startsWith('/') && _filtered.isNotEmpty && _dismissedAt != _query;
+      _fragmentAtEnd &&
+      _query.startsWith('/') &&
+      _filtered.isNotEmpty &&
+      _dismissedAt != _query;
 
   /// 全部已注册命令（名称序），如 /help 列举用
   List<ChatCommand> get commands => List.unmodifiable(_commands);
@@ -103,9 +114,13 @@ class CommandPaletteController extends ChangeNotifier {
     final query = slashIndex < 0 ? '' : text.substring(slashIndex);
     final end = query.indexOf(RegExp(r'[\s]'));
     final commandQuery = end < 0 ? query : query.substring(0, end);
-    if (commandQuery == _query) return;
+    final fragmentAtEnd = end < 0 || query.substring(end).trim().isEmpty;
+    // 命令片段与末尾状态都没变才短路（片段后输入/删除参数只影响可见性，须通知）
+    if (commandQuery == _query && fragmentAtEnd == _fragmentAtEnd) return;
+    // Esc 收起只在命令片段变化时解除：片段后补参数再删回，不复活面板
+    if (commandQuery != _query) _dismissedAt = null;
     _query = commandQuery;
-    _dismissedAt = null;
+    _fragmentAtEnd = fragmentAtEnd;
     _refilter();
     notifyListeners();
   }
@@ -139,6 +154,7 @@ class CommandPaletteController extends ChangeNotifier {
   void hide() {
     if (_query.isEmpty && _filtered.isEmpty) return;
     _query = '';
+    _fragmentAtEnd = true;
     _dismissedAt = null;
     _filtered.clear();
     _selectedIndex = 0;

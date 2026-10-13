@@ -60,7 +60,7 @@ class _FileDiff extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 头部：操作标签 + 路径（mono）+ 增删计数。
+        // 头部：新建/删除操作标签 + 路径（mono）+ 增删计数，编辑不显示标签。
         // 顶栏灰底（barBg，与代码块标题条 / 提问留痕卡同一 token），
         // 与正文 sunken 的分隔沿用正文容器自带的顶部 hairline
         Container(
@@ -69,8 +69,10 @@ class _FileDiff extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
             child: Row(
               children: [
-                _OpTag(operation: change.operation),
-                const SizedBox(width: 8),
+                if (change.operation != 'edit') ...[
+                  _OpTag(operation: change.operation),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Text(
                     change.path,
@@ -197,7 +199,11 @@ class _DiffRow {
 /// ---/+++ 头只认前两行位置：被删行内容以 `-- ` 开头时拼上前缀也是
 /// `--- xxx`，按内容匹配会把它误当文件头吞掉。
 List<_DiffRow> _parseDiffRows(String diff) {
-  final lines = diff.split('\n');
+  // `split` 会把 diff 末尾用于终止文本的换行解析成一个额外空项；
+  // 它不是实际的 diff 空行，不能渲染成底部的空白行。
+  final lines = diff.endsWith('\n')
+      ? diff.substring(0, diff.length - 1).split('\n')
+      : diff.split('\n');
   final hunkHeader = RegExp(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)?');
   var oldNo = 0;
   var newNo = 0;

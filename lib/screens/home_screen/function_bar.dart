@@ -4,7 +4,7 @@ part of 'home_screen.dart';
 class _HomeFunctionBar extends StatefulWidget {
   const _HomeFunctionBar({required this.actions});
 
-  final List<({IconData icon, String label, VoidCallback onPressed})> actions;
+  final List<({String label, VoidCallback onPressed})> actions;
 
   @override
   State<_HomeFunctionBar> createState() => _HomeFunctionBarState();
@@ -65,7 +65,7 @@ class _HomeFunctionBarState extends State<_HomeFunctionBar> {
                           for (final action in widget.actions)
                             Padding(
                               padding: const EdgeInsets.only(left: 8),
-                              child: TextButton.icon(
+                              child: TextButton(
                                 style: TextButton.styleFrom(
                                   foregroundColor: theme.ink2,
                                   minimumSize: const Size(0, 40),
@@ -76,8 +76,7 @@ class _HomeFunctionBarState extends State<_HomeFunctionBar> {
                                   _collapse();
                                   action.onPressed();
                                 },
-                                icon: Icon(action.icon, size: 18),
-                                label: Text(action.label),
+                                child: Text(action.label),
                               ),
                             ),
                         ],

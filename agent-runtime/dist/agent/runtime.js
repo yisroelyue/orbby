@@ -14,15 +14,20 @@ function initialWorkspacePath() { return defaultWorkspacePath(); }
 export class AgentRuntime {
     registry;
     sessions = new Map();
+    /** 会话工作区独立于上下文存放：Flutter 每次发送前 session.reset 重建上下文
+     *  （回放 history），reset 只清 sessions、不清这里——否则 /cd 在下一次发送即失效 */
+    workspaces = new Map();
     constructor(registry) {
         this.registry = registry;
     }
     /** 会话工作区（工具相对路径基准与命令默认 cwd）：内存缓存 > 本次 runtime 的桌面默认，多会话互不影响 */
     sessionWorkspace(sessionId) {
-        const session = this.session(sessionId);
-        if (session.workspacePath == null)
-            session.workspacePath = initialWorkspacePath();
-        return session.workspacePath;
+        let value = this.workspaces.get(sessionId);
+        if (value === undefined) {
+            value = initialWorkspacePath();
+            this.workspaces.set(sessionId, value);
+        }
+        return value;
     }
     getWorkspace(sessionId) { return this.sessionWorkspace(sessionId); }
     /** 切换工作区（相对路径按该会话当前工作区解析）；仅在当前 runtime 生命周期内生效 */
@@ -37,7 +42,7 @@ export class AgentRuntime {
         }
         if (!stats.isDirectory())
             throw new Error(`不是目录：${resolved}`);
-        this.session(sessionId).workspacePath = resolved;
+        this.workspaces.set(sessionId, resolved);
         return resolved;
     }
     session(id) { let value = this.sessions.get(id); if (!value) {
@@ -112,6 +117,8 @@ export class AgentRuntime {
             return fallback;
         });
     }
+    /** 重置会话上下文（Flutter 每次发送前重建）。工作区独立于上下文（workspaces），
+     *  reset 不清——关闭 tab 的回收靠新 tab 用新 sessionId 天然隔离 */
     reset(sessionId) { this.sessions.delete(sessionId); }
     async compact(sessionId, config) {
         const session = this.session(sessionId);

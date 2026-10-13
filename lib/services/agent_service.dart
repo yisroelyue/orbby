@@ -2,7 +2,6 @@ import 'dart:async';
 import '../agent/agent_ws_client.dart';
 import '../agent/types.dart' as agent_types;
 import '../config/settings.dart';
-import '../config/platform.dart';
 import '../models/agent_question.dart';
 import '../models/chat_attachment.dart';
 import 'personality_service.dart';
@@ -143,14 +142,13 @@ class AgentService {
   static void answerQuestion(String questionId, Object answers, {String? sessionId}) => _client.send('user.answer', _id(), {'questionId': questionId, 'answers': answers}, sessionId ?? _sessionId);
   static Future<Map<String, dynamic>> _llmPayload() async {
     final settings = await SettingsService.load();
-    final url = settings.chatUrl.isEmpty ? PlatformConfig.defaultChatUrl(settings.platform) : settings.chatUrl.trim();
-    final model = settings.model.isEmpty ? PlatformConfig.defaultChatModel(settings.platform) : settings.model;
+    final profile = settings.activeProfile;
     return {
-      'url': url,
-      'apiKey': settings.apiKey,
-      'model': model,
-      // provider 类型由 Flutter 侧告知（Node 不解析平台配置）
-      'platform': settings.platform,
+      'url': profile.baseUrl.trim(),
+      'apiKey': profile.apiKey,
+      'model': profile.model.trim(),
+      // 协议类型由 Flutter 侧告知（Node 只判 === 'anthropic'，不解析配置）
+      'platform': profile.protocol,
       'systemPrompt': '${settings.agentSystemPrompt}\n[personality:${await PersonalityService.load()}]',
       'usageRules': settings.agentUsageRules,
       'personality': await PersonalityService.load(),

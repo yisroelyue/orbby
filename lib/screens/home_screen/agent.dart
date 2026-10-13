@@ -212,7 +212,7 @@ extension _HomeScreenAgent on _HomeScreenState {
               case AgentToolEvent(:final id, :final name, :final running, :final error, :final details, :final changes):
               if (running) {
                 // 工具调用属于新的执行轮次。若上一轮已经有文本，先切出独立气泡，
-                // 避免工具返回的 diff 被渲染到最终回复的最底部。
+                // 避免工具返回的 diff 被渲染到最终回复的最底部
                 if (reply.text.trim().isNotEmpty) {
                   reply.streaming = false;
                   reply = _ChatMessage(text: '', isUser: false, streaming: true);

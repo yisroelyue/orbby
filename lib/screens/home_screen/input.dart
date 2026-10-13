@@ -1,4 +1,4 @@
-part of 'home_screen.dart';
+﻿part of 'home_screen.dart';
 
 /// 输入区：输入框 UI、输入历史（↑/↓ 浏览）、命令面板确认、
 /// 以及命令面板/提问卡片对键盘导航的接管。
@@ -24,7 +24,7 @@ extension _HomeScreenInput on _HomeScreenState {
     final theme = _themeData;
     final inputInk = theme.isDark ? const Color(0xFFE2E4E8) : theme.ink;
     final inputMuted = theme.isDark ? const Color(0xFFCDD0D6) : theme.ink2;
-    final inputHint = theme.isDark ? const Color(0xFFB9BEC7) : theme.ink3;
+    final inputHint = theme.isDark ? const Color(0xFF777B84) : const Color(0xFFB0B0B0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -50,27 +50,35 @@ extension _HomeScreenInput on _HomeScreenState {
           controller: _attachmentCtrl,
           onOpen: _viewAttachment,
         ),
+        // 模型切换浮层：点击输入框右下角的模型标签展开（不可见时零高度占位）
+        ModelPickerPanel(
+          controller: _modelPicker,
+          onConfirm: _confirmModelSelection,
+          onDismiss: _closeModelPicker,
+          onSwitchProfile: _switchApiProfile,
+          onAddProfile: _addApiProfileFromPicker,
+        ),
         // 聚焦态光环需要跟随输入框焦点重绘（参考稿 composer.focus）
         ListenableBuilder(
           listenable: _inputFocus,
           builder: (context, _) {
             return Container(
-              padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-              decoration: BoxDecoration(
-                color: theme.isDark
-                    ? Colors.transparent
-                    : const Color(0xFFE0E0E0),
-                borderRadius: BorderRadius.circular(18),
-              ),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.fromLTRB(13, 15, 13, 10),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: theme.isDark ? const Color(0xFF303238) : theme.surface,
-                  border: Border.all(
-                    color: theme.isDark ? Colors.transparent : theme.line,
-                  ),
-                  boxShadow: const <BoxShadow>[],
+                  borderRadius: BorderRadius.circular(15),
+                  color: theme.surface,
+                  border: Border.all(color: theme.line),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (theme.isDark ? Colors.black : const Color(0xFF777777))
+                          .withValues(alpha: theme.isDark ? 0.34 : 0.20),
+                      blurRadius: 20,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
                 ),
                 child: Focus(
                   onKeyEvent: _handleKeyEvent,
@@ -80,7 +88,7 @@ extension _HomeScreenInput on _HomeScreenState {
                       TextField(
                         controller: _inputController,
                         focusNode: _inputFocus,
-                        minLines: 2,
+                        minLines: 3,
                         maxLines: 10,
                         enabled: true,
                         cursorColor: theme.isDark ? inputInk : theme.accentDeep,
@@ -133,12 +141,7 @@ extension _HomeScreenInput on _HomeScreenState {
                             fontFamily: _fontFamily,
                           ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.fromLTRB(
-                            14,
-                            20,
-                            8,
-                            12,
-                          ),
+                          contentPadding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
                           filled: false,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
@@ -147,9 +150,9 @@ extension _HomeScreenInput on _HomeScreenState {
                         ),
                       ),
                       SizedBox(
-                        height: 48,
+                        height: 43,
                         child: Container(
-                          padding: const EdgeInsets.only(left: 14, right: 20),
+                          padding: const EdgeInsets.only(left: 0, right: 0),
                           // alignment 让 Row 在 48 高度内垂直居中
                           //（松约束下 Row 自身 wrap 高度会贴顶，须由容器对齐）
                           alignment: Alignment.center,
@@ -204,7 +207,7 @@ extension _HomeScreenInput on _HomeScreenState {
                                 ),
                               ),
                               Tooltip(
-                                message: '当前模型（暂不支持切换）',
+                                message: '点击切换模型',
                                 preferBelow: false,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
@@ -218,47 +221,65 @@ extension _HomeScreenInput on _HomeScreenState {
                                   color: Colors.black,
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: Container(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 180,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      SvgPicture.asset(
-                                        'assets/svg/大模型.svg',
-                                        width: 16,
-                                        height: 16,
-                                        colorFilter: ColorFilter.mode(inputMuted, BlendMode.srcIn),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      ConstrainedBox(
+                                // TapRegion 与浮层同组：浮层展开时点击标签
+                                // 不算外部点击，交给 onTap 收起（点其他区域
+                                // 才由浮层的 onTapOutside 收起）
+                                child: TapRegion(
+                                  groupId: _modelPicker.tapRegionGroup,
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: _toggleModelPicker,
+                                      child: Container(
                                         constraints: const BoxConstraints(
-                                          maxWidth: 130,
+                                          maxWidth: 180,
                                         ),
-                                        child: Text(
-                                          _modelLabel,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: inputMuted,
-                                            fontSize: 12,
-                                            letterSpacing: 0.2,
-                                            fontFamily: _fontFamily,
-                                          ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SvgPicture.asset(
+                                              'assets/svg/大模型.svg',
+                                              width: 16,
+                                              height: 16,
+                                              colorFilter: ColorFilter.mode(inputMuted, BlendMode.srcIn),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            // Flexible：容器 maxWidth 180 除去
+                                            // padding 与固定元素后不足 130，
+                                            // 文本须可收缩（ellipsis 截断）才不溢出
+                                            Flexible(
+                                              child: ConstrainedBox(
+                                                constraints: const BoxConstraints(
+                                                  maxWidth: 130,
+                                                ),
+                                                child: Text(
+                                                  _modelLabel,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: inputMuted,
+                                                    fontSize: 12,
+                                                    letterSpacing: 0.2,
+                                                    fontFamily: _fontFamily,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Icon(
+                                              Icons.keyboard_arrow_down,
+                                              size: 17,
+                                              color: inputMuted,
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(width: 3),
-                                      Icon(
-                                        Icons.keyboard_arrow_down,
-                                        size: 17,
-                                        color: inputMuted,
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -430,6 +451,29 @@ extension _HomeScreenInput on _HomeScreenState {
       }
     }
 
+    // 模型切换浮层可见时，同款导航接管（浮层已无输入框，键盘事件由主
+    // 输入框代接管；展开时命令/技能面板已互斥收起，不会同时 visible）
+    if (_modelPicker.visible) {
+      if (key == LogicalKeyboardKey.arrowUp) {
+        _modelPicker.movePrevious();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) {
+        _modelPicker.moveNext();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.escape) {
+        _closeModelPicker();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.enter &&
+          !HardwareKeyboard.instance.isShiftPressed) {
+        final model = _modelPicker.confirmSelection();
+        if (model != null) _confirmModelSelection(model);
+        return KeyEventResult.handled;
+      }
+    }
+
     // Agent 提问卡片挂起时接管导航键（显式唤起的命令面板优先级更高，见上）。
     // 输入框正在打字时不接管 ↑↓/Enter，避免拦截用户排队发送的消息；Esc 始终可跳过提问。
     if (_questionCtrl != null) {
@@ -487,6 +531,11 @@ extension _HomeScreenInput on _HomeScreenState {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
+      // 模型切换浮层开着时先收浮层（焦点不在其过滤框时事件才会到本层）
+      if (_modelPicker.visible) {
+        _closeModelPicker();
+        return KeyEventResult.handled;
+      }
       if (_questionCtrl != null) {
         _cancelAgentQuestion();
         return KeyEventResult.handled;

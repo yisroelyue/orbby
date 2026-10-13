@@ -1,0 +1,586 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbby · 对话示例设计参考</title>
+<style>
+/* ── 页面（设计工作台）自身样式 ───────────────────────────────────── */
+:root{font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:#292b30;background:#eeefed;font-synthesis:none}
+*{box-sizing:border-box}
+body{margin:0;padding:40px}
+button,textarea{font:inherit}
+button{cursor:pointer;color:inherit}
+button:focus-visible{outline:2px solid #c39750;outline-offset:4px}
+header{max-width:1460px;margin:0 auto 26px;display:flex;justify-content:space-between;align-items:end;gap:24px}
+.eyebrow{font-size:10px;letter-spacing:3px;color:#878b83;font-weight:600}
+h1{font-size:25px;font-weight:600;letter-spacing:-.8px;margin:10px 0}
+header p{font-size:12px;color:#7b7e77;line-height:1.8;margin:0}
+.controls{display:flex;padding:4px;background:#e2e4df;border-radius:9px;gap:4px;flex-shrink:0}
+.controls button{border:0;background:transparent;padding:8px 14px;border-radius:6px;font-size:12px;color:#777b73}
+.controls button[aria-pressed="true"]{background:#fff;color:#292b30;box-shadow:0 2px 5px #00000008}
+.stage{display:flex;justify-content:center;padding:0 18px}
+
+/* ── 窗口：配色与字体对齐《主界面-UI重设计参考图》 ─────────────────── */
+.window{font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;
+ --surface:#fcfcfc;--raised:#fff;--sunken:#f6f6f6;--bar-bg:#f1f1f1;
+ --line:#e4e5e7;--line-soft:#ececec;--ink:#252629;--body:#676b70;--ink2:#676b70;--ink3:#92969a;
+ --accent:#bb9150;--accent-deep:#8f6b30;--accent-soft:#f6efe2;--code-inline:#f6f6f6;--hover:#f2f3f4;--user-message-bg:#f2f3f4;
+ --danger:#c0483c;--danger-soft:#fbedea;--ok:#65a787;--ok-soft:#eaf6ef;--info:#3e7bc4;--info-soft:#eaf1fa;
+ --run:#e08a2b;--done:#65a787;--table-head:#f6f6f6;--table-hair:#ececec;
+ --input-ink:#252629;--input-muted:#676b70;--input-hint:#92969a;
+ --shadow-card:0 4px 12px #00000006;--shadow-pop:0 6px 22px #00000012;
+ background:var(--surface);color:var(--ink);border:1px solid #daddd8;border-radius:15px;
+ height:min(88vh,1376px);aspect-ratio:854/1376;max-width:96vw;
+ display:flex;flex-direction:column;position:relative;overflow:hidden;
+ box-shadow:0 14px 35px -20px #33352f35}
+.window.dark{
+ --surface:#1b1c1e;--raised:#222326;--sunken:#202123;--bar-bg:#1d1f22;
+ --line:#383a3e;--line-soft:#2e3034;--ink:#e9e9eb;--body:#a4a6ac;--ink2:#a4a6ac;--ink3:#797d85;
+ --accent:#dbb477;--accent-deep:#dbb477;--accent-soft:#dbb47722;--code-inline:#ffffff0d;--hover:#2c2e31;--user-message-bg:#2c2e31;
+ --danger:#e4705f;--danger-soft:#e4705f24;--ok:#57c88a;--ok-soft:#57c88a21;--info:#75a9e6;--info-soft:#75a9e624;
+ --run:#f0a94b;--done:#57c88a;--table-head:#ffffff0a;--table-hair:#d8dadf3d;
+ --input-ink:#e9e9eb;--input-muted:#a4a6ac;--input-hint:#797d85;
+ --shadow-card:0 4px 12px #00000030;--shadow-pop:0 6px 22px #00000059;
+ border-color:#303236;box-shadow:0 14px 35px -20px #0008}
+
+svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* ── 功能栏（菜单入口，展开后横向功能按钮） ───────────────────────── */
+.funcbar{height:44px;flex-shrink:0;padding:8px 16px 0;display:flex;align-items:center}
+.icon-btn{border:0;background:transparent;width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--ink2)}
+.icon-btn:hover{background:var(--hover)}
+.icon-btn svg{width:17px;height:17px}
+.funcbar .actions{display:none;gap:2px;margin-left:6px}
+.funcbar.expanded .actions{display:flex}
+.funcbar.expanded .icon-btn{color:var(--ink)}
+.action{border:0;background:transparent;display:flex;align-items:center;gap:6px;padding:0 9px;height:30px;border-radius:7px;font-size:11px;color:var(--ink2)}
+.action:hover{background:var(--hover)}
+.action svg{width:15px;height:15px}
+
+/* ── 会话 tab 栏 ────────────────────────────────────────────────── */
+.tabbar{height:44px;flex-shrink:0;display:flex;align-items:center;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--line-soft)}
+.tabs{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{display:flex;align-items:center;height:30px;width:calc(25% - 10px);min-width:84px;margin-right:4px;padding:0 4px 0 9px;border-radius:7px;border:1px solid transparent;background:transparent;text-align:left}
+.tab:hover{background:var(--hover)}
+.tab.active{background:var(--raised);border-color:var(--line);box-shadow:var(--shadow-card)}
+.tab-dot{width:5px;height:5px;border-radius:50%;margin-right:6px;flex-shrink:0}
+.tab-dot.run{background:var(--run)}
+.tab-dot.ask{background:var(--danger)}
+.tab-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--ink2)}
+.tab.active .tab-title{color:var(--ink);font-weight:600}
+.tab-close{width:15px;height:15px;border-radius:50%;border:0;background:transparent;display:grid;place-items:center;color:var(--ink3);font-size:0;flex-shrink:0}
+.tab-close svg{width:11px;height:11px}
+.tab-close:hover{background:var(--danger);color:#fff}
+.tab-add{width:28px;height:28px;margin-left:6px;border:0;border-radius:7px;background:transparent;display:grid;place-items:center;color:var(--ink3);flex-shrink:0}
+.tab-add:hover{background:var(--hover)}
+.tab-add svg{width:15px;height:15px}
+@keyframes run-blink{0%,55%{opacity:1}60%,100%{opacity:.12}}
+
+/* ── 聊天区 ─────────────────────────────────────────────────────── */
+.chat{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent;position:relative}
+.chat::-webkit-scrollbar{width:6px}
+.chat::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.thread{max-width:520px;margin:0 auto;padding:30px 14px 14px;font-size:13px;line-height:1.95}
+
+/* 用户消息：hover 底色 + 右下小尾巴圆角（参考稿 .user-message） */
+.msg-user{margin:0 0 32px auto;padding:12px 16px;width:fit-content;max-width:90%;background:var(--user-message-bg);border-radius:13px 13px 3px 13px;color:var(--ink);font-size:13px;line-height:1.95}
+.msg-user .thumbs{display:flex;gap:6px;margin-bottom:8px}
+.thumb{width:56px;height:56px;border-radius:8px;border:1px solid var(--line);background:var(--sunken);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 5px}
+.thumb svg{width:16px;height:16px;color:var(--ink3)}
+.thumb span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;color:var(--ink3)}
+
+/* ORBBY 标签：状态圆点 + 文案（参考稿固定绿点 #65a787） */
+.agent-label{display:flex;align-items:center;gap:7px;margin:0;font-size:10px;font-weight:600;letter-spacing:1px;color:var(--ink)}
+.agent-label::before{content:"";width:6px;height:6px;border-radius:50%;background:#65a787}
+.agent-label.term::before{background:var(--danger)}
+
+/* 工具步骤折叠组（参考稿 tool-row：11px + 左侧细线） */
+.steps{margin:2px 0 20px}
+.steps-head{display:flex;align-items:flex-start;gap:4px;width:100%;border:0;background:transparent;padding:8px 12px 3px 0;text-align:left}
+.steps-head .chev{width:13px;height:13px;color:var(--ink3);margin-top:1px;transition:transform .15s}
+.steps.open .steps-head .chev{transform:rotate(90deg)}
+.steps-head .sum{flex:1;font-size:11px;font-weight:400;color:var(--ink3);line-height:1.5}
+.steps-head .fail{color:var(--danger)}
+.steps-rows{display:none;padding-left:6px}
+.steps.open .steps-rows{display:block}
+.tool-row{padding:5px 12px;border-left:1px solid var(--line)}
+.thread>.tool-row{margin:2px 0 20px}
+.tool-row .line{display:flex;align-items:flex-start;gap:6px;min-width:0}
+.tool-row .line>svg{width:13px;height:13px;color:var(--ink2);margin-top:2px}
+.tool-row .line>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--ink2)}
+.tool-row .line>span em{font-style:normal;color:var(--ink3)}
+.tool-err{margin:2px 0 0 19px;font-size:10.5px;color:var(--danger);line-height:1.6}
+
+/* ── Markdown 正文 ──────────────────────────────────────────────── */
+.md{padding:0}
+.md p{margin:12px 0 22px;font-size:13px;line-height:1.95;color:var(--body)}
+.md strong{color:var(--ink);font-weight:600}
+.md h3{margin:18px 0 8px;font-size:14px;color:var(--ink);font-weight:600}
+.md ul,.md ol{margin:12px 0 22px;padding-left:22px}
+.md li{margin:8px 0;font-size:13px;line-height:1.95;color:var(--body)}
+.md li::marker{color:var(--ink)}
+.md code{font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:11.5px;color:var(--body);background:var(--code-inline);border-radius:4px;padding:1px 5px;margin:0 1px}
+.md blockquote{margin:12px 0 22px;padding:4px 8px 4px 12px;background:var(--sunken);border-left:2px solid var(--line);border-radius:0 6px 6px 0}
+.md blockquote p{margin:6px 0;font-size:12px;color:var(--ink2)}
+.md hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.md a{color:var(--info);text-decoration:none}
+.md a:hover{text-decoration:underline}
+
+/* 代码块：语言标签顶栏 + 行号列 + 横向滚动正文 */
+.codeblock{margin:2px 0 22px}
+.code-head{display:flex;align-items:center;height:26px;padding:0 7px 0 11px;background:var(--bar-bg);border-radius:8px 8px 0 0}
+.code-head .lang{font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:10px;letter-spacing:.8px;color:var(--ink3)}
+.dark .code-head .lang{color:var(--body)}
+.copy{margin-left:auto;border:0;background:transparent;padding:2px 6px;font-size:10.5px;color:var(--ink3);border-radius:5px}
+.copy:hover{background:var(--hover)}
+.dark .copy{color:var(--body)}
+.code-body{display:flex;background:var(--surface);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
+.gutter{padding:10px 14px 10px 12px;text-align:right;font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:11px;line-height:1.85;color:var(--ink3);flex-shrink:0;user-select:none}
+.code-body pre{flex:1;min-width:0;overflow-x:auto;margin:0;padding:10px 12px 10px 0;font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:11px;line-height:1.85;color:var(--body)}
+
+/* 表格：raised 底圆角卡 + 表头灰带 + 行间 hairline、无竖线 */
+.md-table{margin:2px 0 22px;background:var(--raised);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.md-table table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.7}
+.md-table th{text-align:left;padding:9px 11px;background:var(--table-head);color:var(--ink);font-weight:600}
+.md-table td{padding:9px 11px;color:var(--body)}
+.md-table tbody tr+tr td{border-top:1px solid var(--table-hair)}
+
+/* ── diff 面板（FileChangesPanel） ──────────────────────────────── */
+.diff-panel{margin:2px 0 22px;background:var(--raised);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.diff-panel .change+.change{border-top:1px solid var(--line-soft)}
+.diff-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bar-bg)}
+.op-tag{flex-shrink:0;font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.2px;padding:1px 5px;border-radius:4px}
+.op-tag.edit{background:var(--info-soft);color:var(--info)}
+.op-tag.create{background:var(--ok-soft);color:var(--ok)}
+.op-tag.delete{background:var(--danger-soft);color:var(--danger)}
+.diff-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:11px;color:var(--ink)}
+.diff-add{font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:10.5px;font-weight:600;color:var(--ok)}
+.diff-del{font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;font-size:10.5px;font-weight:600;color:var(--danger);margin-left:5px}
+.diff-body{background:var(--sunken);border-top:1px solid var(--line-soft);padding:5px 0;overflow-x:auto}
+.dline{display:flex;align-items:baseline;min-width:560px;padding:1px 10px;font-family:ui-monospace,Consolas,"JetBrains Mono",monospace}
+.dline .no{width:22px;text-align:right;font-size:10px;color:var(--ink3);flex-shrink:0}
+.dline .gap{width:6px;flex-shrink:0}
+.dline .gap2{width:9px;flex-shrink:0}
+.dline .sign{width:16px;flex-shrink:0;font-size:11px;color:var(--ink3)}
+.dline .txt{font-size:11px;line-height:1.7;color:var(--ink);white-space:pre}
+.dline.add{background:var(--ok-soft)}
+.dline.add .sign{color:var(--ok)}
+.dline.del{background:var(--danger-soft)}
+.dline.del .sign{color:var(--danger)}
+
+/* ── 问答留痕卡（QuestionRecordCard） ───────────────────────────── */
+.qcard{margin:2px 0 22px;background:var(--raised);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.qcard-head{display:flex;align-items:flex-start;gap:8px;padding:8px 10px 8px 11px;background:var(--bar-bg)}
+.qmark{flex-shrink:0;width:14px;height:14px;margin-top:1px;border-radius:4px;background:var(--accent);color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center}
+.qtext{flex:1;min-width:0;font-size:11px;line-height:1.45;color:var(--ink);font-weight:600}
+.qtag{flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent-deep);font-size:10px;font-weight:600;letter-spacing:.2px}
+.qcard-body{padding:7px 11px 9px 11px}
+.qopt{display:flex;align-items:flex-start;gap:8px;padding:2px 0}
+.qopt .badge{flex-shrink:0;width:15px;height:15px;margin-top:2px;border-radius:4px;border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent-deep);font-size:9.5px;font-weight:600;display:grid;place-items:center}
+.qopt .label{min-width:0;font-size:11px;color:var(--ink2);line-height:1.7}
+.qopt.sel .badge{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent-deep)}
+.qopt.sel .label{color:var(--ink);font-weight:600}
+.qdash{margin:6px 0 7px;height:1.5px;background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 7px);border-radius:1px}
+.qanswer{font-size:10.5px;color:var(--ink3)}
+.qanswer b{color:var(--ink);font-weight:600}
+
+/* 回到底部浮钮 */
+.jump{position:sticky;bottom:10px;margin:0 auto -40px;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:var(--raised);border:1px solid var(--line);box-shadow:var(--shadow-pop);color:var(--ink2)}
+.jump:hover{color:var(--ink)}
+.jump svg{width:16px;height:16px}
+
+/* ── 输入区 ─────────────────────────────────────────────────────── */
+.input-wrap{padding:0 14px 15px;flex-shrink:0}
+.composer{position:relative;border:1px solid var(--line);border-radius:15px;background:var(--raised);padding:15px 13px 10px;box-shadow:0 0 0 3px var(--sunken)}
+.composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 9%,transparent)}
+textarea{display:block;width:100%;height:70px;resize:none;background:transparent;border:0;outline:0;color:var(--input-ink);font-size:12px;line-height:1.8;padding:0}
+textarea::placeholder{color:var(--input-hint)}
+.input-footer{display:flex;align-items:center;gap:9px;margin-top:6px}
+.meta{border:0;background:transparent;display:flex;align-items:center;gap:6px;color:var(--input-muted);font-size:10px;padding:4px 0;min-width:0}
+.meta svg{width:15px;height:15px}
+.workspace{margin-right:auto}
+.model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model svg:last-child{width:11px}
+.send{border:0;border-radius:50%;width:27px;height:27px;background:var(--ink);color:var(--raised);display:grid;place-items:center;margin-left:8px;flex-shrink:0}
+.send:disabled{background:var(--line);color:var(--raised);cursor:default}
+.send svg{width:16px;height:16px;fill:currentColor;stroke-width:1}
+.popover{position:absolute;right:12px;bottom:49px;padding:10px 14px;background:var(--raised);border:1px solid var(--line);border-radius:9px;font-size:11px;color:var(--ink2);box-shadow:var(--shadow-pop);max-width:calc(100% - 24px)}
+.popover[hidden]{display:none}
+
+/* ── 页脚说明 ───────────────────────────────────────────────────── */
+.design-notes{max-width:1460px;margin:30px auto 0;padding:24px 0 0;border-top:1px solid #d9ddd4;display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.design-notes b{font-size:12px;font-weight:600}
+.design-notes p{font-size:11px;color:#7c8178;line-height:1.9;margin:8px 0}
+.foot{max-width:1460px;margin:16px auto 0;color:#92988b;font-size:10px;letter-spacing:1px}
+
+@media(max-width:900px){
+ body{padding:24px 10px}
+ header{flex-direction:column;align-items:start}
+ .design-notes{grid-template-columns:1fr;gap:10px}
+ .window{height:auto;width:100%;max-width:none;min-height:660px}
+}
+@media(prefers-reduced-motion:no-preference){
+ button{transition:background .15s,color .15s,border-color .15s}
+ .composer{transition:border-color .15s}
+ .window, .window *{transition:background-color .25s,border-color .25s,color .25s}
+ .tab-dot.run{animation:run-blink 1.2s infinite}
+}
+</style>
+</head>
+<body>
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
+<symbol id="menu" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 1-7.9 6 6 0 0 0-11.6-1A4.5 4.5 0 0 0 7 18Z"/></symbol>
+<symbol id="cube" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8Zm0 9v9M3 8l9 5 9-5M8 5l9 5"/></symbol>
+<symbol id="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="chev-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+<symbol id="plane" viewBox="0 0 24 24"><path d="m21 3-6 18-4-8-8-4 18-6ZM11 13 21 3"/></symbol>
+<symbol id="arrow-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol>
+<symbol id="history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 3"/></symbol>
+<symbol id="apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+<symbol id="settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="7" cy="17" r="2"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Zm0 0v5h5M8.5 13h7M8.5 17h4"/></symbol>
+<symbol id="file-plus" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Zm0 0v5h5M12 11v6M9 14h6"/></symbol>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="terminal" viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 17h7"/></symbol>
+<symbol id="pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+<symbol id="trash" viewBox="0 0 24 24"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"/></symbol>
+</defs></svg>
+
+<header>
+ <div>
+  <div class="eyebrow">ORBBY / CHAT TRANSCRIPT STUDY / 2026.10</div>
+  <h1>一次回答，装下所有内容形态。</h1>
+  <p>对话示例 UI 参考 · 风格对齐《主界面-UI重设计参考图》对话示例 · 覆盖 HomeScreen 全部元素：工具折叠组 / 代码块 / 表格 / diff 面板 / 问答留痕 / 附件与多会话 tab</p>
+ </div>
+ <nav class="controls" aria-label="主题切换">
+  <button aria-pressed="true" data-theme="light">浅色</button>
+  <button aria-pressed="false" data-theme="dark">深色</button>
+ </nav>
+</header>
+
+<main class="stage">
+<section class="window light" id="win" aria-label="主窗口对话示例">
+
+ <!-- 功能栏 -->
+ <div class="funcbar" id="funcbar">
+  <button class="icon-btn" id="funcToggle" aria-label="展开功能菜单" aria-expanded="false"><svg><use href="#menu"/></svg></button>
+  <div class="actions">
+   <button class="action"><svg><use href="#plus"/></svg>新建会话</button>
+   <button class="action"><svg><use href="#history"/></svg>历史会话</button>
+   <button class="action"><svg><use href="#apps"/></svg>应用中心</button>
+   <button class="action"><svg><use href="#settings"/></svg>设置</button>
+  </div>
+ </div>
+
+ <!-- 会话 tab 栏：激活 / 运行中（橙点闪烁）/ 待回答（红点）/ ＋ -->
+ <div class="tabbar">
+  <div class="tabs">
+   <button class="tab active"><span class="tab-title">终端卡死排查</span><span class="tab-close" aria-label="关闭会话"><svg><use href="#close"/></svg></span></button>
+   <button class="tab"><span class="tab-dot run"></span><span class="tab-title">runtime 超时分析</span><span class="tab-close" aria-label="关闭会话"><svg><use href="#close"/></svg></span></button>
+   <button class="tab"><span class="tab-dot ask"></span><span class="tab-title">素材整理</span><span class="tab-close" aria-label="关闭会话"><svg><use href="#close"/></svg></span></button>
+  </div>
+  <button class="tab-add" aria-label="新建会话"><svg><use href="#plus"/></svg></button>
+ </div>
+
+ <!-- 聊天区 -->
+ <div class="chat" id="chat">
+  <div class="thread">
+
+   <!-- 第 1 轮 -->
+   <div class="msg-user">agent-runtime 编译完跑测试，terminal 工具偶尔要 30 秒才返回，帮我查一下是什么原因。</div>
+   <div class="agent-label">ORBBY</div>
+
+   <div class="steps open">
+    <button class="steps-head" aria-expanded="true"><svg class="chev"><use href="#chev-right"/></svg><span class="sum">已执行 4 项操作：读取文件、执行搜索、执行命令</span></button>
+    <div class="steps-rows">
+     <div class="tool-row"><div class="line"><svg><use href="#file"/></svg><span>读取文件<em>：agent-runtime/src/services/terminal-manager.ts</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#search"/></svg><span>执行搜索<em>："timeout"（agent-runtime/src）</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：npx tsc --noEmit</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#file"/></svg><span>读取文件<em>：~/.orbby/log/runtime.log</em></span></div></div>
+    </div>
+   </div>
+
+   <div class="md">
+    <p>我先把最近一周的运行日志和 terminal 相关代码的改动都过了一遍，定位超时发生在哪一层。</p>
+    <p>日志里能看到子进程其实早就退出了，但调用方仍在等满超时：</p>
+    <div class="codeblock">
+     <div class="code-head"><span class="lang">LOG</span><button class="copy">复制</button></div>
+     <div class="code-body"><div class="gutter">1<br>2<br>3</div><pre>[10:03:41] exec("npx tsc") timeout=30000ms
+[10:04:11] ✗ EPIPE: write after end — pid 4812
+[10:04:11] 工具返回，共耗时 30.0s（等待超时回收）</pre></div>
+    </div>
+    <p>原因找到了：进程退出后 <code>stdout/stderr</code> 管道没有显式关闭，TerminalManager 一直挂到 30 秒超时才回收——Windows 下这个句柄不会自动释放（参考：<a href="#" onclick="return false">Node.js · child_process 退出事件</a>）。</p>
+   </div>
+
+   <!-- 第 2 轮 -->
+   <div class="msg-user">修一下，顺便把超时时间改成可以在设置里配置的。</div>
+   <div class="agent-label">ORBBY</div>
+
+   <div class="steps">
+    <button class="steps-head" aria-expanded="false"><svg class="chev"><use href="#chev-right"/></svg><span class="sum">已执行 5 项操作：编辑文件、新建文件、删除文件、执行命令</span></button>
+    <div class="steps-rows">
+     <div class="tool-row"><div class="line"><svg><use href="#pencil"/></svg><span>编辑文件<em>：terminal-manager.ts</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#file-plus"/></svg><span>新建文件<em>：src/config/terminal-options.ts</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#trash"/></svg><span>删除文件<em>：src/config/legacy-timeout.ts</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：npx tsc</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：npm test -- terminal</em></span></div></div>
+    </div>
+   </div>
+
+   <div class="diff-panel">
+    <div class="change">
+     <div class="diff-head"><span class="op-tag edit">编辑</span><span class="diff-path">agent-runtime/src/services/terminal-manager.ts</span><span class="diff-add">+5</span><span class="diff-del">−3</span></div>
+     <div class="diff-body">
+      <div class="dline del"><span class="no">19</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">const TIMEOUT_MS = 30_000;</span></div>
+      <div class="dline del"><span class="no">20</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">const MAX_POOL = 4;</span></div>
+      <div class="dline del"><span class="no">21</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">const RECYCLE_MS = 5_000;</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">19</span><span class="gap2"></span><span class="sign">+</span><span class="txt">const { TIMEOUT_MS, RECYCLE_MS } = loadTerminalOptions();</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">20</span><span class="gap2"></span><span class="sign">+</span><span class="txt">// 超时从设置 terminal.timeout 读取，缺省回退 30 秒</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">21</span><span class="gap2"></span><span class="sign">+</span><span class="txt">function loadTerminalOptions() {</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">22</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  const raw = settings.get&lt;number&gt;('terminal.timeout');</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">23</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  return { TIMEOUT_MS: raw &gt;= 1_000 ? raw : 30_000, RECYCLE_MS: 5_000 };</span></div>
+     </div>
+    </div>
+    <div class="change">
+     <div class="diff-head"><span class="op-tag create">新建</span><span class="diff-path">agent-runtime/src/config/terminal-options.ts</span><span class="diff-add">+6</span><span class="diff-del">−0</span></div>
+     <div class="diff-body">
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">1</span><span class="gap2"></span><span class="sign">+</span><span class="txt">export interface TerminalOptions {</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">2</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  timeoutMs: number;</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">3</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  recycleDelayMs: number;</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">4</span><span class="gap2"></span><span class="sign">+</span><span class="txt">}</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">5</span><span class="gap2"></span><span class="sign">+</span><span class="txt"></span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">6</span><span class="gap2"></span><span class="sign">+</span><span class="txt">export const defaults: TerminalOptions = { timeoutMs: 30_000, recycleDelayMs: 5_000 };</span></div>
+     </div>
+    </div>
+    <div class="change">
+     <div class="diff-head"><span class="op-tag delete">删除</span><span class="diff-path">agent-runtime/src/config/legacy-timeout.ts</span><span class="diff-add">+0</span><span class="diff-del">−4</span></div>
+     <div class="diff-body">
+      <div class="dline del"><span class="no">1</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">// 旧版超时常量，已无引用</span></div>
+      <div class="dline del"><span class="no">2</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">export const LEGACY_TIMEOUT_MS = 30_000;</span></div>
+      <div class="dline del"><span class="no">3</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">export const LEGACY_RECYCLE_MS = 5_000;</span></div>
+      <div class="dline del"><span class="no">4</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">export type LegacyTimer = ReturnType&lt;typeof setTimeout&gt;;</span></div>
+     </div>
+    </div>
+   </div>
+
+   <div class="md">
+    <p>改完了，三处改动：</p>
+    <ol>
+     <li>进程退出后立即关闭管道，不再等满超时；</li>
+     <li>超时改从 <code>terminal.timeout</code> 设置读取，默认仍为 30 秒；</li>
+     <li><code>legacy-timeout.ts</code> 已无引用，连同旧常量一起删除。</li>
+    </ol>
+    <h3>设置项注册</h3>
+    <div class="codeblock">
+     <div class="code-head"><span class="lang">TYPESCRIPT</span><button class="copy">复制</button></div>
+     <div class="code-body"><div class="gutter">1<br>2<br>3<br>4<br>5<br>6<br>7</div><pre>// settings.schema.ts —— 注册可配置项
+register('terminal.timeout', {
+  type: 'number',
+  default: 30_000,
+  min: 1_000,
+  label: '命令执行超时（毫秒）',
+});</pre></div>
+    </div>
+    <blockquote><p>设置保存后对新命令生效，进行中的命令仍按旧超时执行。</p></blockquote>
+    <p>已重新编译并跑完回归，<strong>12 个测试全绿</strong>。你可以再跑一次之前那条命令验证。</p>
+   </div>
+
+   <!-- 第 3 轮：带附件的用户消息 -->
+   <div class="msg-user">
+    <div class="thumbs"><div class="thumb"><svg><use href="#file"/></svg><span>复现日志.txt</span></div></div>
+    快多了。不过我开两个会话同时跑命令的时候还是偶尔卡住，复现日志我贴给你了。
+   </div>
+   <div class="agent-label">ORBBY</div>
+
+   <!-- 单工具行直出（仅 1 个工具时不折叠） -->
+   <div class="tool-row"><div class="line"><svg><use href="#file"/></svg><span>读取文件<em>：~/.orbby/attachments/e3c1/复现日志.txt</em></span></div></div>
+
+   <!-- 问答留痕卡：挂在 ask_user_question 工具行下 -->
+   <div class="qcard">
+    <div class="qcard-head"><span class="qmark">?</span><span class="qtext">终端池按会话隔离，还是保持共享池按会话排队？</span><span class="qtag">修复方向</span></div>
+    <div class="qcard-body">
+     <div class="qopt sel"><span class="badge">A</span><span class="label">终端池按会话隔离，每个会话独立终端（推荐：彻底消除排队）</span></div>
+     <div class="qopt"><span class="badge">B</span><span class="label">保持共享池，命令按会话排队（改动最小，高峰期仍会互相等）</span></div>
+     <div class="qdash"></div>
+     <div class="qanswer">用户回复：<b>A</b></div>
+    </div>
+   </div>
+
+   <div class="steps">
+    <button class="steps-head" aria-expanded="false"><svg class="chev"><use href="#chev-right"/></svg><span class="sum">已执行 3 项操作：编辑文件、执行命令</span></button>
+    <div class="steps-rows">
+     <div class="tool-row"><div class="line"><svg><use href="#pencil"/></svg><span>编辑文件<em>：terminal-pool.ts</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：npm test -- terminal-pool</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：双会话并发回归（a1f3 / b7c9）</em></span></div></div>
+    </div>
+   </div>
+
+   <div class="diff-panel">
+    <div class="change">
+     <div class="diff-head"><span class="op-tag edit">编辑</span><span class="diff-path">agent-runtime/src/services/terminal-pool.ts</span><span class="diff-add">+8</span><span class="diff-del">−3</span></div>
+     <div class="diff-body">
+      <div class="dline del"><span class="no">42</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">export function acquire(): Terminal {</span></div>
+      <div class="dline del"><span class="no">43</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">  return shared;</span></div>
+      <div class="dline del"><span class="no">44</span><span class="gap"></span><span class="no"></span><span class="gap2"></span><span class="sign">−</span><span class="txt">}</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">42</span><span class="gap2"></span><span class="sign">+</span><span class="txt">export function acquire(sessionId: string): Terminal {</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">43</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  let t = bySession.get(sessionId);</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">44</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  if (!t) {</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">45</span><span class="gap2"></span><span class="sign">+</span><span class="txt">    t = spawn();</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">46</span><span class="gap2"></span><span class="sign">+</span><span class="txt">    bySession.set(sessionId, t);</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">47</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  }</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">48</span><span class="gap2"></span><span class="sign">+</span><span class="txt">  return t;</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">49</span><span class="gap2"></span><span class="sign">+</span><span class="txt">}</span></div>
+     </div>
+    </div>
+   </div>
+
+   <div class="md">
+    <p>看到了：两个会话的命令进了同一个终端实例，前一个没退出，后一个只能排队。这和之前修的不是同一个问题。</p>
+    <div class="codeblock">
+     <div class="code-head"><span class="lang">LOG</span><button class="copy">复制</button></div>
+     <div class="code-body"><div class="gutter">1<br>2<br>3</div><pre>[14:22:05] session=a1f3 exec("npm test")      → tty#2 (busy, queued)
+[14:22:37] session=b7c9 exec("npm run build") → tty#2 (busy, queued)
+[14:23:09] tty#2 空闲，排空队列，b7c9 实际等待 64s</pre></div>
+    </div>
+    <div class="md-table">
+     <table>
+      <thead><tr><th>会话</th><th>命令</th><th>实际等待</th></tr></thead>
+      <tbody>
+       <tr><td>a1f3</td><td>npm test</td><td>32 秒</td></tr>
+       <tr><td>b7c9</td><td>npm run build</td><td>64 秒</td></tr>
+      </tbody>
+     </table>
+    </div>
+    <p>根因是 TerminalManager 全局共享终端池，没有按会话隔离。</p>
+    <hr>
+    <p>按方案 A 改完：每个会话持有独立终端，会话关闭时一并回收。</p>
+    <p>并发回归通过：两个会话各跑各的命令互不排队，耗时都在 3 秒内；孤儿终端会在会话关闭 30 秒后自动回收，不会泄漏。</p>
+   </div>
+
+   <!-- 第 4 轮：含失败重试的工具组 -->
+   <div class="msg-user">搞定了。把这次的排查思路存成一个技能，下次遇到类似的直接 @ 引用。</div>
+   <div class="agent-label">ORBBY</div>
+
+   <div class="steps">
+    <button class="steps-head" aria-expanded="false"><svg class="chev"><use href="#chev-right"/></svg><span class="sum">已执行 5 项操作：新建文件、编辑文件、执行命令<span class="fail"> · 1 个失败</span></span></button>
+    <div class="steps-rows">
+     <div class="tool-row"><div class="line"><svg><use href="#file-plus"/></svg><span>新建文件<em>：~/.orbby/skills/终端卡死排查/SKILL.md</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#file-plus"/></svg><span>新建文件<em>：~/.orbby/skills/终端卡死排查/scan-log.ps1</em></span></div></div>
+     <div class="tool-row">
+      <div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：powershell scan-log.ps1（自检）</em></span></div>
+      <div class="tool-err">输出乱码：PowerShell 5.1 按 GBK 读取了带中文注释的 UTF-8 脚本</div>
+     </div>
+     <div class="tool-row"><div class="line"><svg><use href="#pencil"/></svg><span>编辑文件<em>：scan-log.ps1（重写为纯 ASCII）</em></span></div></div>
+     <div class="tool-row"><div class="line"><svg><use href="#terminal"/></svg><span>执行命令<em>：powershell scan-log.ps1（自检通过）</em></span></div></div>
+    </div>
+   </div>
+
+   <div class="diff-panel">
+    <div class="change">
+     <div class="diff-head"><span class="op-tag create">新建</span><span class="diff-path">~/.orbby/skills/终端卡死排查/SKILL.md</span><span class="diff-add">+9</span><span class="diff-del">−0</span></div>
+     <div class="diff-body">
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">1</span><span class="gap2"></span><span class="sign">+</span><span class="txt">---</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">2</span><span class="gap2"></span><span class="sign">+</span><span class="txt">name: 终端卡死排查</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">3</span><span class="gap2"></span><span class="sign">+</span><span class="txt">description: 排查命令超时/卡死：先看日志时间线，再分管道未关、共享池排队两类</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">4</span><span class="gap2"></span><span class="sign">+</span><span class="txt">---</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">5</span><span class="gap2"></span><span class="sign">+</span><span class="txt"></span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">6</span><span class="gap2"></span><span class="sign">+</span><span class="txt"># 终端卡死排查</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">7</span><span class="gap2"></span><span class="sign">+</span><span class="txt"></span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">8</span><span class="gap2"></span><span class="sign">+</span><span class="txt">1. 拉最近 30 分钟 runtime.log，找 timeout= 与 耗时 行</span></div>
+      <div class="dline add"><span class="no"></span><span class="gap"></span><span class="no">9</span><span class="gap2"></span><span class="sign">+</span><span class="txt">2. 区分「管道未关闭」与「共享终端排队」两种等待</span></div>
+     </div>
+    </div>
+   </div>
+
+   <div class="md">
+    <p>已按目录式技能创建，正文是完整排查路径，另附一个日志扫描脚本：</p>
+    <ul>
+     <li>排查思路：先看日志时间线，再区分「管道未关闭」与「共享池排队」两类等待；</li>
+     <li><code>scan-log.ps1</code>：一键扫描最近的超时与排队记录，输出待办清单；</li>
+     <li>脚本已用纯 ASCII 重写，避开 PowerShell 5.1 的 GBK 编码坑。</li>
+    </ul>
+    <p>技能目录有监听，已经自动生效：以后在输入框打 <code>@终端卡死排查</code> 就能引用，脚本会随资源目录一起注入，不需要重启。</p>
+   </div>
+
+  </div>
+  <button class="jump" aria-label="滚动到底部"><svg><use href="#arrow-down"/></svg></button>
+ </div>
+
+ <!-- 输入区 -->
+ <div class="input-wrap">
+  <div class="composer">
+   <textarea aria-label="描述你的需求" placeholder="描述你的需求，使用 /help 查看常用命令及说明，使用 @ 调用技能。"></textarea>
+   <div class="input-footer">
+    <button class="meta workspace" aria-label="查看当前工作区"><svg><use href="#cloud"/></svg><span>Desktop</span></button>
+    <button class="meta model" aria-label="查看当前模型"><svg><use href="#cube"/></svg><span>deepseek-v4-flash</span><svg><use href="#chevron"/></svg></button>
+    <button class="send" aria-label="发送预览消息" disabled><svg><use href="#plane"/></svg></button>
+   </div>
+   <div class="popover" role="status" hidden></div>
+  </div>
+ </div>
+
+</section>
+</main>
+
+<section class="design-notes" aria-label="设计说明">
+ <div><b>01 / 元素总览</b><p>对齐当前 HomeScreen 气泡内全部内容形态：多工具折叠组（概览头 + 展开行，可点击）、单工具行直出、错误态红字、Markdown（列表 / 行内代码 / 引用 / 分隔线）、带行号代码块、表格、diff 面板（新建 / 编辑 / 删除三标签 + 行号双槽）、问答留痕卡、附件缩略、回底浮钮与多会话 tab。</p></div>
+ <div><b>02 / 主题与风格</b><p>右上角按钮在浅色 / 深色间切换，配色与字体对齐《主界面-UI重设计参考图》：ink / secondary / muted 三级文字、中性灰线条、低饱和金 accent（浅 #bb9150 / 深 #dbb477）、Inter + Microsoft YaHei。功能菜单、工具组展开、输入框聚焦光环、代码复制、tab 关闭 hover 均可交互；发送与模型入口为本地设计演示。</p></div>
+ <div><b>03 / 排版基准</b><p>与参考稿对话示例同刻度：正文与用户气泡 13px / 1.95、工具行与代码 11px（ui-monospace / Consolas / JetBrains Mono / 1.85）、留白 22px 节奏；内容列收窄至 520 居中，工具行与正文左对齐，靠字号与颜色分层。</p></div>
+</section>
+<footer class="foot">ORBBY — CHAT TRANSCRIPT DESIGN REFERENCE</footer>
+
+<script>
+const win=document.querySelector('#win');
+const chat=document.querySelector('#chat');
+const popover=win.querySelector('.popover');
+const tell=text=>{popover.textContent=text;popover.hidden=false;};
+
+// 主题切换（浅 / 深）
+document.querySelectorAll('.controls [data-theme]').forEach(button=>button.addEventListener('click',()=>{
+ document.querySelectorAll('.controls [data-theme]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+ win.classList.toggle('dark',button.dataset.theme==='dark');
+ win.classList.toggle('light',button.dataset.theme==='light');
+}));
+
+// 功能栏菜单展开 / 收起
+const funcbar=document.querySelector('#funcbar'),funcToggle=document.querySelector('#funcToggle');
+funcToggle.addEventListener('click',()=>{funcbar.classList.toggle('expanded');funcToggle.setAttribute('aria-expanded',String(funcbar.classList.contains('expanded')));});
+funcbar.querySelector('.actions').addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;tell(button.textContent.trim()+' · 入口样式预览');funcbar.classList.remove('expanded');funcToggle.setAttribute('aria-expanded','false');});
+
+// 工具步骤折叠组展开 / 收起
+document.querySelectorAll('.steps-head').forEach(head=>head.addEventListener('click',()=>{
+ const steps=head.parentElement;
+ steps.classList.toggle('open');
+ head.setAttribute('aria-expanded',String(steps.classList.contains('open')));
+}));
+
+// 代码块复制
+document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{
+ const source=button.closest('.codeblock').querySelector('pre').textContent;
+ try{await navigator.clipboard.writeText(source);}catch(_){
+  const temp=document.createElement('textarea');temp.value=source;document.body.append(temp);temp.select();document.execCommand('copy');temp.remove();
+ }
+ button.textContent='已复制';setTimeout(()=>button.textContent='复制',1200);
+}));
+
+// 回到底部浮钮
+win.querySelector('.jump').addEventListener('click',()=>chat.scrollTo({top:chat.scrollHeight,behavior:'smooth'}));
+
+// 输入区演示（与欢迎页同款）
+const input=win.querySelector('textarea'),send=win.querySelector('.send');
+input.addEventListener('input',()=>{send.disabled=!input.value.trim();popover.hidden=true;});
+const submit=()=>{if(!input.value.trim())return;tell('设计预览：已输入「'+input.value.trim()+'」。实际消息请在 Orbby 中发送。');};
+send.addEventListener('click',submit);
+input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();submit();}});
+win.querySelector('.workspace').addEventListener('click',()=>tell('当前工作区：Desktop · 在 Orbby 中使用 /cd 切换目录。'));
+win.querySelector('.model').addEventListener('click',()=>tell('当前模型：deepseek-v4-flash · 此处为模型入口样式预览。'));
+win.addEventListener('keydown',event=>{if(event.key==='Escape'){funcbar.classList.remove('expanded');popover.hidden=true;funcToggle.setAttribute('aria-expanded','false');}});
+document.addEventListener('click',event=>{if(!win.contains(event.target)){funcbar.classList.remove('expanded');popover.hidden=true;funcToggle.setAttribute('aria-expanded','false');}});
+</script>
+</body>
+</html>

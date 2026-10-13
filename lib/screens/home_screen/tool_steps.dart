@@ -8,7 +8,6 @@ class _ToolStepsGroup extends StatelessWidget {
   const _ToolStepsGroup({
     required this.events,
     required this.expanded,
-    required this.blinkOn,
     required this.onToggle,
     required this.rowBuilder,
     required this.theme,
@@ -16,7 +15,6 @@ class _ToolStepsGroup extends StatelessWidget {
 
   final List<_ToolEvent> events;
   final bool expanded;
-  final bool blinkOn;
   final VoidCallback onToggle;
 
   /// 当前主题 token（宿主传入，避免依赖 build context）
@@ -40,61 +38,45 @@ class _ToolStepsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allError = _errorCount == events.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 概览头：禁用文字选择（SelectionArea 会吞掉落在文字上的点击），保证整行可点
-        SelectionContainer.disabled(
-          child: MouseRegion(
+        // 概览头：整行可点展开/收起
+        MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: onToggle,
               child: Padding(
-                // 正文左缩进 24（参考稿 .tool-head），工具行再退到 38
-                padding: const EdgeInsets.fromLTRB(24, 7, 12, 5),
+                // 概览头与正文左对齐（无缩进），展开行再退一档保留组层级
+                padding: const EdgeInsets.fromLTRB(0, 12, 12, 5),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 状态圆点 7px：运行中橙色闪烁；全部失败红色；其余信息蓝
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: AnimatedOpacity(
-                        opacity: _anyRunning && !allError ? (blinkOn ? 1.0 : 0.2) : 1.0,
-                        duration: const Duration(milliseconds: 180),
-                        child: Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: allError
-                                ? theme.danger
-                                : (_anyRunning ? theme.run : theme.info),
-                            shape: BoxShape.circle,
+                    // 用竖线作为操作摘要的层级标记
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.only(left: 12),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: theme.ink3.withValues(alpha: 0.55),
+                            ),
                           ),
                         ),
+                        child: _buildSummaryText(),
                       ),
                     ),
-                    const SizedBox(width: 7),
-                    // 展开箭头：旋转指示展开/收起
-                    AnimatedRotation(
-                      turns: expanded ? 0.25 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(Icons.chevron_right, size: 14, color: theme.ink3),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(child: _buildSummaryText()),
                   ],
                 ),
               ),
             ),
-          ),
         ),
-        // 展开时全部行整体缩进（相对概览头），保留组层级感；折叠时不渲染任何行
+        // 展开时全部行整体缩进一档（相对概览头/正文），保留组层级感；折叠时不渲染任何行
         if (expanded)
           for (final event in events)
             Padding(
-              padding: const EdgeInsets.only(left: 16),
+              padding: const EdgeInsets.only(left: 6),
               child: rowBuilder(event),
             ),
       ],
@@ -115,10 +97,11 @@ class _ToolStepsGroup extends StatelessWidget {
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+      // 概览行是辅助信息：比工具行标题小一档、降 ink3、不加粗（参考稿 .tool-row）
       style: TextStyle(
-        color: theme.ink2,
-        fontSize: 12.5,
-        fontWeight: FontWeight.w600,
+        color: theme.ink3,
+        fontSize: 11.5,
+        fontWeight: FontWeight.w400,
         letterSpacing: 0.1,
         fontFamily: _fontFamily,
       ),

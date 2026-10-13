@@ -9,17 +9,19 @@ extension _HomeScreenMarkdown on _HomeScreenState {
   MarkdownStyleSheet _markdownStyleSheet() {
     final theme = _themeData;
     return MarkdownStyleSheet(
+      blockSpacing: 8,
+      listItemSpacing: 6,
       p: TextStyle(
         color: theme.body,
         fontSize: _bodyFontSize,
         height: _bodyLineHeightFactor,
-        letterSpacing: 0.5,
+        letterSpacing: 0,
         fontWeight: FontWeight.w400,
         fontFamily: _fontFamily,
       ),
       h1: TextStyle(
         color: theme.ink,
-        fontSize: 19,
+        fontSize: 17,
         letterSpacing: 0.1,
         fontWeight: FontWeight.bold,
         fontFamily: _fontFamily,
@@ -27,7 +29,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       h1Padding: const EdgeInsets.only(top: 24, bottom: 12),
       h2: TextStyle(
         color: theme.ink,
-        fontSize: 17,
+        fontSize: 15,
         letterSpacing: 0.1,
         fontWeight: FontWeight.bold,
         fontFamily: _fontFamily,
@@ -35,7 +37,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       h2Padding: const EdgeInsets.only(top: 20, bottom: 10),
       h3: TextStyle(
         color: theme.ink,
-        fontSize: 16,
+        fontSize: 14,
         letterSpacing: 0.1,
         fontWeight: FontWeight.bold,
         fontFamily: _fontFamily,
@@ -51,7 +53,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       ),
       code: TextStyle(
         color: theme.body,
-        fontSize: 13.5,
+        fontSize: 12,
         height: 1.4,
         fontFamily: _codeFont,
         fontFamilyFallback: [_fontFamily],
@@ -63,7 +65,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       ),
       a: TextStyle(
         color: theme.info,
-        letterSpacing: 0.5,
+        letterSpacing: 0,
         fontFamily: _fontFamily,
       ),
       blockquoteDecoration: BoxDecoration(
@@ -81,7 +83,7 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       // （上游硬编码表头行无装饰、Table 无整体容器）
       tableHead: TextStyle(
         color: theme.ink,
-        fontSize: 14,
+        fontSize: 12,
         height: 1.65,
         letterSpacing: 0.1,
         fontWeight: FontWeight.w600,
@@ -91,9 +93,9 @@ extension _HomeScreenMarkdown on _HomeScreenState {
       tableHeadAlign: TextAlign.left,
       tableBody: TextStyle(
         color: theme.body,
-        fontSize: 14,
+        fontSize: 12,
         height: 1.65,
-        letterSpacing: 0.5,
+        letterSpacing: 0,
         fontFamily: _fontFamily,
       ),
       tablePadding: const EdgeInsets.symmetric(vertical: 16),
@@ -103,20 +105,19 @@ extension _HomeScreenMarkdown on _HomeScreenState {
           width: 1,
         ),
       ),
-      tableCellsPadding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-      // 整表容器：surface 底 + line 描边 + 10px 圆角，表头灰带等内容
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      // 整表容器：raised 底（浅色 = #FFFFFF 纯白，深色比窗口底亮一档，
+      // 与 diff 面板同级"浮起卡片"）+ 10px 圆角，无外描边；表头等内容
       // 由 fork 侧按该圆角裁剪
       tableDecoration: BoxDecoration(
-        color: theme.surface,
+        color: theme.raised,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.isDark ? const Color(0x59D8DADF) : theme.line,
-        ),
       ),
       tableHeadDecoration: BoxDecoration(
+        // 表头保留适中的底色区分：深色叠 8% 泛白，浅色在表体白底叠 4% 黑。
         color: theme.isDark
-            ? const Color(0x26D8DADF)
-            : Color.alphaBlend(const Color(0x08000000), theme.barBg),
+            ? const Color(0x14D8DADF)
+            : Color.alphaBlend(const Color(0x0A000000), theme.raised),
       ),
       tableCellsDecoration: const BoxDecoration(),
       horizontalRuleDecoration: BoxDecoration(
@@ -150,16 +151,25 @@ class _PreTextBuilder extends MarkdownElementBuilder {
           (child) => child.tag == 'code',
           orElse: () => element,
         );
-    final classes = code?.attributes['class'] ?? '';
-    final language = classes.startsWith('language-')
-        ? classes.substring('language-'.length)
-        : '';
+    final classes = (code?.attributes['class'] ?? '')
+        .split(RegExp(r'\s+'))
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final languageClass = classes.where((value) => value.startsWith('language-'));
+    final languageToken = languageClass.isNotEmpty
+        ? languageClass.first
+        : (classes.isNotEmpty ? classes.first : '');
+    final language = languageToken.startsWith('language-')
+        ? languageToken.substring('language-'.length)
+        : languageToken;
     final source = element.textContent;
+    // Markdown code blocks end with a line terminator, not an extra display row.
+    final displaySource = source.replaceFirst(RegExp(r'\r?\n$'), '');
 
     final codeStyle = TextStyle(
       color: theme.body,
-      fontSize: 13.5,
-      height: 1.8,
+      fontSize: 11,
+      height: 1.85,
       fontFamily: _codeFont,
       fontFamilyFallback: [_fontFamily],
     );
@@ -167,9 +177,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
     // 行号：只弱化颜色，字号与行高倍数必须与 [codeStyle] 完全一致——行高是
     // 倍数、随字号变，两处一旦不同行号就会逐行漂移。末尾换行多切出的空串
     // 不计行号（与编辑器习惯一致）。
-    final lines = source.split('\n');
-    final lineCount =
-        lines.isNotEmpty && lines.last.isEmpty ? lines.length - 1 : lines.length;
+    final lineCount = displaySource.isEmpty ? 0 : displaySource.split('\n').length;
     // 只覆盖颜色：字号/行高/字体全部继承 codeStyle，才不会写着写着就不齐
     final gutterStyle = codeStyle.copyWith(color: theme.ink3);
 
@@ -214,7 +222,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
                 // 行号列：固定在左侧、不随代码横向滚动（与编辑器一致），
                 // 宽度由最长行号自然撑开
                 Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 8, top: 6, bottom: 6),
+                  padding: const EdgeInsets.only(left: 12, right: 16, top: 6, bottom: 6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -229,7 +237,7 @@ class _PreTextBuilder extends MarkdownElementBuilder {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.fromLTRB(0, 6, 12, 6),
                     child: CodeHighlightText(
-                      source: source,
+                      source: displaySource,
                       language: language,
                       style: codeStyle,
                       isDark: theme.isDark,
@@ -269,65 +277,43 @@ class _InlineCodeBuilder extends MarkdownElementBuilder {
       // Wrap 换行时保留灰底之间的空隙，表格单元格内同样生效。
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      decoration: BoxDecoration(
-        color: theme.codeInlineBg,
-        borderRadius: BorderRadius.circular(5),
-      ),
       child: Text(
         source,
         // 与默认渲染同向 merge 父级样式（加粗/斜体/letterSpacing 会继承到
         // 行内代码上）；兜底仅防御 styles['code'] 缺失
         style: parentStyle?.merge(preferredStyle) ??
             preferredStyle ??
-            TextStyle(color: theme.body, fontSize: 13.5, fontFamily: _codeFont),
+            TextStyle(color: theme.body, fontSize: 12, fontFamily: _codeFont),
       ),
     );
   }
 }
 
-class _CodeCopyButton extends StatefulWidget {
+class _CodeCopyButton extends StatelessWidget {
   const _CodeCopyButton({required this.theme, required this.source});
 
   final ChatThemeData theme;
   final String source;
 
   @override
-  State<_CodeCopyButton> createState() => _CodeCopyButtonState();
-}
-
-class _CodeCopyButtonState extends State<_CodeCopyButton> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    final theme = widget.theme;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => Clipboard.setData(ClipboardData(text: widget.source)),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: 24,
-          height: 24,
+        onTap: () async {
+          await Clipboard.setData(ClipboardData(text: source));
+          if (context.mounted) AppToast.show(context, message: '代码已复制');
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _hovered
-                ? theme.ink.withValues(alpha: 0.08)
-                : theme.ink.withValues(alpha: 0),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: SvgPicture.asset(
-            'assets/svg/复制.svg',
-            width: 13,
-            height: 13,
-            colorFilter: ColorFilter.mode(
-              theme.isDark
-                  ? Colors.white
-                  : (_hovered ? theme.ink : theme.ink3),
-              BlendMode.srcIn,
+          child: Text(
+            '复制',
+            style: TextStyle(
+              color: theme.isDark ? Colors.white : theme.ink3,
+              fontSize: 11.5,
+              height: 1.2,
             ),
           ),
         ),

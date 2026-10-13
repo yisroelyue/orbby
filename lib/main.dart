@@ -17,7 +17,6 @@ import 'screens/about_screen.dart';
 import 'screens/app_bar_screen.dart';
 import 'screens/app_center_screen.dart';
 import 'screens/home_screen/home_screen.dart';
-import 'screens/settings_screen.dart';
 import 'screens/content_screen.dart';
 import 'screens/note_screen.dart';
 import 'services/llm_task.dart';
@@ -55,18 +54,6 @@ Future<void> main(List<String> args) async {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(fontFamily: 'Microsoft YaHei'),
         home: const HomeScreen(),
-      ),
-    );
-    return;
-  }
-  if (windowArguments['type'] == 'settings') {
-    await Window.initialize();
-    await _configureSettingsWindow(windowController, windowArguments);
-    runApp(
-      MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(fontFamily: 'Microsoft YaHei'),
-        home: const SettingsScreen(),
       ),
     );
     return;
@@ -294,6 +281,10 @@ Future<void> _configureMenuWindow(
         final args = call.arguments as Map;
         await _placeMenuWindow(_boundsFromArguments(args));
         return;
+      case 'open_settings':
+        // hub 定向调用（托盘菜单 / Ctrl+Alt+` 快捷键）：打开 /setting 设置弹窗
+        menuSettingsRequested.value++;
+        return;
       default:
         throw UnimplementedError('Not implemented: ${call.method}');
     }
@@ -361,46 +352,6 @@ Future<void> _configureAppBarWindow(
       await windowManager.setSkipTaskbar(true);
       await windowManager.setAlwaysOnTop(true);
       // 创建阶段保持隐藏，由 place 消息完成定位并显示，避免左上角闪烁。
-    },
-  );
-}
-
-Future<void> _configureSettingsWindow(
-  WindowController windowController,
-  Map<String, dynamic> arguments,
-) async {
-  final bounds = _boundsFromArguments(arguments);
-  await windowController.setWindowMethodHandler((call) async {
-    if (call.method == 'app_event') {
-      AppEvents.receive(call.arguments as String);
-      return;
-    }
-    if (call.method == 'place') {
-      await windowManager.setBounds(_boundsFromArguments(call.arguments as Map));
-      await windowManager.show();
-      return;
-    }
-    throw UnimplementedError('Not implemented: ${call.method}');
-  });
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: bounds.size,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-      alwaysOnTop: false,
-    ),
-    () async {
-      await windowManager.setAsFrameless();
-      await windowManager.setHasShadow(false);
-      await windowManager.setMinimumSize(bounds.size);
-      await windowManager.setMaximumSize(bounds.size);
-      await windowManager.setBounds(bounds);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setBackgroundColor(Colors.transparent);
-      await windowManager.setTitle('Orbby Settings');
-      // 创建阶段保持隐藏，由 place 消息完成定位并显示。
     },
   );
 }

@@ -70,8 +70,8 @@ extension _HomeScreenFormatting on _HomeScreenState {
     return toolDisplayName(tool.name);
   }
 
-  /// 标题与参数同一行：标题（w600 ink2）+「：」+ 参数摘要（ink3、不加粗），
-  /// 超宽自动软换行；无参数（如 ask_user_question）只显示标题
+  /// 标题与参数同一行：标题（ink2）+「：」+ 参数摘要（ink3），统一 w400、
+  /// 最多一行超长 ellipsis；无参数（如 ask_user_question）只显示标题
   TextSpan _toolTitleSpan(_ToolEvent tool) {
     final details = tool.name == 'ask_user_question' || tool.parameters == null
         ? ''
@@ -81,10 +81,10 @@ extension _HomeScreenFormatting on _HomeScreenState {
         TextSpan(text: _toolRowTitle(tool)),
         if (details.isNotEmpty) ...[
           const TextSpan(text: '：'),
-          // 参数压平成单行（content/命令自带的换行转空格），超宽走软换行
+          // 参数压平成单行（content/命令自带的换行转空格），超长随整行 ellipsis
           TextSpan(
             text: details.replaceAll('\r', '').replaceAll('\n', ' '),
-            style: TextStyle(color: _themeData.ink3, fontWeight: FontWeight.w400),
+            style: TextStyle(color: _themeData.ink3),
           ),
         ],
       ],

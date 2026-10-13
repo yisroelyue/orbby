@@ -1,0 +1,34 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbby · 对话与工作台整合预览</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eeefed;color:#292b30;font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif}.review{max-width:1500px;margin:auto;padding:25px 30px 30px}.heading{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:17px}.eyebrow{font-size:10px;letter-spacing:2.8px;color:#858b83;font-weight:650}.heading h1{font-size:22px;margin:7px 0 4px;font-weight:600;letter-spacing:-.5px}.heading p{font-size:11px;color:#797e76;margin:0}.switch{display:flex;gap:3px;padding:4px;background:#e2e4df;border-radius:9px;flex:none}.switch button{border:0;background:transparent;color:#73786f;padding:8px 14px;border-radius:6px;font-size:11px;cursor:pointer}.switch button[aria-pressed=true]{background:#fff;color:#292b30;box-shadow:0 2px 5px #0000000a}.view{height:calc(100vh - 127px);min-height:620px;border:1px solid #daddd8;border-radius:12px;overflow:hidden;background:#f6f6f4;box-shadow:0 10px 24px -18px #26312360}.view iframe{width:100%;height:100%;border:0;display:none;background:#eeefed}.view iframe.active{display:block}@media(max-width:650px){.review{padding:16px 10px}.heading{align-items:start;flex-direction:column;gap:13px}.view{height:calc(100vh - 150px);min-height:560px}}
+</style>
+</head>
+<body>
+<main class="review">
+  <header class="heading">
+    <div>
+      <div class="eyebrow">ORBBY / UI REVIEW</div>
+      <h1>对话与工作台</h1>
+      <p>在同一份预览中切换对话状态与欢迎页工作台。</p>
+    </div>
+    <nav class="switch" aria-label="切换页面">
+      <button type="button" data-view="home" aria-pressed="true">欢迎页 / 工作台</button>
+      <button type="button" data-view="chat" aria-pressed="false">对话示例</button>
+    </nav>
+  </header>
+  <section class="view" aria-label="设计预览">
+    <iframe id="home" class="active" title="欢迎页 / 工作台" src="component/workbench-preview.html"></iframe>
+    <iframe id="chat" title="对话示例" src="component/chat-preview.html"></iframe>
+  </section>
+</main>
+<script>
+const buttons=[...document.querySelectorAll('[data-view]')];
+buttons.forEach(button=>button.addEventListener('click',()=>{const name=button.dataset.view;buttons.forEach(item=>item.setAttribute('aria-pressed',String(item===button)));document.querySelectorAll('.view iframe').forEach(frame=>frame.classList.toggle('active',frame.id===name));}));
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// 聊天主界面（menu 窗口）的主题 token，浅 / 深两套同构。
-/// 对照《主界面 UI 重设计参考图》：三层底色（surface / raised / sunken）
+/// 对照《对话示例-UI重设计参考图》（plan/）：三层底色（surface / raised / sunken）
 /// + 三级文字（ink / body / ink2-3）+ 琥珀强调色；浅色使用中性灰底和文字。
 ///
 /// 使用方式：
@@ -26,15 +26,17 @@ class ChatThemeData {
     required this.accent,
     required this.accentDeep,
     required this.accentSoft,
+    required this.tagBg,
+    required this.tagFg,
     required this.codeInlineBg,
     required this.hover,
+    required this.userMessageBg,
     required this.danger,
     required this.dangerSoft,
     required this.ok,
     required this.okSoft,
     required this.info,
     required this.infoSoft,
-    required this.userDot,
     required this.run,
     required this.done,
     required this.term,
@@ -82,11 +84,19 @@ class ChatThemeData {
   final Color accentDeep;
   final Color accentSoft;
 
+  /// 中性灰标签（底/字）：留痕卡（QuestionRecordCard）的「?」徽标与
+  /// header 标签。刻意不用琥珀——留痕是历史记录，不与进行中提问卡片的
+  /// accentSoft 标签抢注意；底色须在 [barBg] 顶栏上有可辨区分度。
+  final Color tagBg;
+  final Color tagFg;
+
   /// 行内代码（正文 `code` 片段）底色：中性灰，不承琥珀调。
   /// 刻意独立于 [accentSoft]——后者还是 header 标签 / 聚焦光环的品牌色。
   final Color codeInlineBg;
 
   final Color hover;
+  /// 用户消息气泡底色，独立于控件悬停态。
+  final Color userMessageBg;
   final Color danger;
   final Color dangerSoft;
   final Color ok;
@@ -94,8 +104,7 @@ class ChatThemeData {
   final Color info;
   final Color infoSoft;
 
-  /// 消息状态点：用户琥珀 9px / 运行橙 / 完成绿 / 终止红
-  final Color userDot;
+  /// 状态圆点：运行橙（工具组概览）/ 完成绿（ORBBY 标签）/ 终止红（ORBBY 标签）
   final Color run;
   final Color done;
   final Color term;
@@ -127,21 +136,24 @@ class ChatThemeData {
     line: Color(0xFFE3E3E3),
     lineSoft: Color(0xFFECECEC),
     ink: Color(0xFF202020),
-    body: Color(0xFF333333),
+    body: Color(0xFF676B70),
     ink2: Color(0xFF626262),
     ink3: Color(0xFF858585),
     accent: Color(0xFFFFC145),
     accentDeep: Color(0xFF9C6E14),
     accentSoft: Color(0xFFFFF6E2),
+    // 灰标签：在 barBg(#F5F5F5) 顶栏上可辨的一档灰底（值近 lineSoft，语义分开维护）
+    tagBg: Color(0xFFE9E9E9),
+    tagFg: Color(0xFF626262),
     codeInlineBg: Color(0xFFF5F5F5),
     hover: Color(0xFFEAEAEA),
+    userMessageBg: Color(0xFFF2F3F4),
     danger: Color(0xFFC0483C),
     dangerSoft: Color(0xFFFBEDEA),
     ok: Color(0xFF3E9E63),
     okSoft: Color(0xFFEAF6EF),
     info: Color(0xFF3E7BC4),
     infoSoft: Color(0xFFEAF1FA),
-    userDot: Color(0xFFE0912F),
     run: Color(0xFFE08A2B),
     done: Color(0xFF4FB477),
     term: Color(0xFFD9534F),
@@ -166,29 +178,35 @@ class ChatThemeData {
 
   static const ChatThemeData dark = ChatThemeData(
     isDark: true,
-    surface: Color(0xFF202020),
-    raised: Color(0xFF23262B),
-    sunken: Color(0xFF141619),
-    // 冷灰，比 raised(#23262B) 深一档
-    barBg: Color(0xFF1A1D21),
-    line: Color(0xFF2E3239),
-    lineSoft: Color(0xFF25292F),
-    ink: Color(0xFFE9EBF0),
-    body: Color(0xFFDADFE7),
-    ink2: Color(0xFF9BA2B0),
-    ink3: Color(0xFF6C7482),
+    // 色板对齐参考稿（plan/对话示例-UI重设计参考图.html）.dark 变量：
+    // 炭灰窗口底 / 卡片 / 沉底、更亮的描边与 hover；正文提亮为柔和灰白。
+    // ink2/ink3 刻意高于参考的 secondary/muted——工具行小字按可读性要求提亮过。
+    surface: Color(0xFF1B1C1E),
+    raised: Color(0xFF222326),
+    sunken: Color(0xFF202123),
+    // 冷灰，比 raised(#222326) 深一档（代码块标题条 / 留痕卡头）
+    barBg: Color(0xFF1D2023),
+    line: Color(0xFF383A3E),
+    lineSoft: Color(0xFF2E3034),
+    ink: Color(0xFFE9E9EB),
+    body: Color(0xFFD8DADF),
+    ink2: Color(0xFFACB4C2),
+    ink3: Color(0xFF838B99),
     accent: Color(0xFFFFC145),
     accentDeep: Color(0xFFF0B93C),
     accentSoft: Color(0x24FFC145),
+    // 灰标签：在 barBg(#1D2023) 顶栏上可辨的一档灰底（值同 lineSoft，语义分开维护）
+    tagBg: Color(0xFF2E3034),
+    tagFg: Color(0xFFACB4C2),
     codeInlineBg: Color(0x0DFFFFFF),
-    hover: Color(0xFF262A2F),
+    hover: Color(0xFF2C2E31),
+    userMessageBg: Color(0xFF2C2E31),
     danger: Color(0xFFE4705F),
     dangerSoft: Color(0x24E4705F),
     ok: Color(0xFF5CC98A),
     okSoft: Color(0x215CC98A),
     info: Color(0xFF75A9E6),
     infoSoft: Color(0x2475A9E6),
-    userDot: Color(0xFFEDA24F),
     run: Color(0xFFF0A94B),
     done: Color(0xFF57C88A),
     term: Color(0xFFE4685C),

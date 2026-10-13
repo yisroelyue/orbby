@@ -10,7 +10,7 @@
 
 - Flutter Windows 多窗口应用，**每个窗口是独立 Flutter engine，静态变量/单例不跨窗口共享**——跨窗口必须走 channel 或 AppEvents。
 - 入口 `lib/main.dart` 按启动参数 `type` 分发各窗口 UI 与窗口配置。主窗口（pet）常驻隐藏，跑 `WindowCoordinator`（`lib/services/window_coordinator.dart`，即 hub）：全局快捷键 + 所有子窗口的创建/定位/显示。主窗口启动时由 `lib/services/agent_runtime_process.dart` 自动启动 `agent-runtime/dist/main.js`，子窗口不重复启动。
-- 子窗口：`menu`（聊天 HomeScreen）、`settings`、`app_bar`、`content`、`app_center`、`about`、`note`。menu/settings 启动时预创建（hiddenAtLaunch）；note 暂停启动时自动创建和显示，保留窗口实现；其定位规则为优先副屏左上安全区域，没有副屏时使用主屏右上角，固定为 500×800，展开后的文本域高度随内容自适应，无标题栏按钮但可拖动；常驻窗口用 hide/show 切换；app_center/about 每次新建。
+- 子窗口：`menu`（聊天 HomeScreen）、`app_bar`、`content`、`app_center`、`about`、`note`。menu/app_bar/content 启动时预创建（hiddenAtLaunch，顺序 menu → app_bar → content、各间隔 1.5s）；note 暂停启动时自动创建和显示，保留窗口实现；其定位规则为优先副屏左上安全区域，没有副屏时使用主屏右上角，固定为 500×800，展开后的文本域高度随内容自适应，无标题栏按钮但可拖动；常驻窗口用 hide/show 切换；app_center/about 每次新建。**设置不是独立窗口**：并入 menu 窗口的 `/setting` 弹窗；托盘「设置」与 Ctrl+Alt+\` 快捷键由 hub `_openSettings`（先显示 menu 再定向 `open_settings`）打开，menu engine 经 `menuSettingsRequested` 信号（`menu_window_signals.dart`）转达给 HomeScreen。
 - 窗口通信（本地 fork 的 `packages/desktop_multi_window`）两条路：
   - `WindowMethodChannel(..., ChannelMode.unidirectional)`：全局仅 hub 注册 handler，任何 engine 都能 invoke → **子→hub**（ready、hidden、open_settings 等）。
   - `window.invokeMethod(...)` 定向调用子窗口的 `setWindowMethodHandler` → **hub→子**（place、app_event 等）。
@@ -37,16 +37,18 @@
 聊天主窗口 HomeScreen 位于 `lib/screens/home_screen/`，按功能拆成 part 文件（`part of 'home_screen.dart'`，同库可互访私有成员），主文件只留骨架：
 
 - `home_screen.dart`：`HomeScreen`/`_HomeScreenState`、可变状态字段、initState/dispose/生命周期、MaterialApp 骨架 `build`，以及库级视觉常量（颜色/字体/Theme 提为顶层常量，extension 内直接裸名引用）。
-- `commands.dart`：`_buildCommands()` 命令注册表 + `/setting` 的 Agent 设置弹窗。**新增命令只在这里注册，具体逻辑必须调用独立处理方法，不得内联业务代码**。
+- `commands.dart`：`_buildCommands()` 命令注册表 + prepareInput 命令分派。**新增命令只在这里注册，具体逻辑必须调用独立处理方法，不得内联业务代码**。
+- `settings_dialog.dart`：`/setting` 设置弹窗（原独立 settings 窗口的系统设置迁移合并：API/翻译/日志 + Agent 提示词/规范 + 界面开关）。除「显示会话标签」切换即生效外，其余项（含提示词/规范与深色主题）统一点「保存」落盘并广播 `settingsChanged`。`_settingsDialogOpen` 守卫防连击叠层。
 - `command_actions.dart`：命令具体动作实现（通过 extension 挂回 `_HomeScreenState`）；命令数量增长时继续在此按领域拆分。
 - `input.dart`：输入框 UI、输入历史（↑/↓ 浏览/草稿恢复）、命令面板确认 `_confirmCommand`、键盘导航接管 `_handleKeyEvent`。
 - `conversation.dart`：会话保存 `_saveConversation`（`_saveChain` 串行链）、本地消息 `_addLocalMessage`、会话切换/复制、落盘 JSON 解码还原。
 - `agent.dart`：`_sendMessage`/`_sendText`（chatStream 消费与事件分发）、`_runCompact`、提问卡片的提交/跳过/收起。
 - `messages.dart`：聊天列表、用户/Agent 气泡、工具行渲染、`_scrollToBottom`。
 - `markdown.dart`：MarkdownBody 样式表 `_markdownStyleSheet()` + 代码块渲染（`_PreTextBuilder`/`_CodeCopyButton` 顶层类）。
+- 本地 `packages/flutter_markdown` 的 `MarkdownStyleSheet.listItemSpacing` 独立控制有序/无序列表项之间的间距（含嵌套列表）；未指定时回退到 `blockSpacing`。聊天样式中分别配置列表项 6px、普通块 16px，列表项内部的多段正文仍使用普通块间距。
 - 代码块语法高亮由独立组件 `lib/widgets/code_highlight_text.dart` 负责，使用 `re_highlight` 按语言标签解析（支持库内语言别名），仅修改文字颜色，保留宿主字体、行高和背景；行号、复制、滚动仍由 `_PreTextBuilder` 管理。组件缓存当前渲染结果，代码/语言/主题/样式变化时失效；无语言、未知语言、解析失败或超过 20000 字符时显示完整纯文本，不做自动语言猜测。
 - `widgets.dart`：页面骨架（聊天主体/欢迎页/聊天区域/建议图标）。
-- 聊天滚动位置由各 `ChatSessionView` 保存、`tabs.dart` 恢复；共享 ScrollController 禁用 PageStorage 偏移恢复，列表以会话对象为 key 隔离滚动动画。延迟滚动回调必须检查 mounted 和目标会话身份，切换/新建时清除旧回底按钮状态，再按当前列表刷新。
+- 聊天滚动位置由各 `ChatSessionView` 保存、`tabs.dart` 恢复；共享 ScrollController 禁用 PageStorage 偏移恢复，`SelectionArea` 以会话对象为 key 隔离选择与列表子树，避免切换会话时复用文字选择状态。延迟滚动回调必须检查 mounted 和目标会话身份，切换/新建时清除旧回底按钮状态，再按当前列表刷新。
 - `function_bar.dart`：顶部横向功能条，独立管理展开/折叠状态，通过 TapRegion 在点击外部时收起；功能入口由宿主传入回调，窄窗口横向滚动，不内联业务逻辑。
 - `models.dart`：`_ChatMessage`/`_ToolEvent`/`_QuestionPanel` 数据模型。
 - `helpers.dart`：工具名称/参数/结果的显示格式化（纯展示辅助 extension）。
@@ -77,6 +79,8 @@
 - Node 侧：`agent-runtime/src/llm/content-adapter.ts` 定义统一 `LlmContent`（string 或 text/image 块，图片在前文字在后）+ `sanitizeAttachments`（Node 侧兜底校验数量/mime/大小）；`client.ts` 按 `platform` 分支 OpenAI-compatible（image_url）/ Anthropic（image block，system 提顶级、tool 结果合并 tool_result、input_json_delta 流式解析）；历史轮 `toPlainText` 只回放文本。
 
 ## Agent 提问卡片（输入框上方，非模态）
+
+- 多问题采用逐题确认：单选点击/回车、文本回车、多选题确认按钮统一走 `AgentQuestionPanelController.confirmQuestion`；确认后定位下一道未确认题，全部题目有非空答案且已确认才提交整组。修改答案撤销该题确认，空答案不隐式跳过；焦点与滚动由卡片管理，切换 controller 后旧延迟回调不得操作新卡片。
 
 - `lib/models/agent_question.dart`：AgentQuestion/Option 模型，fromJson 容错（type 缺省按 options 是否为空推断，解析失败降级为 text 问题）。
 - `lib/widgets/agent_question_panel.dart` 三件套：`AgentQuestionPanelController`（纯逻辑 ChangeNotifier：扁平导航游标、选择状态、answers 组装）+ `AgentQuestionPanel`（纯展示，配色抄 CommandPalette；单问题单选点击选项行即提交，多选/text 走底部按钮）+ `QuestionRecordCard`（已回答留痕卡，只读）。与 CommandPalette 同构的 controller+展示模式，新增问题类型扩展 controller 与 `_buildQuestion` 分支，勿在 home_screen 内联。

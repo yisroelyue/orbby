@@ -40,7 +40,7 @@
 ### 💡 核心功能
 
 - **🎛️ Orbby Agent 对话** — 多轮任务执行，流式输出，工具调用过程可见
-- **⌨️ 斜杠命令** — 共 16 条：`/help`、`/session`、`/new`、`/clear`、`/clear-session`、`/compact`、`/retry`、`/rollback`、`/copy`、`/copy-txt`、`/apps`、`/sys_setting`、`/setting`、`/permission-off`、`/permission-all`、`/permission-read`
+- **⌨️ 斜杠命令** — 共 15 条：`/help`、`/session`、`/new`、`/clear`、`/clear-session`、`/compact`、`/retry`、`/rollback`、`/copy`、`/copy-txt`、`/apps`、`/setting`、`/permission-off`、`/permission-all`、`/permission-read`
 - **📎 附件支持** — 图片 / 文本 / PDF 拖入或粘贴进输入框，图片可直接交给视觉模型分析
 - **↩️ 文件改动回滚** — Agent 写入的文件留有备份，`/rollback` 还原最近一次改动
 - **💰 API 状态** — 实时显示 API 余额 / 用量（支持 DeepSeek / OpenAI / Anthropic 等多平台），可切换平台，为 Agent 和翻译提供 LLM 支持

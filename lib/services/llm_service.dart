@@ -1,7 +1,7 @@
 
 import '../agent/llm_client.dart';
 import '../agent/types.dart';
-import '../config/platform.dart';
+import '../config/api_profile.dart';
 import '../config/settings.dart';
 
 /// 通用 LLM 调用服务，供天气、新闻等面板复用
@@ -30,16 +30,16 @@ class LlmService {
     }
 
     final settings = await SettingsService.load();
-    if (settings.apiKey.isEmpty) {
+    final profile = settings.activeProfile;
+    if (profile.apiKey.isEmpty) {
       throw LlmException('请先在设置中配置 API Key');
     }
-
-    final chatUrl = settings.chatUrl.isEmpty
-        ? PlatformConfig.defaultChatUrl(settings.platform)
-        : settings.chatUrl.trim();
-    final useModel = settings.model.isEmpty
-        ? PlatformConfig.defaultChatModel(settings.platform)
-        : settings.model;
+    if (profile.baseUrl.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 Chat API 地址');
+    }
+    if (profile.model.trim().isEmpty) {
+      throw LlmException('请先在设置中选择模型');
+    }
 
     final messages = <Message>[
       if (systemPrompt != null) Message(role: 'system', content: systemPrompt),
@@ -58,11 +58,15 @@ class LlmService {
       
 
       final client = LLMClient(
-        baseURL: chatUrl,
-        apiKey: settings.apiKey,
-        model: useModel,
+        baseURL: profile.baseUrl.trim(),
+        apiKey: profile.apiKey,
+        model: profile.model.trim(),
         logRequest: settings.llmLogRequest,
         logResponse: settings.llmLogResponse,
+        // 按配置协议选分支（Anthropic 原生 / OpenAI 兼容）
+        provider: profile.protocol == ApiProtocol.anthropic
+            ? LLMProvider.anthropic
+            : LLMProvider.openAICompatible,
         // 重试由本服务统一处理，避免与 LLMClient 的内部重试叠加。
         maxRetries: 0,
       );
@@ -108,25 +112,30 @@ class LlmService {
     if (trimmed.isEmpty) throw LlmException('请输入内容');
 
     final settings = await SettingsService.load();
-    if (settings.apiKey.isEmpty) throw LlmException('请先在设置中配置 API Key');
+    final profile = settings.activeProfile;
+    if (profile.apiKey.isEmpty) throw LlmException('请先在设置中配置 API Key');
+    if (profile.baseUrl.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 Chat API 地址');
+    }
+    if (profile.model.trim().isEmpty) {
+      throw LlmException('请先在设置中选择模型');
+    }
 
-    final chatUrl = settings.chatUrl.isEmpty
-        ? PlatformConfig.defaultChatUrl(settings.platform)
-        : settings.chatUrl.trim();
-    final model = settings.model.isEmpty
-        ? PlatformConfig.defaultChatModel(settings.platform)
-        : settings.model;
     final messages = <Message>[
       if (systemPrompt != null) Message(role: 'system', content: systemPrompt),
       Message(role: 'user', content: trimmed),
     ];
 
     final client = LLMClient(
-      baseURL: chatUrl,
-      apiKey: settings.apiKey,
-      model: model,
+      baseURL: profile.baseUrl.trim(),
+      apiKey: profile.apiKey,
+      model: profile.model.trim(),
       logRequest: settings.llmLogRequest,
       logResponse: settings.llmLogResponse,
+      // 按配置协议选分支（Anthropic 原生 / OpenAI 兼容）
+      provider: profile.protocol == ApiProtocol.anthropic
+          ? LLMProvider.anthropic
+          : LLMProvider.openAICompatible,
       maxRetries: 0,
     );
     var result = '';

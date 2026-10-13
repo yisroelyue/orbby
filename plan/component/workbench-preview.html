@@ -1,0 +1,279 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbby · 工作台设计稿（欢迎页升级）</title>
+<style>
+/* ── 页面（设计工作台）自身的样式，与窗口内主题 token 无关 ─────────── */
+:root{font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:#292b30;background:#eeefed;font-synthesis:none}
+*{box-sizing:border-box}
+body{margin:0;padding:40px}
+button,textarea{font:inherit}
+button{cursor:pointer;color:inherit}
+button:focus-visible{outline:2px solid #c39750;outline-offset:4px}
+header{max-width:1460px;margin:0 auto 30px;display:flex;justify-content:space-between;align-items:end;gap:24px}
+.eyebrow{font-size:10px;letter-spacing:3px;color:#878b83;font-weight:600}
+h1{font-size:25px;font-weight:600;letter-spacing:-.8px;margin:10px 0}
+header p{font-size:12px;color:#7b7e77;line-height:1.8;margin:0}
+.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-top:18px}
+.toolbar button{border:1px solid #d5d8d1;background:transparent;border-radius:30px;padding:8px 15px;font-size:11px}
+.toolbar button[aria-pressed=true]{background:#292e29;color:#fff;border-color:#292e29}
+.boards{max-width:1460px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:36px}
+.caption{display:flex;justify-content:space-between;align-items:center;margin:0 2px 14px;font-size:11px;color:#858981}
+.caption strong{color:#4b5047;font-weight:500}
+
+/* ── 窗口：token 与 lib/theme/chat_theme.dart 同值 ─────────────────── */
+.window{font-family:"Microsoft YaHei",sans-serif;
+ --surface:#fcfcfc;--raised:#fff;--sunken:#f2f2f2;--bar-bg:#f5f5f5;
+ --line:#e3e3e3;--line-soft:#ececec;--ink:#202020;--body:#333;--ink2:#626262;--ink3:#858585;
+ --accent:#ffc145;--accent-deep:#9c6e14;--accent-soft:#fff6e2;--hover:#eaeaea;
+ background:var(--surface);color:var(--ink);border:1px solid #daddd8;border-radius:12px;
+ aspect-ratio:854/1376;min-height:660px;display:flex;flex-direction:column;position:relative;overflow:hidden;
+ box-shadow:0 1px 2px #1f2a4412,0 8px 20px -6px #1f2a444d}
+.dark{
+ --surface:#1b1c1e;--raised:#222326;--sunken:#202123;--bar-bg:#1d2023;
+ --line:#383a3e;--line-soft:#2e3034;--ink:#e9e9eb;--body:#a4a6ac;--ink2:#acb4c2;--ink3:#838b99;
+ --accent:#ffc145;--accent-deep:#f0b93c;--accent-soft:#ffc14524;--hover:#2c2e31;
+ border-color:#303236;box-shadow:0 1px 2px #00000080,0 8px 22px -6px #000000bf}
+
+/* ── 功能栏（照真实实现：菜单钮 + 展开的纯文字按钮） ───────────────── */
+.funcbar{height:46px;flex-shrink:0;padding:6px 16px 0;display:flex;align-items:center}
+.icon-btn{border:0;background:transparent;width:40px;height:40px;border-radius:6px;display:grid;place-items:center;color:var(--ink2)}
+.icon-btn:hover{background:var(--hover)}
+.icon-btn svg{width:20px;height:20px;transition:transform .18s}
+.funcbar.expanded .icon-btn{color:var(--ink)}
+.funcbar.expanded .icon-btn svg{transform:rotate(90deg)}
+.funcbar .actions{display:none;gap:8px;margin-left:8px;overflow-x:auto}
+.funcbar.expanded .actions{display:flex}
+.action{border:0;background:transparent;padding:0 10px;height:40px;border-radius:6px;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.action:hover{background:var(--hover)}
+svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* ── 工作台（空态分支内的内容列） ────────────────────────────────── */
+.main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:20px 24px}
+.workbench{width:100%;max-width:540px}
+
+.greet h2{font-size:clamp(20px,2.2vw,25px);letter-spacing:-.6px;line-height:1.5;font-weight:650;margin:0}
+.greet .sub{font-size:12px;color:var(--ink3);line-height:1.8;margin:6px 0 0}
+
+.wb-sec{margin-top:26px}
+.sec-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sec-head span{font-size:10px;letter-spacing:2.5px;color:var(--ink3)}
+.sec-head i{flex:1;border-top:1px solid var(--line-soft)}
+.sec-head .more{border:0;background:none;font-size:10px;letter-spacing:1px;color:var(--ink3);padding:2px 0}
+.sec-head .more:hover{color:var(--ink2)}
+
+/* 任务卡：点击把示例 prompt 填入输入框（不自动发送） */
+.task-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.task-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
+ background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:14px 13px 13px}
+.task-card:hover{border-color:var(--accent-deep)}
+.task-card img{width:22px;height:22px;object-fit:contain}
+.task-card b{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.4}
+.task-card small{font-size:10.5px;color:var(--ink3);line-height:1.6}
+
+/* 技能橱窗：点击填入「@技能名 」（尾随空格 = 面板确认语义） */
+.skill-chips{display:flex;flex-wrap:wrap;gap:8px}
+.skill-chip{display:flex;align-items:center;gap:1px;background:var(--raised);border:1px solid var(--line);
+ border-radius:999px;padding:7px 13px;font-size:11px;color:var(--ink2)}
+.skill-chip:hover{background:var(--hover);color:var(--ink)}
+.skill-chip .at{color:var(--accent-deep);font-weight:600;margin-right:3px}
+.skill-chip.more{color:var(--ink3);border-style:dashed}
+.skill-chip.more:hover{color:var(--ink2)}
+
+/* 项目 / 工作区：用目录卡片展示最近使用的路径 */
+.resume-list{display:grid;gap:2px}
+.resume-row{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:7px;
+ padding:9px 4px;background:transparent;font-size:11px;color:var(--ink2);text-align:left}
+.resume-row:hover{background:var(--hover);color:var(--ink)}
+.workspace-icon{width:18px;height:18px;display:grid;place-items:center;flex-shrink:0;color:var(--ink3)}
+.workspace-icon svg{width:17px;height:17px}
+.workspace-path{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workspace-arrow{width:14px;height:14px;color:var(--ink3);flex-shrink:0;transition:transform .18s,color .18s}
+.resume-row:hover .workspace-arrow{color:var(--ink2);transform:translateX(2px)}
+
+/* 首跑态：无历史会话 → 续接节整节隐藏；技能只留 seed 的 @demo */
+.workbench.first-run .resume-sec{display:block}
+.workbench.first-run .skill-chip[data-optional]{display:none}
+
+/* ── 输入区（沿用欢迎页参考稿） ──────────────────────────────────── */
+.compose-wrap{padding:14px 16px 16px;flex-shrink:0}
+.composer{position:relative;border:1px solid var(--line);border-radius:15px;background:var(--surface);padding:15px 13px 10px;box-shadow:0 7px 20px -6px #77777733}
+.dark .composer{box-shadow:0 7px 20px -6px #00000057}
+.composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+textarea{display:block;width:100%;height:70px;resize:none;background:transparent;border:0;outline:0;color:var(--ink);font-size:12px;line-height:1.8;padding:0}
+textarea::placeholder{color:var(--ink3)}
+.input-footer{display:flex;align-items:center;gap:9px;margin-top:6px}
+.meta{border:0;background:transparent;display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:10px;padding:4px 0;min-width:0}
+.meta svg{width:15px;height:15px}
+.workspace{margin-right:auto}
+.model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model svg:last-child{width:11px}
+.send{border:0;border-radius:50%;width:27px;height:27px;background:#262d3d;color:#fff;display:grid;place-items:center;margin-left:8px;flex-shrink:0}
+.send:disabled{background:var(--line);color:var(--raised);cursor:default}
+.send svg{width:16px;height:16px;fill:currentColor;stroke-width:1}
+.popover{position:absolute;right:12px;bottom:49px;padding:10px 14px;background:var(--raised);border:1px solid var(--line);border-radius:9px;font-size:11px;color:var(--ink2);box-shadow:0 6px 22px #0001;max-width:calc(100% - 24px)}
+.popover[hidden]{display:none}
+
+/* ── 设计说明 ────────────────────────────────────────────────────── */
+.design-notes{max-width:1460px;margin:30px auto 0;padding:24px 0;border-top:1px solid #d9ddd4;display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.design-notes b{font-size:12px;font-weight:600}
+.design-notes p{font-size:11px;color:#7c8178;line-height:1.9;margin:8px 0}
+.design-notes table{border-collapse:collapse;font-size:10.5px;color:#7c8178;margin-top:8px;width:100%}
+.design-notes td{padding:4px 8px 4px 0;border-top:1px solid #e4e7e0;line-height:1.5}
+.design-notes td:first-child{color:#4b5047;white-space:nowrap}
+.foot{max-width:1460px;margin:auto;color:#92988b;font-size:10px;letter-spacing:1px}
+
+@media(max-width:900px){
+ body{padding:24px 18px}
+ .boards{gap:22px;max-width:650px;grid-template-columns:1fr}
+ header{max-width:650px;align-items:start;flex-direction:column}
+ .design-notes{max-width:650px;grid-template-columns:1fr;gap:10px}
+ .window{min-height:620px}
+ .foot{max-width:650px}
+ .task-cards{grid-template-columns:1fr 1fr}
+}
+@media(max-width:420px){
+ .main{padding:16px}
+ .task-cards{grid-template-columns:1fr}
+ .model{max-width:160px}
+}
+@media(prefers-reduced-motion:no-preference){button,.icon-btn svg{transition:background .15s,border-color .15s,transform .18s}}
+</style>
+</head>
+<body>
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
+<symbol id="menu" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol>
+<symbol id="cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 1-7.9 6 6 0 0 0-11.6-1A4.5 4.5 0 0 0 7 18Z"/></symbol>
+<symbol id="cube" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8Zm0 9v9M3 8l9 5 9-5M8 5l9 5"/></symbol>
+<symbol id="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="plane" viewBox="0 0 24 24"><path d="m21 3-6 18-4-8-8-4 18-6ZM11 13 21 3"/></symbol>
+</defs></svg>
+
+<header>
+ <div>
+  <div class="eyebrow">ORBBY / WORKBENCH / 2026.10</div>
+  <h1>工作台 —— 把欢迎页变成启动台。</h1>
+  <p>欢迎页空态升级设计稿 · 时间问候 + 示例任务卡 + 技能橱窗 + 会话续接 · 点击卡片与技能可直接体验填入行为</p>
+  <nav class="toolbar" aria-label="切换状态">
+   <button data-state="full" aria-pressed="true">完整态（有历史）</button>
+   <button data-state="first" aria-pressed="false">首跑态（无历史）</button>
+  </nav>
+ </div>
+</header>
+
+<main class="boards" id="boards"></main>
+
+<section class="design-notes" aria-label="设计说明">
+ <div>
+  <b>01 / 信息架构与数据源</b>
+  <p>四模块各有来源：时间问候 = 本地时间（menuWindowShown 信号唤出时刷新）；任务卡 = 静态配置三条，点击只<b>填入输入框并聚焦、不自动发送</b>，第三张填「/」由输入框监听自动弹出命令面板；技能橱窗 = SkillService 扫描 ~/.orbby/skills（skills.changed 热更新），点击填「@技能名␣」——尾随空格即面板确认语义；续接 = ChatStorageService 最近会话，点击载入当前 tab（/session 语义）。<b>空即藏</b>：无技能或无历史时整节收起，首跑只剩问候 + 任务卡（右上角可切换预览）。</p>
+ </div>
+ <div>
+  <b>02 / 窄窗自适应与落地位置</b>
+  <p>menu 窗宽 = 屏宽 1/3，实际落在约 455–853px：任务卡 3 列 → 窄窗 Wrap 降两列/一列，技能 chip 自然换行，节头不省略。Flutter 落点在 _buildChatBody 的 Expanded 空态分支内部（替换现 _AgentHints），不触碰主 Column 的 children 结构；本稿<b>无新增色值</b>，全部映射既有 token（raised / line / ink / ink3 / accentDeep / hover / lineSoft）。</p>
+ </div>
+ <div>
+  <b>03 / 时间问候档位</b>
+  <p>主标题按本地时间取五档，副标题固定品牌句「让想法成为现实 —— 从一句话开始」；两板分别演示早/晚档。</p>
+  <table>
+   <tr><td>05 – 11</td><td>早上好。今天从哪件事开始？</td></tr>
+   <tr><td>11 – 14</td><td>中午好。趁间隙理清一件事。</td></tr>
+   <tr><td>14 – 18</td><td>下午好。继续推进手头的事。</td></tr>
+   <tr><td>18 – 23</td><td>晚上好。想捣鼓点什么？</td></tr>
+   <tr><td>23 – 05</td><td>夜深了。安静的时刻适合想清楚事情。</td></tr>
+  </table>
+ </div>
+</section>
+<footer class="foot">ORBBY — WORKBENCH DESIGN REFERENCE</footer>
+
+<template id="window-template">
+<div><div class="caption"><strong></strong><span>工作台 / 输入</span></div><section class="window" aria-label="主窗口设计预览">
+ <div class="funcbar"><button class="icon-btn menu-toggle" aria-label="展开功能菜单" aria-expanded="false"><svg><use href="#menu"/></svg></button><div class="actions"><button class="action">新建会话</button><button class="action">历史会话</button><button class="action">应用中心</button><button class="action">设置</button></div></div>
+ <div class="main"><div class="workbench">
+  <div class="greet">
+   <h2 class="greet-title"></h2>
+   <p class="sub">让想法成为现实 —— 从一句话开始</p>
+  </div>
+  <div class="wb-sec">
+   <div class="sec-head"><span>快捷入口</span><i></i></div>
+   <div class="task-cards">
+    <button class="task-card" data-fill="待办事项"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAHkklEQVR4nO3dPZLjZBQF0Jaq9zIRJBQhEVsgB4rQC2ANLKBDCsjZAhEhRQLRrEZUBy6mPOP2n6Tv/ZyTMtjP9Nz7PauF/fQEtDWNHoD9LIfDcs2fm15e/L1owg+6sGsDf4lCqEsBFLRW8E8pgnoUQCFbBf+UIqhjHj0AucK/93OxLRtAcqPDaBvIzQaQ2OjwR5mB+ymApCIFL9Is3EYBJBQxcBFn4jIFkEzkoEWejU9TANCYAkgkwwmbYUb+pwCSyBSsTLN2pwCgMQWQQMYTNePMHSkAaEwBBJf5JM08excKABpTANCYAoDGFEBgFd5DV3gNlSkAaEwBQGMKABpTANCYAoDGFAA0pgCgseenKv759/rfN3/+mY9Dh/TfC3BL6JOWQfYbaXxvQGzPLUN/7vGClwH0LYC1g//WcygCmshxEXCP8I98Phgk/so7MoxBNoGs1wEyvv9ffvn64n/r6fs/0r2ufG8BIpzC3hK0sFwR+nN/PnsZxBw+QviDbQPZtoAMp/9yY/DfkrUI4m0AEcN/nCvIWwLiBP/0MbMVQayLgFHDH2C+DCdqhlm3CP+ej7+2WD+o6AXwyluBlOEfEcwpwTYQZwPIEP5MczL8VF4SbAMxCiBbqLwVSHP6jw7hErwExhdAtvAfKYHw4SdDAZA+cJFmiXj6LkHmiFcAWU//IPNHCF6EGTKEbgk2T9z7ALgrgHvfKBQ1+NzGW4Ai9gxk9PBHPW2XgHON2wCyr/8B7xDcehuIHnxuN+4HWqUAXgUpgFNrFUGm4Ec8ZSPfIOQaQGGnwb22EDIFnowFUOn0D/Y24C2CzSkXASkjw/ofbU4FAI0pAGhMAUBjCgAaUwDQmAKAxhQANKYAoDEFQBmR7rHPMueYAkhw22zr10MbNgBoTAFQSqT1OsN84wqgytpc5XXQkg2AcqKdspHnUgDQ2NgCyL4+Z5+/sGin7RRsniMbAGVFCd0UZI6YBZD1FM06N4QqgIxhyjZvY6NP3ynw6R+nADKFKsucDA/hFDz8r3wsOC0cw7jHB3JOCYIfbwPIcLpGn4/h4ZwShf9VzGEjfm+A8JezrLgNZAv+UdyhI5WA8Je2PFAEWYN/FH/4kUUg+O0sV5RB9tB/KMcLGVECwk8DsS4CRgmj8NNEjg1gr21A8GkmXwGsXQZCT2O5C+DeMhB6AAAAAAAAAAAAAAAAAAAAAAAAAAAAynwq8HL4+fLXK738UOcTiSGpaa/AXxxEIUCuAlgj+KcUAQQvgC2Cf0oRQMAvB90j/Hs+D3Q2ZQikbQAGbgCjT+PRzw9tCyBK+KLMAW0KIFroos0DZa8BRA6bawJUtLz/6mzmpnd/bnLj3PMWDwo8Hvpzf27NMpiynf5HtgA6BP8taxTBnDH8meaELcK/1uPcfCMQMD78az3enPlUzTYvvS0rh3+Nx7UBQOLwP/r4c/bTNOvc9LFsHP5HnscGAI0pAChw+t/7fAoAGpsrvI/OPj+MYgOAIuv/Pc+rAKAxBQCNKQBoTAFAYwoAGlMA0JgCgMYUAGxkq8/xW/N55wofr5V9fhjFBgCNKQAo9Dbg1udTANDYnP19dNa56WPaaQu453lsAFCgBO59/DnzaZptXnqbNiqBRx7XBgCJS+DRx5uznqpZ5oStSmCNx/HtwJDsU4PW3CJ8OzAM9GGYR3w9+JTtwzat/rCeOVPYos0D2c1ZQhdlDqhkzhC+0c8PVd0crD2vCwg+bGuOGkrhh+09FOYttgHBh/2scpqvUQSCD/vbZJ2/phAEHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAWnb5pt+9fPvu74tfSfbb+y9KvWZ4xNQh9OcoA7qbOgb/lCKgq6lz8E8pArqZnxLZMvx7PD5Ek2IDGBFM2wAdhN8ARp3KtgE6CF0Ao0M4+vmhdQEATQsgyukbZQ5oUwDRQhdtHihdAEDTXwNGPm39arCPw18/fvT38OXLn8Ll5VHPoweA6ME//WeViiDUC4l8+h/ZAvoF/5wKReAaAO0d7gj/I/9eJAoAGgtTABnW/0xzss8pfki+BYQpAGB/CoC2Diud3pm3AAUAjSkAaEwBQGMKABpTALT1stKdfJnvCFQA0FiYAshyj32WOdnn9H5JfPqHKgBgfwqA9l7uPMWzn/6vwr2AyPfaW//rO1xxV1+F4B/5QBD4RLi7fCJQyBcUcQtw+lORawDQWMgCiHbaRpsHShdApNBFmQNaFQCwvfCn28gLghVP/29+Xd787/n7d1O518x5KX7YI0qgUvgvhf4cZVBfqr/kexSB4H9MEdSV6hrA1uEU/nU3COJLtQFstQ1UCv6WgbUJ1JP+L/4jRVAt+Huc1kqgllIBuKYMKoZ+71VdCdRRNgzd7P0+XQnUkOoiILAuBVDAiKv0fjNQgwKAxhQANKYAkhu5insbkJ8CgMYUADSmAKAxBQCNKQBoTAFAYwoguZH35Pv/AfJTANCYAoDGFEABI1Zx638NCgAaUwBF7HkiO/3rUACF7BFM4a9FARSzZUCFvx4FUNAWQRX+mhRAUWsGVvjr8qnADfhuQM5RAM34dmAAAAAAAAAAAACApyL+A0/C9gevS66eAAAAAElFTkSuQmCC" alt=""><b>待办事项</b><small>查看当前待办与进度</small></button>
+    <button class="task-card" data-fill="继续任务"><img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzg0NDY0MzA2ODg0IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjIzMDgyIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiPjxwYXRoIGQ9Ik05NjcuMTExMTExIDczOS41NTU1NTZINTYuODg4ODg5Yy0zNC4xMzMzMzMgMC01Ni44ODg4ODktMjguNDQ0NDQ0LTU2Ljg4ODg4OS01Ni44ODg4ODlWMTEzLjc3Nzc3OGMwLTM0LjEzMzMzMyAyOC40NDQ0NDQtNTYuODg4ODg5IDU2Ljg4ODg4OS01Ni44ODg4ODloOTEwLjIyMjIyMmMzNC4xMzMzMzMgMCA1Ni44ODg4ODkgMjguNDQ0NDQ0IDU2Ljg4ODg4OSA1Ni44ODg4ODl2NTY4Ljg4ODg4OWMwIDI4LjQ0NDQ0NC0yOC40NDQ0NDQgNTYuODg4ODg5LTU2Ljg4ODg4OSA1Ni44ODg4ODkiIGZpbGw9IiMwMDg4RkYiIGZpbGwtb3BhY2l0eT0iLjciIHAtaWQ9IjIzMDgzIj48L3BhdGg+PHBhdGggZD0iTTczOS41NTU1NTYgOTY3LjExMTExMUgyODQuNDQ0NDQ0Yy0zNC4xMzMzMzMgMC01Ni44ODg4ODktMjIuNzU1NTU2LTU2Ljg4ODg4OC01Ni44ODg4ODlzMjIuNzU1NTU2LTU2Ljg4ODg4OSA1Ni44ODg4ODgtNTYuODg4ODg5aDQ1NS4xMTExMTJjMzQuMTMzMzMzIDAgNTYuODg4ODg5IDIyLjc1NTU1NiA1Ni44ODg4ODggNTYuODg4ODg5cy0yMi43NTU1NTYgNTYuODg4ODg5LTU2Ljg4ODg4OCA1Ni44ODg4ODkiIGZpbGw9IiNGRjREMDAiIGZpbGwtb3BhY2l0eT0iLjYiIHAtaWQ9IjIzMDg0Ij48L3BhdGg+PHBhdGggZD0iTTMxMi44ODg4ODkgNDU1LjExMTExMWMxNy4wNjY2NjcgNS42ODg4ODkgMjguNDQ0NDQ0IDE3LjA2NjY2NyAyOC40NDQ0NDQgMjguNDQ0NDQ1djU2Ljg4ODg4OGMwIDE3LjA2NjY2Ny0xMS4zNzc3NzggMjguNDQ0NDQ0LTI4LjQ0NDQ0NCAyOC40NDQ0NDVTMjg0LjQ0NDQ0NCA1NTcuNTExMTExIDI4NC40NDQ0NDQgNTQwLjQ0NDQ0NHYtNTYuODg4ODg4YzAtMTcuMDY2NjY3IDExLjM3Nzc3OC0yOC40NDQ0NDQgMjguNDQ0NDQ1LTI4LjQ0NDQ0NXogbTExMy43Nzc3NzgtMTEzLjc3Nzc3OGMxNy4wNjY2NjcgNS42ODg4ODkgMjguNDQ0NDQ0IDE3LjA2NjY2NyAyOC40NDQ0NDQgMjguNDQ0NDQ1djE3MC42NjY2NjZjMCAxNy4wNjY2NjctMTEuMzc3Nzc4IDI4LjQ0NDQ0NC0yOC40NDQ0NDQgMjguNDQ0NDQ1UzM5OC4yMjIyMjIgNTU3LjUxMTExMSAzOTguMjIyMjIyIDU0MC40NDQ0NDR2LTE3MC42NjY2NjZjMC0xNy4wNjY2NjcgMTEuMzc3Nzc4LTI4LjQ0NDQ0NCAyOC40NDQ0NDUtMjguNDQ0NDQ1eiBtMTEzLjc3Nzc3Ny0xMTMuNzc3Nzc3YzE3LjA2NjY2NyA1LjY4ODg4OSAyOC40NDQ0NDQgMTcuMDY2NjY3IDI4LjQ0NDQ0NSAyOC40NDQ0NDR2Mjg0LjQ0NDQ0NGMwIDE3LjA2NjY2Ny0xMS4zNzc3NzggMjguNDQ0NDQ0LTI4LjQ0NDQ0NSAyOC40NDQ0NDVTNTEyIDU1Ny41MTExMTEgNTEyIDU0MC40NDQ0NDR2LTI4NC40NDQ0NDRjMC0xNy4wNjY2NjcgMTEuMzc3Nzc4LTI4LjQ0NDQ0NCAyOC40NDQ0NDQtMjguNDQ0NDQ0eiBtMTEzLjc3Nzc3OCAxNzAuNjY2NjY2YzE3LjA2NjY2NyA1LjY4ODg4OSAyOC40NDQ0NDQgMTcuMDY2NjY3IDI4LjQ0NDQ0NSAyOC40NDQ0NDV2MTEzLjc3Nzc3N2MwIDE3LjA2NjY2Ny0xMS4zNzc3NzggMjguNDQ0NDQ0LTI4LjQ0NDQ0NSAyOC40NDQ0NDVzLTI4LjQ0NDQ0NC0xMS4zNzc3NzgtMjguNDQ0NDQ0LTI4LjQ0NDQ0NXYtMTEzLjc3Nzc3N2MwLTE3LjA2NjY2NyAxMS4zNzc3NzgtMjguNDQ0NDQ0IDI4LjQ0NDQ0NC0yOC40NDQ0NDV6IiBmaWxsPSIjQzJERUZGIiBmaWxsLW9wYWNpdHk9Ii43IiBwLWlkPSIyMzA4NSI+PC9wYXRoPjwvc3ZnPg==" alt=""><b>继续任务</b><small>从最近的对话中选择并继续</small></button>
+    <button class="task-card" data-fill="/help"><img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzg0NDY0NDM0OTMyIiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjMyMTQ1IiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiPjxwYXRoIGQ9Ik0zODQuMzU4IDg5NmgyNTZ2MTI4aC0yNTZ6IG04Ny04OTZoODJ2MTI4aC04MnpNMTUxLjE3NCAxNDYuMzI1bDYyLjgxMi01Mi43MSA4Mi4yNzggOTguMDQ5LTYyLjgxMiA1Mi43MXpNMCA0NjQuMjk1bDE0LjIzNS04MC43NTQgMTI2LjA1NCAyMi4yMi0xNC4yMzUgODAuNzU0eiBtODg0LjM3OS01OC41MjNsMTI2LjA1NS0yMi4yMiAxNC4yMzUgODAuNzUzLTEyNi4wNTQgMjIuMjIxek03MjguMzg0IDE5MS43M2w4Mi4yNzgtOTguMDQ5IDYyLjgxMiA1Mi43MS04Mi4yNzggOTguMDQ4eiIgZmlsbD0iI0ZGOTQ3MyIgcC1pZD0iMzIxNDYiPjwvcGF0aD48cGF0aCBkPSJNODMyLjM1OCA0ODRjMC0xNzYuNy0xNDMuMy0zMjAtMzIwLTMyMHMtMzIwIDE0My4zLTMyMCAzMjBjMCAxMzEuMiA3OSAyNDQgMTkyIDI5My4zVjg1MGgyNTZ2LTcyLjdjMTEzLTQ5LjMgMTkyLTE2Mi4xIDE5Mi0yOTMuM3ogbS0zMjAgMjM4Yy02My42IDAtMTIzLjMtMjQuOC0xNjguMy02OS43cy02OS43LTEwNC43LTY5LjctMTY4LjMgMjQuOC0xMjMuMyA2OS43LTE2OC4zYzQ1LTQ1IDEwNC43LTY5LjcgMTY4LjMtNjkuN3MxMjMuMyAyNC44IDE2OC4zIDY5LjdjNDUgNDUgNjkuNyAxMDQuNyA2OS43IDE2OC4zcy0yNC44IDEyMy4zLTY5LjcgMTY4LjMtMTA0LjcgNjkuNy0xNjguMyA2OS43eiIgZmlsbD0iI0ZGM0MwMCIgcC1pZD0iMzIxNDciPjwvcGF0aD48L3N2Zz4=" alt=""><b>使用说明</b><small>了解常用命令与功能</small></button>
+   </div>
+  </div>
+  <div class="wb-sec">
+   <div class="sec-head"><span>技能</span><i></i><button class="more skills-manage">管理 →</button></div>
+   <div class="skill-chips">
+    <button class="skill-chip" data-fill="@demo "><span class="at">@</span>demo</button>
+    <button class="skill-chip" data-optional data-fill="@磁盘扫描 "><span class="at">@</span>磁盘扫描</button>
+    <button class="skill-chip" data-optional data-fill="@翻译文档 "><span class="at">@</span>翻译文档</button>
+    <button class="skill-chip" data-optional data-fill="@周报 "><span class="at">@</span>周报</button>
+    <button class="skill-chip more" data-optional>＋3</button>
+   </div>
+  </div>
+  <div class="wb-sec resume-sec">
+   <div class="sec-head"><span>项目 / 工作区</span><i></i></div>
+   <div class="resume-list">
+    <button class="resume-row" data-resume="D:\Projects\orbby" aria-label="切换到 orbby 工作区">
+     <span class="workspace-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 17.5z"/><path d="M3.5 9h17"/></svg></span>
+     <span class="workspace-path">D:\Projects\orbby</span>
+     <svg class="workspace-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+    </button>
+    <button class="resume-row" data-resume="D:\Projects\website" aria-label="切换到 website 工作区">
+     <span class="workspace-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 17.5z"/><path d="M3.5 9h17"/></svg></span>
+     <span class="workspace-path">D:\Projects\website</span>
+     <svg class="workspace-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+    </button>
+   </div>
+  </div>
+ </div></div>
+ <div class="compose-wrap"><div class="composer"><textarea aria-label="描述你的需求" placeholder="描述你的需求，使用 /help 查看常用命令及说明，使用 @ 调用技能。"></textarea><div class="input-footer"><button class="meta workspace" aria-label="查看当前工作区"><svg><use href="#cloud"/></svg><span>Desktop</span></button><button class="meta model" aria-label="查看当前模型"><svg><use href="#cube"/></svg><span>deepseek-v4-flash</span><svg><use href="#chevron"/></svg></button><button class="send" aria-label="发送预览消息" disabled><svg><use href="#plane"/></svg></button></div><div class="popover" role="status" hidden></div></div></div>
+</section></div>
+</template>
+
+<script>
+const boards=document.querySelector('#boards');
+const GREETS={light:'早上好。今天从哪件事开始？',dark:'晚上好。想捣鼓点什么？'};
+for(const [theme,label] of [['light','01 · 浅色 / LIGHT'],['dark','02 · 深色 / DARK']]){
+ const fragment=document.querySelector('#window-template').content.cloneNode(true);
+ fragment.querySelector('.caption strong').textContent=label;
+ const win=fragment.querySelector('.window');win.classList.add(theme);
+ win.querySelector('.greet-title').textContent=GREETS[theme];
+ const input=win.querySelector('textarea'),send=win.querySelector('.send'),funcbar=win.querySelector('.funcbar'),toggle=win.querySelector('.menu-toggle'),popover=win.querySelector('.popover');
+ const tell=text=>{popover.textContent=text;popover.hidden=false;};
+ const fill=text=>{input.value=text;input.dispatchEvent(new Event('input'));input.focus();};
+
+ toggle.addEventListener('click',()=>{funcbar.classList.toggle('expanded');toggle.setAttribute('aria-expanded',String(funcbar.classList.contains('expanded')));});
+ funcbar.querySelector('.actions').addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;tell(button.textContent.trim()+' · 入口样式预览');funcbar.classList.remove('expanded');toggle.setAttribute('aria-expanded','false');});
+
+ win.querySelectorAll('.task-card').forEach(card=>card.addEventListener('click',()=>{
+  const value=card.dataset.fill;
+  if(value==='/'){fill('/');tell('已填入「/」—— 实际交互中命令面板会立即弹出。');}
+  else{fill(value);tell('示例已填入输入框，改两个词就能发送。');}
+ }));
+ win.querySelectorAll('.skill-chip[data-fill]').forEach(chip=>chip.addEventListener('click',()=>{fill(chip.dataset.fill);tell('技能引用已填入（含尾随空格，即面板确认语义）。');}));
+ win.querySelector('.skill-chip.more').addEventListener('click',()=>tell('完整技能列表在输入框键入 @ 查看；「管理」指向技能目录 ~/.orbby/skills。'));
+ win.querySelector('.skills-manage').addEventListener('click',()=>tell('技能目录：~/.orbby/skills · 加子目录 + SKILL.md 即新增技能。'));
+ win.querySelectorAll('.resume-row').forEach(row=>row.addEventListener('click',()=>tell('设计预览：切换到工作区「'+row.dataset.resume+'」。')));
+
+ input.addEventListener('input',()=>{send.disabled=!input.value.trim();popover.hidden=true;});
+ const submit=()=>{if(!input.value.trim())return;tell('设计预览：已输入「'+input.value.trim()+'」。实际消息请在 Orbby 中发送。');};
+ send.addEventListener('click',submit);
+ input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();submit();}});
+ win.querySelector('.workspace').addEventListener('click',()=>tell('当前工作区：Desktop · 在 Orbby 中使用 /cd 切换目录。'));
+ win.querySelector('.model').addEventListener('click',()=>tell('当前模型：deepseek-v4-flash · 此处为模型入口样式预览。'));
+ document.addEventListener('click',event=>{if(!win.contains(event.target)){funcbar.classList.remove('expanded');popover.hidden=true;toggle.setAttribute('aria-expanded','false');}});
+ boards.append(fragment);
+}
+
+document.querySelectorAll('[data-state]').forEach(button=>button.addEventListener('click',()=>{
+ const first=button.dataset.state==='first';
+ document.querySelectorAll('.workbench').forEach(node=>node.classList.toggle('first-run',first));
+ document.querySelectorAll('[data-state]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+}));
+</script>
+</body>
+</html>

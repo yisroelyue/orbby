@@ -6,7 +6,7 @@ Orbby 是一款 Windows 桌面 AI 助手，基于react loop实现任务处理功
 
 - 后台协调窗口：负责系统托盘、全局快捷键以及其他功能窗口的唤起。
 - 聊天窗口：进行 AI 对话、查看工具执行过程和历史会话。
-- 设置窗口：配置模型、API 及其他应用选项。
+- 设置弹窗（menu 窗口内 `/setting`）：配置模型、API 及其他应用选项。
 - 应用栏、内容、应用中心和关于窗口。
 - 支持通过全局快捷键唤起相关窗口。
 
@@ -34,8 +34,7 @@ Orbby 是一款 Windows 桌面 AI 助手，基于react loop实现任务处理功
 - `/copy`：复制当前会话 JSON。
 - `/copy-txt`：复制当前会话文本。
 - `/apps`：打开应用中心。
-- `/sys_setting`：打开系统设置窗口。
-- `/setting`：打开 Agent 设置。
+- `/setting`：打开设置弹窗（API / 翻译 / 日志 / Agent / 界面）。
 - `/permission-off`：恢复为每次操作前询问。
 - `/permission-read`：允许读取，写入和执行仍需询问。
 - `/permission-all`：允许 Agent 直接执行读写操作。

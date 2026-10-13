@@ -1,11 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1166 1166">
-  <rect width="1166" height="1166" rx="210" fill="#5CBE77"/>
-  <g transform="translate(-23 -60)">
-    <path d="M 735 365 A 350 350 0 1 0 925 565"
-          fill="none"
-          stroke="#FFFFFF"
-          stroke-width="118"
-          stroke-linecap="round"/>
-    <circle cx="900" cy="405" r="80" fill="#FFFFFF"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="50 52 326 322" role="img" aria-label="Abstract app icon with coral, blue, and amber shapes">
+  <!-- Coral form behind the blue sweep -->
+  <path d="M50 83
+           C50 70 60 63 78 64
+           C122 66 161 83 192 112
+           C220 139 239 179 239 224
+           V374 H134
+           C88 374 50 337 50 291
+           Z" fill="#F2675B"/>
+  <!-- Large blue curved form -->
+  <path d="M344 52 V324 Q344 374 294 374 H134 V264 C134 145 231 52 344 52 Z" fill="#1746D5"/>
+  <!-- Amber circular accent -->
+  <circle cx="296" cy="294" r="80" fill="#FFB52E"/>
 </svg>

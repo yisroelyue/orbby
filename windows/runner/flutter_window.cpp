@@ -433,6 +433,22 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_HOTKEY: {
+      // A RegisterHotKey combination fires only after the modifier key-down
+      // (e.g. Alt) has already been delivered to the previously focused app,
+      // and the matching key-up can be routed to one of our own windows once
+      // focus switches. That app is then left with a stuck modifier: its next
+      // character keystroke is interpreted as a menu mnemonic, gets dropped,
+      // and Windows plays a ding. Synthesize modifier key-ups here, before
+      // any window is shown or hidden, so the foreground app resumes from a
+      // clean keyboard state.
+      INPUT keyups[4] = {};
+      const WORD kStuckModifiers[] = {VK_MENU, VK_CONTROL, VK_SHIFT, VK_LWIN};
+      for (int i = 0; i < 4; i++) {
+        keyups[i].type = INPUT_KEYBOARD;
+        keyups[i].ki.wVk = kStuckModifiers[i];
+        keyups[i].ki.dwFlags = KEYEVENTF_KEYUP;
+      }
+      SendInput(4, keyups, sizeof(INPUT));
       if (g_hotkey_channel) {
         if (wparam == kHotkeyIdToggleMenu) {
           g_hotkey_channel->InvokeMethod(
