@@ -109,6 +109,8 @@ extension _HomeScreenCommandActions on _HomeScreenState {
     try {
       final workspace = await AgentService.setWorkspace(target, sessionId: sid);
       await _loadWorkspaceLabel();
+      // 记录进 /cd 历史（MRU），供欢迎页「项目 / 工作区」续接展示
+      await _recordWorkspace(workspace);
       if (mounted) _addLocalMessage('工作区已切换：$workspace');
     } catch (e) {
       if (mounted) _addLocalMessage('切换工作区失败：${_cleanErrorMessage(e)}');

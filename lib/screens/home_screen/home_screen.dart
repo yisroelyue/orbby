@@ -24,6 +24,7 @@ import '../../services/personality_service.dart';
 import '../../services/model_picker.dart';
 import '../../services/chat_skill.dart';
 import '../../services/skill_service.dart';
+import '../../services/workspace_history_service.dart';
 import '../../theme/chat_theme.dart';
 import '../../config/api_profile.dart';
 import '../../config/settings.dart';
@@ -39,6 +40,7 @@ import '../../widgets/file_change_preview.dart';
 import '../../widgets/agent_question_panel.dart';
 import '../../widgets/chat_attachment_preview.dart';
 import '../../widgets/chat_attachment_viewer.dart';
+import '../../widgets/home_usage_guide.dart';
 import '../../models/file_change_preview.dart';
 import '../../models/agent_question.dart';
 import '../../models/chat_attachment.dart';
@@ -239,6 +241,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 见 [_HomeScreenSkills._subscribeSkillChanges]
   StreamSubscription<Map<String, dynamic>>? _skillsChangedSub;
 
+  /// 欢迎页「项目 / 工作区」续接数据：/cd 工作区 MRU 历史的前
+  /// [_workbenchMaxWorkspaces] 条（WorkspaceHistoryService 独立持久化，
+  /// 与会话无关）；启动时读入，之后经 [_recordWorkspace] 随 /cd 即时刷新
+  List<String> _workspaceHistory = [];
+
   /// MaterialApp 内部的 Navigator context：
   /// HomeScreen 自身在 MaterialApp 之上，它的 context 弹窗找不到 MaterialLocalizations
   final _navigatorKey = GlobalKey<NavigatorState>();
@@ -256,6 +263,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadWorkspaceLabel();
     _loadSkills();
     _subscribeSkillChanges();
+    _loadWorkspaceHistory();
     HomeScreen.menuChannel.invokeMethod('ready');
     // 恢复持久化的主题偏好（引擎就绪后一次性刷新）
     MenuThemeService.load().then((dark) {

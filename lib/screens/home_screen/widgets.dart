@@ -45,14 +45,13 @@ extension _HomeScreenWidgets on _HomeScreenState {
     );
   }
 
-  /// 欢迎页工作台：内容列限宽 540 居中（设计稿 .workbench），自带
-  /// 收紧的四周边距（与聊天列表分支的 20/6 分开维护）；整体可滚动
-  /// （内容超高时不再强行居中裁切）；不触碰主 Column 的 children
-  /// 结构（见文件头纪律）。
+  /// 欢迎页工作台：内容列限宽 640 居中，自带收紧的四周边距（与聊天
+  /// 列表分支的 20/6 分开维护）；整体可滚动（内容超高时不再强行居中
+  /// 裁切）；不触碰主 Column 的 children 结构（见文件头纪律）。
   ///
-  /// **UI 接入阶段：技能与续接列表为静态假数据**，后续接入——
-  /// - 技能 ← _skillPalette.skills（skills.changed 推送热更新）；
-  /// - 项目/工作区 ← ChatStorageService 最近会话，点击载入当前 tab。
+  /// 数据源：技能 = _skillPalette（AnimatedBuilder 订阅，
+  /// skills.changed 推送热更新即时反映）；项目 / 工作区 =
+  /// _workspaceHistory（/cd MRU 历史，见 _recordWorkspace）。
   Widget _buildWorkbench() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -63,13 +62,21 @@ extension _HomeScreenWidgets on _HomeScreenState {
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 640),
-                child: _Workbench(
-                  skills: _workbenchDemoSkills,
-                  sessions: _workbenchDemoSessions,
-                  onFillInput: _fillWorkbenchInput,
-                  onManageSkills: () => AppToast.show(
-                    _navigatorKey.currentContext ?? context,
-                    message: '技能目录：~/.orbby/skills',
+                child: AnimatedBuilder(
+                  animation: _skillPalette,
+                  builder: (context, _) => _Workbench(
+                    skills: _skillPalette.skills,
+                    workspaces: _workspaceHistory,
+                    commands: _palette.commands,
+                    onShowUsageGuide: () => _addLocalMessage(
+                      HomeUsageGuide.asConversationRecord(_palette.commands),
+                    ),
+                    onFillInput: _fillWorkbenchInput,
+                    onManageSkills: () => AppToast.show(
+                      _navigatorKey.currentContext ?? context,
+                      message: '技能目录：~/.orbby/skills',
+                    ),
+                    onResumeWorkspace: _resumeWorkspace,
                   ),
                 ),
               ),
@@ -78,6 +85,37 @@ extension _HomeScreenWidgets on _HomeScreenState {
         );
       }),
     );
+  }
+
+  /// 续接行点击：切回该工作区（/cd 语义，作用于当前 tab 的 Node 会话）
+  /// 并在 MRU 历史中置顶。目录已被移动/删除时 Node 侧校验失败，toast
+  /// 提示、现状不变。
+  Future<void> _resumeWorkspace(String path) async {
+    if (!mounted) return;
+    try {
+      final workspace = await AgentService.setWorkspace(
+        path,
+        sessionId: _current.agentSessionId,
+      );
+      await _loadWorkspaceLabel();
+      await _recordWorkspace(workspace);
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          _navigatorKey.currentContext ?? context,
+          message: '工作区不可用：$path',
+        );
+      }
+    }
+  }
+
+  /// 记录一次工作区切换（/cd 与欢迎页续接共用）：MRU 置顶落盘并刷新
+  /// 欢迎页续接列表
+  Future<void> _recordWorkspace(String path) async {
+    final paths = await WorkspaceHistoryService.record(path);
+    if (!mounted) return;
+    setState(() =>
+        _workspaceHistory = paths.take(_workbenchMaxWorkspaces).toList());
   }
 
   /// 工作台点击填入输入框并聚焦（不自动发送）：填「/help」「@」这类
@@ -91,20 +129,3 @@ extension _HomeScreenWidgets on _HomeScreenState {
     _inputFocus.requestFocus();
   }
 }
-
-/// 假数据：技能橱窗（真数据 ← _skillPalette.skills，7 个中前 4 直出 + ＋3）
-const _workbenchDemoSkills = [
-  ChatSkill(name: 'demo', description: '演示技能'),
-  ChatSkill(name: '磁盘扫描', description: '扫描磁盘空间占用'),
-  ChatSkill(name: '翻译文档', description: '翻译文档内容'),
-  ChatSkill(name: '周报', description: '生成周报'),
-  ChatSkill(name: '代码审查', description: '审查代码变更'),
-  ChatSkill(name: '会议纪要', description: '整理会议纪要'),
-  ChatSkill(name: 'SQL 优化', description: '优化 SQL 查询'),
-];
-
-/// 假数据：项目 / 工作区续接（真数据 ← ChatStorageService 最近会话）
-const _workbenchDemoSessions = [
-  _WorkbenchSession(title: 'orbby 主开发会话', path: r'D:\Projects\orbby'),
-  _WorkbenchSession(title: '官网改版', path: r'D:\Projects\website'),
-];

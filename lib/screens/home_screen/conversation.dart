@@ -112,8 +112,14 @@ extension _HomeScreenConversation on _HomeScreenState {
     );
     if (selected == null || !mounted) return;
     final conv = await ChatStorageService.load(selected.id) ?? selected;
-    // 空 tab 不承载历史会话：按会话 tab 的使用习惯，给选中的老会话新开一个 tab。
-    // 有内容的 tab 则原地打开，避免无条件产生空 tab。
+    await _loadConversationIntoView(conv);
+  }
+
+  /// 把历史会话载入当前 tab（/session 弹窗与欢迎页「项目 / 工作区」
+  /// 续接共用）：空 tab 不承载历史会话——按会话 tab 的使用习惯新开
+  /// 一个 tab（未满上限时）；有内容的 tab 原地打开。agent 上下文由
+  /// 下次发送携带的 history 重建。
+  Future<void> _loadConversationIntoView(ChatConversation conv) async {
     if (_isCurrentTabEmpty && _views.length < _maxSessionTabs) {
       _openNewSessionTab();
     }
@@ -140,6 +146,16 @@ extension _HomeScreenConversation on _HomeScreenState {
       _current.resetScrollState();
     });
     _scrollToBottom(force: true);
+  }
+
+  /// 欢迎页「项目 / 工作区」续接数据：/cd 与续接点击记录的 MRU 历史
+  /// （WorkspaceHistoryService，独立文件持久化、与会话无关），启动时
+  /// 读入；之后记录时经 _recordWorkspace 即时刷新。
+  Future<void> _loadWorkspaceHistory() async {
+    final paths = await WorkspaceHistoryService.load();
+    if (!mounted) return;
+    setState(() =>
+        _workspaceHistory = paths.take(_workbenchMaxWorkspaces).toList());
   }
 
   bool get _isCurrentTabEmpty =>

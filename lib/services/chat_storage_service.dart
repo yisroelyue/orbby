@@ -19,6 +19,7 @@ class ChatConversation {
   String title;
   String model;
   String mode;
+
   final DateTime createdAt;
   DateTime updatedAt;
   final List<Map<String, String>> messages;

@@ -4,18 +4,21 @@ part of 'home_screen.dart';
 /// 参考 plan/component/workbench-preview.html：时间问候 + 快捷入口任务卡 +
 /// 技能橱窗 + 项目/工作区续接，全部映射既有主题 token（无新增色值）。
 ///
-/// 当前为 **UI 接入阶段：技能与续接列表是宿主传入的静态假数据**，
-/// 后续接入点（见 widgets.dart 的 _buildWorkbench）：
-/// - 技能橱窗 ← _skillPalette.skills（skills.changed 推送热更新）；
-/// - 项目/工作区 ← ChatStorageService 最近会话，点击载入当前 tab（/session 语义）。
+/// 数据源：技能 = _skillPalette（skills.changed 推送热更新即时反映）；
+/// 工作区续接 = WorkspaceHistoryService 的 /cd MRU 历史（独立文件持久化、
+/// 与会话无关），宿主截取前 [_workbenchMaxWorkspaces] 条传入。
 ///
 /// 点击行为（设计稿约定）：任务卡 / 技能 chip 只**填入输入框并聚焦、
 /// 不自动发送**——填「/help」「@」这类片段由 _onInputChanged 自动唤起
-/// 对应面板；技能引用尾随空格 = 面板确认语义，不弹面板。
+/// 对应面板；技能引用尾随空格 = 面板确认语义，不弹面板。续接行点击 =
+/// 切回该工作区（_resumeWorkspace，/cd 语义）。
 
 /// 技能橱窗最多直接展示的 chip 数，超出折叠为「＋N」
 /// （点击填「@」唤起完整技能面板）
 const _workbenchMaxSkillChips = 4;
+
+/// 「项目 / 工作区」续接最多展示的条数（存储上限见 WorkspaceHistoryService）
+const _workbenchMaxWorkspaces = 5;
 
 /// 时间问候副标题（固定品牌句）
 const _workbenchGreetingSub = '让想法成为现实 —— 从一句话开始';
@@ -38,7 +41,7 @@ const _workbenchTasks = [
     icon: 'assets/svg/workbench_help.svg',
     title: '使用说明',
     subtitle: '了解常用命令与功能',
-    fill: '/help',
+    fill: 'usage-guide',
   ),
 ];
 
@@ -70,29 +73,26 @@ class _WorkbenchTask {
   final String fill;
 }
 
-/// 续接行条目：会话标题 + 展示用工作区路径（假数据阶段由宿主写死，
-/// 真数据接入后由最近会话/最近工作区填充）
-class _WorkbenchSession {
-  const _WorkbenchSession({required this.title, required this.path});
-
-  final String title;
-  final String path;
-}
-
 /// 工作台主体：纯展示组件，数据全部由宿主传入；hover 状态自管。
-/// 空即藏：[skills] / [sessions] 为空时对应整节收起（首跑态只剩
+/// 空即藏：[skills] / [workspaces] 为空时对应整节收起（首跑态只剩
 /// 问候 + 任务卡）。
 class _Workbench extends StatefulWidget {
   const _Workbench({
     required this.skills,
-    required this.sessions,
+    required this.workspaces,
+    required this.commands,
+    required this.onShowUsageGuide,
     required this.onFillInput,
     this.onManageSkills,
-    this.onResumeSession,
+    this.onResumeWorkspace,
   });
 
   final List<ChatSkill> skills;
-  final List<_WorkbenchSession> sessions;
+
+  /// /cd 工作区 MRU 历史（WorkspaceHistoryService，路径字符串列表）
+  final List<String> workspaces;
+  final List<ChatCommand> commands;
+  final VoidCallback onShowUsageGuide;
 
   /// 填入输入框并聚焦（任务卡 / 技能 chip / ＋N 共用）
   final void Function(String text) onFillInput;
@@ -100,8 +100,8 @@ class _Workbench extends StatefulWidget {
   /// 「管理 →」（技能节头）；null 时按钮不渲染
   final VoidCallback? onManageSkills;
 
-  /// 续接行点击（载入会话/切换工作区）；null 时行不可点击
-  final void Function(_WorkbenchSession session)? onResumeSession;
+  /// 续接行点击（切回该工作区）；null 时行不可点击
+  final void Function(String path)? onResumeWorkspace;
 
   @override
   State<_Workbench> createState() => _WorkbenchState();
@@ -127,6 +127,14 @@ class _WorkbenchState extends State<_Workbench> {
   void _refreshGreeting() {
     final greeting = _workbenchGreetingFor(DateTime.now());
     if (greeting != _greeting) setState(() => _greeting = greeting);
+  }
+
+  void _openTask(_WorkbenchTask task) {
+    if (task.fill == 'usage-guide') {
+      widget.onShowUsageGuide();
+    } else {
+      widget.onFillInput(task.fill);
+    }
   }
 
   @override
@@ -174,8 +182,8 @@ class _WorkbenchState extends State<_Workbench> {
             child: _buildSkillChips(),
           ),
         ],
-        // 空即藏：无历史会话整节收起（首跑态）
-        if (widget.sessions.isNotEmpty) ...[
+        // 空即藏：无 /cd 历史整节收起（首跑态）
+        if (widget.workspaces.isNotEmpty) ...[
           const SizedBox(height: 26),
           _buildSection(
             label: '项目 / 工作区',
@@ -271,7 +279,7 @@ class _WorkbenchState extends State<_Workbench> {
       builder: (context, hovered) {
         final theme = ChatTheme.of(context);
         return GestureDetector(
-          onTap: () => widget.onFillInput(task.fill),
+          onTap: () => _openTask(task),
           behavior: HitTestBehavior.opaque,
           child: Container(
             padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
@@ -404,21 +412,21 @@ class _WorkbenchState extends State<_Workbench> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < widget.sessions.length; i++) ...[
+        for (var i = 0; i < widget.workspaces.length; i++) ...[
           if (i > 0) const SizedBox(height: 2),
-          _buildResumeRow(widget.sessions[i]),
+          _buildResumeRow(widget.workspaces[i]),
         ],
       ],
     );
   }
 
-  Widget _buildResumeRow(_WorkbenchSession session) {
+  Widget _buildResumeRow(String path) {
     return _HoverBox(
       builder: (context, hovered) {
         final theme = ChatTheme.of(context);
-        final onTap = widget.onResumeSession == null
+        final onTap = widget.onResumeWorkspace == null
             ? null
-            : () => widget.onResumeSession!(session);
+            : () => widget.onResumeWorkspace!(path);
         return GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
@@ -434,7 +442,7 @@ class _WorkbenchState extends State<_Workbench> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    session.path,
+                    path,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
